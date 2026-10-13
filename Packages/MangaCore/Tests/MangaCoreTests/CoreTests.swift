@@ -127,6 +127,8 @@ struct CoreTests {
         while await fetcher.count == 0 { await Task.yield() }
         request.cancel()
         await #expect(throws: CancellationError.self) { try await request.value }
+        let deadline = ContinuousClock.now + .seconds(1)
+        while await fetcher.cancellations == 0, ContinuousClock.now < deadline { await Task.yield() }
         #expect(await fetcher.cancellations == 1)
         #expect(try store.snapshot(key) == nil)
         _ = try await repository.resolve(key)

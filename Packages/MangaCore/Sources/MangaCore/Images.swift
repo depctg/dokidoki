@@ -7,23 +7,27 @@ import CryptoKit
 public actor ImageLoader {
     private let sender: RequestSender
     private let memory = NSCache<NSString, CGImage>()
+    private let covers = NSCache<NSString, CGImage>()
     private let directory: URL
     private let diskLimit: Int
     private var generation = 0
     public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int = 256 * 1024 * 1024) {
         self.sender = sender; self.diskLimit = max(0, diskLimit)
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MangaViewer/Images", isDirectory: true)
-        memory.totalCostLimit = 96 * 1024 * 1024; memory.countLimit = 24
+        memory.totalCostLimit = 80 * 1024 * 1024; memory.countLimit = 24
+        covers.totalCostLimit = 16 * 1024 * 1024; covers.countLimit = 256
         do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { ErrorDiagnostics.record(error, operation: .imageCache) }
     }
-    public func image(for page: PageObject, rule: SiteRule, maxPixel: Int = 1800) async throws -> CGImage {
+    public func image(for page: PageObject, rule: SiteRule, maxPixel: Int = 1800, refresh: Bool = false) async throws -> CGImage {
         try Task.checkCancellation()
         guard rule.permits(page.imageURL) else { throw ReaderError.blockedHost }
-        let maxPixel = min(4096, max(64, maxPixel))
+        let maxPixel = min(page.role == .cover ? 768 : 4096, max(64, maxPixel))
         let digest = SHA256.hash(data: Data("\(rule.id)|\(rule.version)|\(page.imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")".utf8)).map { String(format: "%02x", $0) }.joined()
         let memoryKey = "\(digest)-\(maxPixel)" as NSString
-        let file = directory.appendingPathComponent(digest).appendingPathExtension("cache")
+        let file = directory.appendingPathComponent((page.role == .cover ? "cover-" : "") + digest).appendingPathExtension("cache")
+        let memory = page.role == .cover ? covers : memory
+        if refresh { memory.removeObject(forKey: memoryKey); remove(file); await sender.discardResource(page, rule: rule) }
         if let image = memory.object(forKey: memoryKey) {
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return image
@@ -45,7 +49,7 @@ public actor ImageLoader {
                 kCGImageSourceThumbnailMaxPixelSize: maxPixel,
                 kCGImageSourceShouldCacheImmediately: true
               ] as CFDictionary) else {
-            remove(file)
+            remove(file); await sender.discardResource(page, rule: rule)
             throw ReaderError.extraction(String(localized: "The image format could not be decoded. Retry to fetch a new copy.", bundle: .module))
         }
         if generation == currentGeneration {
@@ -59,7 +63,7 @@ public actor ImageLoader {
         return image
     }
     public func clear() {
-        generation += 1; memory.removeAllObjects()
+        generation += 1; memory.removeAllObjects(); covers.removeAllObjects()
         for file in entries() { remove(file.url) }
     }
     public func diskUsage() -> Int { entries().reduce(0) { $0 + $1.size } }
@@ -71,7 +75,10 @@ public actor ImageLoader {
         }
     }
     private func trimDisk() {
-        let files = entries().sorted { $0.date < $1.date }; var size = files.reduce(0) { $0 + $1.size }
+        let files = entries().sorted { a, b in
+            let coverA = a.url.lastPathComponent.hasPrefix("cover-"), coverB = b.url.lastPathComponent.hasPrefix("cover-")
+            return coverA == coverB ? a.date < b.date : !coverA
+        }; var size = files.reduce(0) { $0 + $1.size }
         for file in files where size > diskLimit { remove(file.url); size -= file.size }
     }
     private func remove(_ file: URL) {

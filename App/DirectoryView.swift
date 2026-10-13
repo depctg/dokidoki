@@ -8,7 +8,6 @@ struct DirectoryView: View {
     let changeSort: (ObjectKey) -> Void
     @State private var query = ""
     @State private var accumulated: DirectoryObject?
-    @State private var visited: Set<ObjectKey> = []
     @State private var loadingMore = false
     @State private var loadRequest = 0
     @State private var loadError: String?
@@ -16,10 +15,7 @@ struct DirectoryView: View {
     @State private var pull: CGFloat = 0
     private let threshold: CGFloat = 72
     private var current: DirectoryObject { accumulated ?? directory }
-    private var hasMore: Bool {
-        guard let next = current.nextPage else { return false }
-        return next.key != directory.key && !visited.contains(next.key)
-    }
+    private var hasMore: Bool { current.hasMore != false }
     private var references: [ContentReference] {
         current.mangaRefs.filter { query.isEmpty || $0.title.localizedStandardContains(query) }
     }
@@ -67,7 +63,7 @@ struct DirectoryView: View {
                     Spacer()
                 }.frame(minHeight: 44).listRowSeparator(.hidden)
                     .accessibilityIdentifier("directory.loadMore")
-            } else if !visited.isEmpty {
+            } else if accumulated != nil {
                 Text("No more titles").foregroundStyle(.secondary).frame(maxWidth: .infinity)
             }
         }
@@ -82,12 +78,12 @@ struct DirectoryView: View {
             if new != .interacting { pull = 0 }
         }
         .task(id: loadRequest) {
-            guard loadingMore, let next = current.nextPage, let repository = model.repository else { return }
+            guard loadingMore, let repository = model.repository else { return }
             defer { loadingMore = false }
             do {
-                let loaded = try await current.loadingNext(using: repository)
+                let loaded = try await current.load(current.mangaRefs.count..<(current.mangaRefs.count + 20), using: repository)
                 try Task.checkCancellation()
-                accumulated = loaded; visited.insert(next.key)
+                accumulated = loaded
             } catch is CancellationError {} catch { if !Task.isCancelled { loadError = error.localizedDescription } }
         }
         .alert("Could not load more", isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {

@@ -95,6 +95,19 @@ import os
         #expect(try await sender.send(source("after-error", rule: rule)).data == Data("okay".utf8))
     }
 
+    @Test func corruptImageBytesAreDiscardedBeforeRetry() async throws {
+        SenderFixture.reset()
+        let rule = try rule(), sender = sender()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let loader = ImageLoader(sender: sender, directory: folder)
+        let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://a.sender.test/owner")!)
+        let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0,
+                              imageURL: URL(string: "https://a.sender.test/not-an-image")!, refererURL: owner.identityURL)
+        for _ in 0..<2 { await #expect(throws: ReaderError.self) { try await loader.image(for: page, rule: rule) } }
+        #expect(SenderFixture.state.withLock { $0.paths } == ["/not-an-image", "/not-an-image"])
+    }
+
     @Test func requestIdentityIncludesRuleAndRefererAndBlocksUnknownHosts() async throws {
         SenderFixture.reset()
         let sender = sender(), rule = try rule(), rendered = try self.rule(rendered: true)
@@ -114,6 +127,10 @@ import os
         #expect(results.0.data == Data(owner.identityURL.absoluteString.utf8))
         #expect(results.0.data == results.2.data)
         #expect(results.1.data == Data(owner.identityURL.appendingPathComponent("other").absoluteString.utf8))
+        #expect(SenderFixture.state.withLock { $0.paths.count } == 4)
+        // Passive session resource reuse must retain referer identity after completion.
+        #expect(try await sender.send(image(owner.identityURL)).data == results.0.data)
+        #expect(try await sender.send(image(owner.identityURL.appendingPathComponent("other"))).data == results.1.data)
         #expect(SenderFixture.state.withLock { $0.paths.count } == 4)
         async let enabled = sender.send(source("background", rule: rule))
         async let disabled = sender.send(.source(ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://a.sender.test/background")!), kind: .directory, rule: rule, backgroundLoading: false))

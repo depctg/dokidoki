@@ -1,17 +1,18 @@
 import Foundation
 
 public enum ContentRequest: Sendable {
-    case source(ObjectKey, kind: ContentKind, rule: SiteRule, backgroundLoading: Bool = true)
+    case source(ObjectKey, kind: ContentKind, rule: SiteRule, backgroundLoading: Bool = true, load: SourceLoad = SourceLoad())
     case image(PageObject, rule: SiteRule)
 
     fileprivate var rule: SiteRule {
-        switch self { case .source(_, _, let rule, _), .image(_, let rule): rule }
+        switch self { case .source(_, _, let rule, _, _), .image(_, let rule): rule }
     }
     fileprivate var url: URL {
-        switch self { case .source(let key, _, _, _): key.identityURL; case .image(let page, _): page.imageURL }
+        switch self { case .source(let key, _, _, _, _): key.identityURL; case .image(let page, _): page.imageURL }
     }
+    fileprivate var referer: URL? { if case .image(let page, _) = self { return page.refererURL }; return nil }
     fileprivate var rendered: Bool {
-        if case .source(_, let kind, let rule, _) = self { return rule.extraction(for: kind, at: url)?.format.isRendered == true }
+        if case .source(_, let kind, let rule, _, _) = self { return rule.extraction(for: kind, at: url)?.format.isRendered == true }
         return false
     }
 }
@@ -25,6 +26,27 @@ public actor RequestSender {
         let purpose: String
         let referer: URL?
         let backgroundLoading: Bool
+    }
+    private struct ResourceKey: Hashable { let policy: Data; let url: URL }
+    private var resources: [ResourceKey: SessionResources] = [:]
+    private var resourceGeneration = 0
+    public func invalidateResources() async { resourceGeneration += 1; resources.removeAll(); await fetcher.invalidate() }
+    private func resourceKey(_ request: ContentRequest) throws -> ResourceKey {
+        let owner: URL
+        switch request {
+        case .source(let key, _, _, _, let load): owner = load.sessionURL ?? key.identityURL
+        case .image(let page, _): owner = page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL
+        }
+        return ResourceKey(policy: try request.rule.exported(), url: owner)
+    }
+    func discardResource(_ page: PageObject, rule: SiteRule) {
+        let request = ContentRequest.image(page, rule: rule)
+        if let key = try? resourceKey(request) { resources[key]?.remove(page.imageURL, referer: page.refererURL) }
+    }
+    private func remember(_ response: SourceResponse, request: ContentRequest) {
+        guard let key = try? resourceKey(request) else { return }
+        resources[key, default: SessionResources()].insert(response, for: request.url, referer: request.referer)
+        if resources.count > 4, let oldest = resources.min(by: { $0.value.used < $1.value.used })?.key { resources[oldest] = nil }
     }
     private struct Flight {
         let id = UUID()
@@ -61,9 +83,11 @@ public actor RequestSender {
         let referer: URL?
         let backgroundLoading: Bool
         switch request {
-        case .source(_, let kind, _, let background): purpose = kind.rawValue; referer = nil; backgroundLoading = background
+        case .source(_, let kind, _, let background, let load): purpose = "\(kind.rawValue)|\(String(describing: load.range))|\(load.refresh)"; referer = nil; backgroundLoading = background
         case .image(let page, _): purpose = "image"; referer = page.refererURL; backgroundLoading = false
         }
+        // Images can reuse bytes acquired by this logical session before admission.
+        if case .image = request, let context = try? resourceKey(request), let cached = resources[context]?.response(for: request.url, referer: request.referer) { return cached }
         let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer, backgroundLoading: backgroundLoading)
         let consumer = UUID()
         let response: SourceResponse = try await withTaskCancellationHandler {
@@ -104,7 +128,7 @@ public actor RequestSender {
             }) else { break }
             let key = queue.remove(at: index)
             guard var flight = flights[key] else { continue }
-            let id = flight.id, request = flight.request
+            let id = flight.id, request = flight.request, resourceEpoch = resourceGeneration
             starts.append((key.url.host?.lowercased() ?? "", ContinuousClock.now))
             active += 1; activeHosts[key.url.host?.lowercased() ?? "", default: 0] += 1
             if request.rendered { activeRendered += 1 }
@@ -114,13 +138,15 @@ public actor RequestSender {
                     try Task.checkCancellation()
                     let response: SourceResponse
                     switch request {
-                    case .source(let object, let kind, let rule, let backgroundLoading):
-                        response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind, backgroundLoading: backgroundLoading)
+                    case .source(let object, let kind, let rule, let backgroundLoading, let load):
+                        response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind, backgroundLoading: backgroundLoading, load: load)
                     case .image(let page, let rule):
-                        if let fixture = try DemoContent.response(for: page.imageURL) { response = fixture }
+                        if let cached = await fetcher.cachedResource(page.imageURL, rule: rule) { response = cached }
+                        else if let fixture = try DemoContent.response(for: page.imageURL) { response = fixture }
                         else { response = try await client.download(page.imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024) }
                     }
-                    try Task.checkCancellation(); result = .success(response)
+                    try Task.checkCancellation()
+                    if resourceEpoch == resourceGeneration { remember(response, request: request) }; result = .success(response)
                 } catch { result = .failure(error) }
                 finish(key, id: id, rendered: request.rendered, result: result)
             }

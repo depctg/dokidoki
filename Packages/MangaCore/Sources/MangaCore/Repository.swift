@@ -10,9 +10,10 @@ public actor ObjectRepository {
     private struct Request {
         let id = UUID()
         let task: Task<ContentObject, Error>
-        var consumers: Set<UUID> = []
+        var consumers: [UUID: CheckedContinuation<ContentObject, Error>] = [:]
     }
     private var inFlight: [ObjectKey: Request] = [:]
+    private var directoryFlights: [ObjectKey: Request] = [:]
     private var generation = 0
     private var backgroundLoading: Bool
 
@@ -21,12 +22,12 @@ public actor ObjectRepository {
         images = ImageLoader(sender: sender)
         backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
     }
-    public func clearImages() async { await images.clear() }
+    public func clearImages() async { await images.clear(); await sender.invalidateResources() }
     public func imageCacheUsage() async -> Int { await images.diskUsage() }
-    public func setBackgroundLoading(_ enabled: Bool) throws {
+    public func setBackgroundLoading(_ enabled: Bool) async throws {
         try store.setPreference("backgroundLoading", value: enabled)
         guard backgroundLoading != enabled else { return }
-        backgroundLoading = enabled; invalidate()
+        backgroundLoading = enabled; await invalidate()
     }
     public func installedRules() -> [SiteRule] { registry.rules }
     public func rule(for key: ObjectKey) throws -> SiteRule {
@@ -37,7 +38,7 @@ public actor ObjectRepository {
         return (key, kind)
     }
     public func key(for url: URL) throws -> ObjectKey { try match(url).key }
-    public func install(_ rule: SiteRule) throws {
+    public func install(_ rule: SiteRule) async throws {
         try rule.validate()
         if let existing = registry.rules.first(where: { $0.id == rule.id }) {
             let identical = try rule.exported() == existing.exported()
@@ -45,16 +46,21 @@ public actor ObjectRepository {
             guard rule.version > existing.version else { throw ReaderError.invalidRule(String(localized: "Changed rules must increase their version.", bundle: .module)) }
         }
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != rule.id } + [rule])
-        try store.saveRule(rule); invalidate(); registry = next
+        try store.saveRule(rule); registry = next; await invalidate()
     }
-    public func removeRule(_ id: String) throws {
+    public func removeRule(_ id: String) async throws {
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != id })
-        try store.removeRule(id); invalidate(); registry = next
+        try store.removeRule(id); registry = next; await invalidate()
     }
-    private func invalidate() { generation += 1; inFlight.values.forEach { $0.task.cancel() }; inFlight.removeAll() }
-    public func clearContent() throws { invalidate(); try store.clearContent() }
+    private func invalidate() async {
+        generation += 1; inFlight.values.forEach { $0.task.cancel(); $0.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }; inFlight.removeAll()
+        directoryFlights.values.forEach { $0.task.cancel(); $0.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }; directoryFlights.removeAll()
+        await sender.invalidateResources()
+    }
+    public func clearContent() async throws { await invalidate(); try store.clearContent() }
     public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
         try Task.checkCancellation()
+        if hint == .forceRefresh, let old = directoryFlights.removeValue(forKey: key) { old.task.cancel(); old.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }
         let rule = try rule(for: key)
         let cached = try store.snapshot(key)
         if let cached, cached.ruleVersion == rule.version,
@@ -72,36 +78,95 @@ public actor ObjectRepository {
         guard canonical == key else { return try await resolve(canonical, hint: hint) }
         let currentGeneration = generation, backgroundLoading = backgroundLoading
         let task = Task<ContentObject, Error> { [sender] in
-            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading))
+            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(refresh: hint == .forceRefresh)))
             try Task.checkCancellation()
             let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule)
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
-            try self.store.upsert(objects, version: rule.version, ttl: kind == .directory ? 900 : 86_400)
+            try self.store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(kind))
             guard let object = objects.first else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
         }
         let request = Request(task: task)
         inFlight[key] = request
         return try await consume(request, key: key)
     }
-    private func consume(_ request: Request, key: ObjectKey) async throws -> ContentObject {
-        let consumer = UUID()
-        inFlight[key]?.consumers.insert(consumer)
-        return try await withTaskCancellationHandler {
-            defer { release(key, requestID: request.id, consumer: consumer) }
-            let object = try await request.task.value
-            try Task.checkCancellation()
-            return object
-        } onCancel: {
-            Task { await self.release(key, requestID: request.id, consumer: consumer) }
+    /// Range assembly is session state, never view/object mutation. Overlapping callers
+    /// share one advancing job; a larger caller resumes after the smaller range completes.
+    public func directory(_ key: ObjectKey, range: Range<Int>) async throws -> DirectoryObject {
+        guard range.lowerBound >= 0, range.upperBound <= 100_000 else { throw ReaderError.invalidResponse }
+        if let flight = directoryFlights[key] {
+            _ = try await consume(flight, key: key, directory: true)
+            return try await directory(key, range: range)
         }
+        guard case .directory(let initial) = try await resolve(key) else { throw ReaderError.invalidResponse }
+        if directoryFlights[key] != nil { return try await directory(key, range: range) }
+        guard initial.mangaRefs.count < range.upperBound, initial.nextPage != nil else { return initial }
+        let epoch = generation
+        let task = Task<ContentObject, Error> {
+            var current = initial, visited: Set<ObjectKey> = [key], stalled = 0
+            while current.mangaRefs.count < range.upperBound, let next = current.nextPage {
+                guard visited.count < 100, visited.insert(next.key).inserted else { throw ReaderError.invalidResponse }
+                guard case .directory(let batch) = try await self.resolve(next.key) else { throw ReaderError.invalidResponse }
+                try Task.checkCancellation()
+                guard epoch == self.generation else { throw CancellationError() }
+                let previousCount = current.mangaRefs.count
+                var seen = Set(current.mangaRefs.map(\.key))
+                current = DirectoryObject(key: key, sourceURL: initial.sourceURL, title: initial.title,
+                    mangaRefs: current.mangaRefs + batch.mangaRefs.filter { seen.insert($0.key).inserted }, nextURL: batch.nextURL,
+                    sortBy: initial.sortBy, sortOrder: initial.sortOrder, selectedSortBy: initial.selectedSortBy, selectedSortOrder: initial.selectedSortOrder)
+                stalled = current.mangaRefs.count == previousCount ? stalled + 1 : 0
+                guard stalled < 3 else { throw ReaderError.invalidResponse }
+                let rule = try self.rule(for: key)
+                try self.store.upsert([.directory(current)], version: rule.version, ttl: CachePolicy.lifetime(.directory))
+            }
+            return .directory(current)
+        }
+        let request = Request(task: task); directoryFlights[key] = request
+        guard case .directory(let result) = try await consume(request, key: key, directory: true) else { throw ReaderError.invalidResponse }
+        return result
     }
-    private func release(_ key: ObjectKey, requestID: UUID, consumer: UUID) {
-        guard var request = inFlight[key], request.id == requestID else { return }
-        request.consumers.remove(consumer)
+    private func consume(_ request: Request, key: ObjectKey, directory: Bool = false) async throws -> ContentObject {
+        let consumer = UUID()
+        let value: ContentObject = try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard !Task.isCancelled else {
+                    let current = directory ? directoryFlights[key] : inFlight[key]
+                    if let current, current.id == request.id, current.consumers.isEmpty {
+                        current.task.cancel()
+                        if directory { directoryFlights[key] = nil } else { inFlight[key] = nil }
+                    }
+                    continuation.resume(throwing: CancellationError()); return
+                }
+                guard var current = directory ? directoryFlights[key] : inFlight[key], current.id == request.id else {
+                    continuation.resume(throwing: CancellationError()); return
+                }
+                current.consumers[consumer] = continuation
+                if directory { directoryFlights[key] = current } else { inFlight[key] = current }
+                if current.consumers.count == 1 {
+                    Task {
+                        let result: Result<ContentObject, Error>
+                        do { result = .success(try await request.task.value) } catch { result = .failure(error) }
+                        self.finish(request, key: key, directory: directory, result: result)
+                    }
+                }
+            }
+        } onCancel: {
+            Task { await self.release(key, requestID: request.id, consumer: consumer, directory: directory) }
+        }
+        try Task.checkCancellation(); return value
+    }
+    private func finish(_ request: Request, key: ObjectKey, directory: Bool, result: Result<ContentObject, Error>) {
+        guard let current = directory ? directoryFlights[key] : inFlight[key], current.id == request.id else { return }
+        if directory { directoryFlights[key] = nil } else { inFlight[key] = nil }
+        for waiter in current.consumers.values { waiter.resume(with: result) }
+    }
+    private func release(_ key: ObjectKey, requestID: UUID, consumer: UUID, directory: Bool = false) {
+        guard var request = directory ? directoryFlights[key] : inFlight[key], request.id == requestID,
+              let waiter = request.consumers.removeValue(forKey: consumer) else { return }
+        waiter.resume(throwing: CancellationError())
         if request.consumers.isEmpty {
-            // Keep shared resolutions alive only while at least one caller still needs them.
-            request.task.cancel(); inFlight[key] = nil
-        } else { inFlight[key] = request }
+            request.task.cancel()
+            if directory { directoryFlights[key] = nil } else { inFlight[key] = nil }
+        } else if directory { directoryFlights[key] = request } else { inFlight[key] = request }
     }
 }

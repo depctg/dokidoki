@@ -50,12 +50,36 @@ struct PaginationTests {
         let firstRef = try #require(try SiteObject(rule: rule).search("story"))
         guard case .directory(let first) = try await firstRef.load(using: repository) else { throw ReaderError.invalidResponse }
         #expect(first.mangaRefs.count == 1)
-        let joined = try await first.loadingNext(using: repository)
+        let joined = try await first.load(1..<20, using: repository)
         #expect(joined.key == first.key && joined.sourceURL == first.sourceURL)
         #expect(joined.sortBy == first.sortBy)
         #expect(joined.mangaRefs.map(\.title) == ["The Observatory", "Aster House"])
         #expect(joined.nextPage == nil)
-        #expect(try await joined.loadingNext(using: repository).mangaRefs == joined.mangaRefs)
+        #expect(try await joined.load(1..<20, using: repository).mangaRefs == joined.mangaRefs)
+    }
+
+    @Test func overlappingRangesShareSessionAndUnknownItemsRemainUnknown() async throws {
+        let rules = try DemoContent.bundledRules(), store = try ObjectStore()
+        let repository = try ObjectRepository(store: store, rules: rules)
+        let key = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/catalog?q=story")!)
+        let unknown = DirectoryObject(key: key, sourceURL: key.identityURL, title: "Search")
+        #expect(unknown.items == nil && unknown.hasMore == nil)
+        #expect(try JSONDecoder().decode(DirectoryObject.self, from: JSONEncoder().encode(unknown)).items == nil)
+        async let first = unknown.load(0..<2, using: repository)
+        async let second = unknown.load(1..<10, using: repository)
+        let (a, b) = try await (first, second)
+        #expect(a.mangaRefs == b.mangaRefs && b.hasMore == false)
+        let reopened = try ObjectRepository(store: store, rules: rules)
+        #expect(try await unknown.load(0..<20, using: reopened).mangaRefs == b.mangaRefs)
+    }
+
+    @Test func rangeRequestsBoundRepeatedEmptySourcePages() async throws {
+        let rules = try DemoContent.bundledRules(), fetcher = EmptyRangeFetcher()
+        let repository = try ObjectRepository(store: ObjectStore(), rules: rules, sender: RequestSender(fetcher: fetcher))
+        let key = ObjectKey(ruleID: "demo", identityURL: DemoContent.directoryURL)
+        let directory = DirectoryObject(key: key, sourceURL: key.identityURL, title: "Empty")
+        await #expect(throws: ReaderError.self) { try await directory.load(0..<20, using: repository) }
+        #expect(await fetcher.count == 4)
     }
 
     @Test func shippedDefaultIsAdoptedOnceAndRespectsLaterUserChoices() throws {
@@ -78,5 +102,13 @@ struct PaginationTests {
         let fresh = try ObjectStore()
         try fresh.applyBundledRules(bundled)
         #expect(try fresh.rules().map(\.id) == bundled.map(\.id))
+    }
+}
+
+private actor EmptyRangeFetcher: SourceFetcher {
+    var count = 0
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
+        count += 1
+        return SourceResponse(data: Data("<h1>Empty</h1><a rel='next' href='/catalog?step=\(count)'>Next</a>".utf8), url: url)
     }
 }

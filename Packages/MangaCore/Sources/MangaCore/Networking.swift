@@ -5,8 +5,26 @@ public struct SourceResponse: Sendable {
     public let url: URL
     public init(data: Data, url: URL) { self.data = data; self.url = url }
 }
+public struct SourceLoad: Sendable, Hashable {
+    public var range: Range<Int>?
+    public var refresh: Bool
+    public var sessionURL: URL?
+    public init(range: Range<Int>? = nil, refresh: Bool = false, sessionURL: URL? = nil) {
+        self.range = range; self.refresh = refresh; self.sessionURL = sessionURL
+    }
+}
 public protocol SourceFetcher: Sendable {
     func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool, load: SourceLoad) async throws -> SourceResponse
+    func cachedResource(_ url: URL, rule: SiteRule) async -> SourceResponse?
+    func invalidate() async
+}
+extension SourceFetcher {
+    public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool, load: SourceLoad) async throws -> SourceResponse {
+        try await fetch(url, rule: rule, kind: kind, backgroundLoading: backgroundLoading)
+    }
+    public func cachedResource(_ url: URL, rule: SiteRule) async -> SourceResponse? { nil }
+    public func invalidate() async {}
 }
 
 private final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {

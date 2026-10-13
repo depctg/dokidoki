@@ -32,7 +32,18 @@ public struct DirectoryObject: Codable, Sendable {
     public let key: ObjectKey
     public let sourceURL: URL
     public let title: String
-    public let mangaRefs: [ContentReference]
+    public let items: [ContentReference]?
+    public var mangaRefs: [ContentReference] { items ?? [] }
+    public var hasMore: Bool? { items == nil ? nil : nextURL != nil }
+    private enum CodingKeys: String, CodingKey {
+        case key, sourceURL, title, nextURL, sortBy, sortOrder, selectedSortBy, selectedSortOrder
+        case items = "mangaRefs"
+    }
+    public init(key: ObjectKey, sourceURL: URL, title: String, mangaRefs: [ContentReference]? = nil, nextURL: URL? = nil,
+                sortBy: [ContentReference]? = nil, sortOrder: [ContentReference]? = nil, selectedSortBy: ObjectKey? = nil, selectedSortOrder: ObjectKey? = nil) {
+        self.key = key; self.sourceURL = sourceURL; self.title = title; items = mangaRefs; self.nextURL = nextURL
+        self.sortBy = sortBy; self.sortOrder = sortOrder; self.selectedSortBy = selectedSortBy; self.selectedSortOrder = selectedSortOrder
+    }
     public let nextURL: URL?
     /// Optional source-provided sort destinations; absent fields keep older snapshots readable.
     public var sortBy: [ContentReference]? = nil

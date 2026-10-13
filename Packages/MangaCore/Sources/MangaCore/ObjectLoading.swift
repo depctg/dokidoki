@@ -23,17 +23,14 @@ extension ContentObject {
     }
 }
 extension DirectoryObject {
-    /// Append the next source list without changing the first page's identity/sorting.
-    public func loadingNext(using repository: ObjectRepository) async throws -> DirectoryObject {
-        guard let nextPage else { return self }
-        guard case .directory(let next) = try await nextPage.load(using: repository) else { throw ReaderError.invalidResponse }
-        try Task.checkCancellation()
-        var seen = Set(mangaRefs.map(\.key))
-        let additions = next.mangaRefs.filter { seen.insert($0.key).inserted }
-        return DirectoryObject(key: key, sourceURL: sourceURL, title: title, mangaRefs: mangaRefs + additions,
-            nextURL: next.nextURL, sortBy: sortBy, sortOrder: sortOrder, selectedSortBy: selectedSortBy, selectedSortOrder: selectedSortOrder)
+    /// Returns the known prefix covering the requested zero-based range, or the source end.
+    /// All continuation and duplicate/cycle handling belongs to the shared core context.
+    public func load(_ range: Range<Int>, using repository: ObjectRepository) async throws -> DirectoryObject {
+        do { return try await repository.directory(key, range: range) }
+        catch { ErrorDiagnostics.record(error, operation: .loadContent, url: sourceURL); throw error }
     }
 }
+
 extension MangaObject {
     public func coverPage(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> PageObject? {
         guard let coverPageRef, case .page(let page) = try await coverPageRef.load(using: repository, hint: hint) else { return nil }
@@ -64,7 +61,7 @@ extension PageObject {
         } else { page = self }
         do {
             let rule = try await repository.rule(for: page.key)
-            return try await repository.images.image(for: page, rule: rule, maxPixel: maxPixel)
+            return try await repository.images.image(for: page, rule: rule, maxPixel: maxPixel, refresh: refresh)
         } catch {
             ErrorDiagnostics.record(error, operation: .loadImage, url: page.imageURL)
             throw error
