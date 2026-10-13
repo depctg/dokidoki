@@ -16,7 +16,14 @@ public struct RenderingRule: Codable, Sendable {
     public enum ContentMode: String, Codable, Sendable { case recommended, desktop, mobile }
     public var contentMode: ContentMode? = nil
     public var captureFunction: String? = nil
+    /// Observe the normal return value instead of the first argument.
+    public var captureResult: Bool? = nil
     public var readyImageXPath: String? = nil
+    /// Wait for a site-created DOM node before taking an asynchronous rendered snapshot.
+    public var readyXPath: String? = nil
+    /// Defaults to on; false disables hidden images/media/fonts, including ads, for this kind.
+    /// The global background-loading setting can always disable it.
+    public var loadAds: Bool? = nil
 }
 public struct ExtractionRule: Codable, Sendable {
     public enum Format: String, Codable, Sendable {
@@ -107,7 +114,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                     guard function.count <= 256, function.range(of: #"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$"#, options: .regularExpression) != nil,
                           !function.split(separator: ".").contains(where: { ["__proto__", "prototype", "constructor"].contains(String($0)) }) else { throw ReaderError.invalidRule(String(localized: "Capture must name a function using a simple dotted path.", bundle: .module)) }
                 }
-                if let xpath = rendering.readyImageXPath {
+                for xpath in [rendering.readyImageXPath, rendering.readyXPath].compactMap({ $0 }) {
                     guard xpath.count <= 2048, let compiled = xmlXPathCompile(xpath) else { throw ReaderError.invalidRule(String(localized: "Invalid image readiness XPath.", bundle: .module)) }
                     xmlXPathFreeCompExpr(compiled)
                 }
@@ -147,7 +154,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             for field in fields {
                 guard Set(field.keys).isSubset(of: ["path", "read", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
             }
-            if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "readyImageXPath"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
+            if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "captureResult", "readyImageXPath", "readyXPath", "loadAds"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
         }
         let rule = try JSONDecoder().decode(SiteRule.self, from: data); try rule.validate(); return rule
     }

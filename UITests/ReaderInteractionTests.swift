@@ -135,6 +135,14 @@ import XCTest
         XCTAssertTrue(app.alerts["MangaViewer"].waitForExistence(timeout: 8))
         app.alerts.buttons["OK"].tap()
         app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        let background = app.switches["Background resource loading"]
+        for _ in 0..<5 where !background.isHittable { app.swipeUp() }
+        XCTAssertTrue(background.isHittable)
+        let original = background.value as? String
+        background.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertTrue(wait { background.value as? String != original })
+        background.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+        XCTAssertTrue(wait { background.value as? String == original })
         let reportButton = app.buttons["Error report"]
         for _ in 0..<5 where !reportButton.isHittable { app.swipeUp() }
         XCTAssertTrue(reportButton.isHittable)

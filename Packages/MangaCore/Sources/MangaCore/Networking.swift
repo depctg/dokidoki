@@ -6,7 +6,7 @@ public struct SourceResponse: Sendable {
     public init(data: Data, url: URL) { self.data = data; self.url = url }
 }
 public protocol SourceFetcher: Sendable {
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse
 }
 
 private final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
@@ -51,7 +51,7 @@ public actor HTTPClient {
 public struct DefaultSourceFetcher: SourceFetcher {
     public let client: HTTPClient
     public init(client: HTTPClient = HTTPClient()) { self.client = client }
-    public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+    public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
         if let response = try DemoContent.response(for: url) { return response }
         if rule.extractors[kind.rawValue]?.format.isRendered == true { throw ReaderError.renderedSourceRequired }
         return try await client.download(url, rule: rule)

@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "id": "mangacopy",
+  "name": "拷貝漫畫 · MangaCopy",
+  "version": 2,
+  "allowedHosts": [
+    "www.mangacopy.com",
+    "s0.mangafunb.fun",
+    "s3.mangafunb.fun",
+    "sb.mangafunb.fun",
+    "sc.mangafunb.fun",
+    "sd.mangafunb.fun",
+    "sf.mangafunb.fun",
+    "sg.mangafunb.fun",
+    "sh.mangafunb.fun",
+    "sj.mangafunb.fun",
+    "sl.mangafunb.fun",
+    "sm.mangafunb.fun",
+    "sn.mangafunb.fun",
+    "sq.mangafunb.fun",
+    "sr.mangafunb.fun",
+    "ss.mangafunb.fun",
+    "st.mangafunb.fun",
+    "sw.mangafunb.fun",
+    "sx.mangafunb.fun",
+    "sy.mangafunb.fun",
+    "sz.mangafunb.fun"
+  ],
+  "matchers": [
+    {
+      "kind": "directory",
+      "pattern": "^https://www\\.mangacopy\\.com/(comics|search)(\\?.*)?$",
+      "priority": 0
+    },
+    {
+      "kind": "manga",
+      "pattern": "^https://www\\.mangacopy\\.com/comic/[^/?]+$",
+      "priority": 0
+    },
+    {
+      "kind": "chapter",
+      "pattern": "^https://www\\.mangacopy\\.com/comic/[^/?]+/chapter/[^/?]+$",
+      "priority": 0
+    }
+  ],
+  "extractors": {
+    "directory": {
+      "format": "renderedHTML",
+      "rendering": {
+        "readyXPath": "//div[contains(@class,'exemptComic-box')]//a[contains(@href,'/comic/')] | //div[@id='comic']//a[contains(@href,'/comic/')] | //*[@id='comic']//li[@class='page-total' and normalize-space(.)='/0']",
+        "contentMode": "desktop"
+      },
+      "fields": {
+        "title": {
+          "path": "//title"
+        },
+        "mangaLinks": {
+          "path": "//div[contains(@class,'exemptComic-box')]//a[contains(@href,'/comic/') and normalize-space(.)!=''] | //div[@id='comic']//a[contains(@href,'/comic/') and normalize-space(.)!='']",
+          "read": "attr:href"
+        },
+        "next": {
+          "path": "//li[@class='next']/a[starts-with(@href,'/comics?')]",
+          "read": "attr:href"
+        },
+        "sortByLinks": {
+          "path": "//dl[dt[contains(.,'排序')]]//a",
+          "read": "attr:href"
+        }
+      }
+    },
+    "manga": {
+      "format": "renderedHTML",
+      "rendering": {
+        "readyXPath": "//div[contains(@class,'upLoop')]//div[contains(@class,'tab-content')]//a[contains(@href,'/chapter/')]",
+        "contentMode": "desktop"
+      },
+      "fields": {
+        "title": {
+          "path": "//h6[@title]"
+        },
+        "author": {
+          "path": "//span[contains(@class,'comicParticulars-right-txt')][a[contains(@href,'/author/')]]"
+        },
+        "coverImage": {
+          "path": "//div[contains(@class,'comicParticulars-left-img')]/img",
+          "read": "attr:data-src",
+          "fallback": "attr:src"
+        },
+        "summary": {
+          "path": "//p[@class=\"intro\"]"
+        },
+        "status": {
+          "path": "//li[span[contains(.,'狀態')]]/span[contains(@class,'comicParticulars-right-txt')]"
+        },
+        "tags": {
+          "path": "//span[contains(@class,'comicParticulars-tag')]/a",
+          "regex": "^#?(.*)$",
+          "group": 1
+        },
+        "chapterLinks": {
+          "path": "//div[contains(@class,'upLoop')]//div[contains(@class,'tab-content')]//a[contains(@href,'/chapter/')]",
+          "read": "attr:href"
+        }
+      }
+    },
+    "chapter": {
+      "format": "renderedJSON",
+      "rendering": {
+        "captureFunction": "JSON.parse",
+        "captureResult": true,
+        "readyImageXPath": "//ul[contains(@class,'comicContent-list')]//img[@data-src]",
+        "contentMode": "desktop"
+      },
+      "fields": {
+        "title": {
+          "path": "title",
+          "regex": "^.*? - (.*?) - ",
+          "group": 1
+        },
+        "mangaLink": {
+          "path": "url",
+          "regex": "^(.*)/chapter/",
+          "group": 1
+        },
+        "pageImages": {
+          "path": "data.*.url"
+        }
+      }
+    }
+  },
+  "browse": [
+    {
+      "title": "最近更新",
+      "url": "https://www.mangacopy.com/comics"
+    },
+    {
+      "title": "熱門漫畫",
+      "url": "https://www.mangacopy.com/comics?ordering=-popular"
+    },
+    {
+      "title": "已完結",
+      "url": "https://www.mangacopy.com/comics?status=1"
+    }
+  ],
+  "searchURLTemplate": "https://www.mangacopy.com/search?q={query}"
+}

@@ -136,14 +136,14 @@ struct ReaderView: View {
         .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; chapterPull = 0 } }
         .overlay { if model.openingChapter { ProgressView("Opening chapter…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) } }
         .onDisappear { chapterTransition = nil; reader.stop() }
-        .task {
+        .task(id: model.loadingRevision) {
             #if os(macOS)
             focused = true
             #endif
             await reader.activate()
         }
-        .task(id: reader.chapterToPrefetch(.next)) { await reader.preloadChapter(.next) }
-        .task(id: reader.chapterToPrefetch(.previous)) { await reader.preloadChapter(.previous) }
+        .task(id: "\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.next) }
+        .task(id: "\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.previous) }
         .task(id: "\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
     }
     private var options: some View {

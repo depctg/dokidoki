@@ -1,17 +1,17 @@
 import Foundation
 
 public enum ContentRequest: Sendable {
-    case source(ObjectKey, kind: ContentKind, rule: SiteRule)
+    case source(ObjectKey, kind: ContentKind, rule: SiteRule, backgroundLoading: Bool = true)
     case image(PageObject, rule: SiteRule)
 
     fileprivate var rule: SiteRule {
-        switch self { case .source(_, _, let rule), .image(_, let rule): rule }
+        switch self { case .source(_, _, let rule, _), .image(_, let rule): rule }
     }
     fileprivate var url: URL {
-        switch self { case .source(let key, _, _): key.identityURL; case .image(let page, _): page.imageURL }
+        switch self { case .source(let key, _, _, _): key.identityURL; case .image(let page, _): page.imageURL }
     }
     fileprivate var rendered: Bool {
-        if case .source(_, let kind, let rule) = self { return rule.extractors[kind.rawValue]?.format.isRendered == true }
+        if case .source(_, let kind, let rule, _) = self { return rule.extractors[kind.rawValue]?.format.isRendered == true }
         return false
     }
 }
@@ -24,6 +24,7 @@ public actor RequestSender {
         let policy: Data
         let purpose: String
         let referer: URL?
+        let backgroundLoading: Bool
     }
     private struct Flight {
         let id = UUID()
@@ -58,11 +59,12 @@ public actor RequestSender {
         guard request.rule.permits(request.url) else { throw ReaderError.blockedHost }
         let purpose: String
         let referer: URL?
+        let backgroundLoading: Bool
         switch request {
-        case .source(_, let kind, _): purpose = kind.rawValue; referer = nil
-        case .image(let page, _): purpose = "image"; referer = page.refererURL
+        case .source(_, let kind, _, let background): purpose = kind.rawValue; referer = nil; backgroundLoading = background
+        case .image(let page, _): purpose = "image"; referer = page.refererURL; backgroundLoading = false
         }
-        let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer)
+        let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer, backgroundLoading: backgroundLoading)
         let consumer = UUID()
         let response: SourceResponse = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SourceResponse, Error>) in
@@ -112,8 +114,8 @@ public actor RequestSender {
                     try Task.checkCancellation()
                     let response: SourceResponse
                     switch request {
-                    case .source(let object, let kind, let rule):
-                        response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind)
+                    case .source(let object, let kind, let rule, let backgroundLoading):
+                        response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind, backgroundLoading: backgroundLoading)
                     case .image(let page, let rule):
                         if let fixture = try DemoContent.response(for: page.imageURL) { response = fixture }
                         else { response = try await client.download(page.imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024) }

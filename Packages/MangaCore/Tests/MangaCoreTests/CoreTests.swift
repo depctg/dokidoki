@@ -149,12 +149,33 @@ struct CoreTests {
         #expect(await fetcher.count == 1)
         #expect(await fetcher.cancellations == 0)
     }
+
+    @Test func backgroundLoadingDefaultsOnPersistsAndCancelsOldPolicy() async throws {
+        let rules = try DemoContent.bundledRules(), store = try ObjectStore(), fetcher = SlowFetcher()
+        let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
+        let key = try await repository.key(for: DemoContent.directoryURL)
+        let old = Task { try await key.load(using: repository) }
+        while await fetcher.count == 0 { await Task.yield() }
+        #expect(await fetcher.backgroundPolicies == [true])
+        try await repository.setBackgroundLoading(false)
+        await #expect(throws: CancellationError.self) { try await old.value }
+        #expect(try store.snapshot(key) == nil)
+        #expect(try store.preference("backgroundLoading", as: Bool.self) == false)
+        let reopened = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
+        _ = try await key.load(using: reopened)
+        #expect(await fetcher.backgroundPolicies == [true, false])
+        try await reopened.setBackgroundLoading(true)
+        _ = try await key.load(using: reopened, hint: .forceRefresh)
+        #expect(await fetcher.backgroundPolicies == [true, false, true])
+    }
 }
 private actor SlowFetcher: SourceFetcher {
     var count = 0
     var cancellations = 0
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+    var backgroundPolicies: [Bool] = []
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
         count += 1
+        backgroundPolicies.append(backgroundLoading)
         do { try await Task.sleep(for: .milliseconds(250)) }
         catch { cancellations += 1; throw error }
         return try DemoContent.response(for: url)!
@@ -162,7 +183,7 @@ private actor SlowFetcher: SourceFetcher {
 }
 private actor CountingFetcher: SourceFetcher {
     var count = 0
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
         count += 1; try await Task.sleep(for: .milliseconds(40)); return try DemoContent.response(for: url)!
     }
 }

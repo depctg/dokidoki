@@ -41,7 +41,7 @@ struct BrowseView: View {
         .onChange(of: model.openURLRequest, initial: true) { _, request in
             if request > 0 { openingURL = true; model.openURLRequest = 0 }
         }
-        .onChange(of: model.ruleRevision) { _, _ in openingURL = false }
+        .onChange(of: model.loadingRevision) { _, _ in openingURL = false }
     }
 }
 
@@ -147,7 +147,7 @@ private struct BrowseShelf: View {
                 }.padding(.horizontal, 20)
             } else { ProgressView("Loading titles…").padding(20) }
         }
-        .task(id: "\(reference.key.id)|\(attempt)|\(model.ruleRevision)") {
+        .task(id: "\(reference.key.id)|\(attempt)|\(model.loadingRevision)") {
             directory = nil; error = nil
             do {
                 guard let repository = model.repository, case .directory(let loaded) = try await reference.load(using: repository, hint: attempt > 0 ? .forceRefresh : .refreshIfStale) else { return }
@@ -178,7 +178,7 @@ struct MangaPreview: View {
                 }.padding(.vertical, 4)
             }
         }
-        .task(id: "\(reference.id.id)|\(model.ruleRevision)") {
+        .task(id: "\(reference.id.id)|\(model.loadingRevision)") {
             manga = nil; cover = nil
             do {
                 guard let repository = model.repository, case .manga(let loaded) = try await reference.load(using: repository, hint: .preferCache) else { return }

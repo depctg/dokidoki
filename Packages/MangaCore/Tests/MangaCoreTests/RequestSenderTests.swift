@@ -115,8 +115,12 @@ import os
         #expect(results.0.data == results.2.data)
         #expect(results.1.data == Data(owner.identityURL.appendingPathComponent("other").absoluteString.utf8))
         #expect(SenderFixture.state.withLock { $0.paths.count } == 4)
+        async let enabled = sender.send(source("background", rule: rule))
+        async let disabled = sender.send(.source(ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://a.sender.test/background")!), kind: .directory, rule: rule, backgroundLoading: false))
+        _ = try await (enabled, disabled)
+        #expect(SenderFixture.state.withLock { $0.paths.filter { $0 == "/background" }.count } == 2)
         await #expect(throws: ReaderError.self) { try await sender.send(source("blocked", rule: rule, host: "unknown.test")) }
-        #expect(SenderFixture.state.withLock { $0.paths.count } == 4)
+        #expect(SenderFixture.state.withLock { $0.paths.count } == 6)
     }
 
     @Test func burstBudgetIsSharedByDocumentsImagesAndRenderedSessions() async throws {
@@ -167,7 +171,7 @@ import os
 
 private struct FixtureFetcher: SourceFetcher {
     let client: HTTPClient
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
         try await client.download(url, rule: rule)
     }
 }

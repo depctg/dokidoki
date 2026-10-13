@@ -2503,6 +2503,54 @@
           }
         }
       }
+    },
+    "Website loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website loading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "网站加载"
+          }
+        }
+      }
+    },
+    "Allow website images and media, including ads, to load in the background. Ads are never displayed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Allow website images and media, including ads, to load in the background. Ads are never displayed."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "允许网站图片和媒体（包括广告）在后台加载。广告不会显示。"
+          }
+        }
+      }
+    },
+    "Background resource loading": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background resource loading"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "后台资源加载"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

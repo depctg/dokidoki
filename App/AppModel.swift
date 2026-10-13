@@ -46,7 +46,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     private(set) var sites: [SiteObject] = []
     var browseSiteID: String?
     var browseSite: SiteObject? { sites.first(where: { $0.id == browseSiteID }) ?? sites.first }
-    var ruleRevision = 0 { didSet { invalidateReader() } }
+    var ruleRevision = 0 { didSet { loadingRevision += 1; invalidateReader() } }
+    var loadingRevision = 0
     var paths: [AppSection: [AppRoute]] = [:]
     var searches: [String: SiteSearchState] = [:]
     var path: [AppRoute] {
@@ -64,6 +65,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
     }
     var section: AppSection = .library
+    private(set) var backgroundLoading = true
     var openURLRequest = 0
     var chapterToReveal: ObjectKey?
     var readerImmersive = false
@@ -87,6 +89,7 @@ enum AppSection: String, CaseIterable, Identifiable {
                 if let installed = try store.rules().first(where: { $0.id == bundled.id }), installed.version < bundled.version { try store.saveRule(bundled) }
             }
             rules = try store.rules(); self.store = store
+            backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
             repository = try ObjectRepository(store: store, rules: rules)
             reloadLibrary()
@@ -108,6 +111,15 @@ enum AppSection: String, CaseIterable, Identifiable {
         ErrorDiagnostics.record(error, operation: operation, url: url)
         self.error = error.localizedDescription
     }
+    func setBackgroundLoading(_ enabled: Bool) async {
+        guard backgroundLoading != enabled else { return }
+        let previous = backgroundLoading
+        backgroundLoading = enabled
+        do {
+            try await repository?.setBackgroundLoading(enabled)
+            loadingRevision += 1 // Retry canceled metadata without discarding the loaded reader.
+        } catch { backgroundLoading = previous; report(error, operation: .storage) }
+    }
     func moveRules(from offsets: IndexSet, to destination: Int) {
         var reordered = rules; reordered.move(fromOffsets: offsets, toOffset: destination)
         do {
@@ -126,7 +138,17 @@ enum AppSection: String, CaseIterable, Identifiable {
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
-                guard let repository, case .chapter(let chapter) = try await key.load(using: repository, hint: hint) else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
+                guard let repository else { return }
+                var loaded: ContentObject?
+                repeat {
+                    let policy = backgroundLoading
+                    do { loaded = try await key.load(using: repository, hint: hint) }
+                    catch is CancellationError {
+                        try Task.checkCancellation()
+                        guard policy != backgroundLoading else { throw CancellationError() }
+                    }
+                } while loaded == nil
+                guard case .chapter(let chapter) = loaded else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
                 try Task.checkCancellation()
                 presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd)
             } catch is CancellationError {} catch {

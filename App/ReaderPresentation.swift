@@ -83,7 +83,7 @@ struct ReaderResumeBar: View {
         .accessibilityLabel("Resume \([reader.mangaTitle, reader.chapter.title].compactMap { $0 }.joined(separator: ", "))")
         .accessibilityValue(reader.plans.isEmpty ? "" : String(localized: "Page \(reader.index + 1) of \(reader.plans.count)"))
         .accessibilityIdentifier("reader.resume")
-        .task { await reader.loadMangaMetadata() }
+        .task(id: model.loadingRevision) { await reader.loadMangaMetadata() }
     }
 }
 

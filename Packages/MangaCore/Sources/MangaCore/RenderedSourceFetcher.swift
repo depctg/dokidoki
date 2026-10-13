@@ -6,9 +6,9 @@ import WebKit
 public struct RenderedSourceFetcher: SourceFetcher {
     private let ordinary: DefaultSourceFetcher
     public init(client: HTTPClient = HTTPClient()) { ordinary = DefaultSourceFetcher(client: client) }
-    public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
-        guard let extraction = rule.extractors[kind.rawValue], extraction.format.isRendered else { return try await ordinary.fetch(url, rule: rule, kind: kind) }
-        return try await WebPageSession.read(url, rule: rule, extraction: extraction)
+    public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
+        guard let extraction = rule.extractors[kind.rawValue], extraction.format.isRendered else { return try await ordinary.fetch(url, rule: rule, kind: kind, backgroundLoading: backgroundLoading) }
+        return try await WebPageSession.read(url, rule: rule, extraction: extraction, backgroundLoading: backgroundLoading)
     }
 }
 
@@ -17,11 +17,13 @@ public struct RenderedSourceFetcher: SourceFetcher {
     private let rule: SiteRule
     private init(rule: SiteRule) { self.rule = rule }
 
-    static func read(_ url: URL, rule: SiteRule, extraction: ExtractionRule) async throws -> SourceResponse {
+    static func read(_ url: URL, rule: SiteRule, extraction: ExtractionRule, backgroundLoading: Bool) async throws -> SourceResponse {
         guard rule.permits(url) else { throw ReaderError.blockedHost }
         let session = WebPageSession(rule: rule)
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        configuration.mediaTypesRequiringUserActionForPlayback = .all
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
         switch extraction.rendering?.contentMode ?? .recommended {
         case .recommended: configuration.defaultWebpagePreferences.preferredContentMode = .recommended
         case .desktop: configuration.defaultWebpagePreferences.preferredContentMode = .desktop
@@ -32,8 +34,11 @@ public struct RenderedSourceFetcher: SourceFetcher {
         for host in rule.allowedHosts {
             filters.append(["trigger": ["url-filter": "^https?://" + NSRegularExpression.escapedPattern(for: host) + "/"], "action": ["type": "ignore-previous-rules"]])
         }
-        // Images are loaded by the bounded native image loader, not by this metadata view.
-        filters.append(["trigger": ["url-filter": ".*", "resource-type": ["image", "media", "font"]], "action": ["type": "block"]])
+        // Default normal resource loading keeps site load handlers working. The metadata
+        // view is never presented; parsed PageObjects still use the shared native image cache.
+        if !backgroundLoading || extraction.rendering?.loadAds == false {
+            filters.append(["trigger": ["url-filter": ".*", "resource-type": ["image", "media", "font"]], "action": ["type": "block"]])
+        }
         let filterJSON = String(decoding: try JSONSerialization.data(withJSONObject: filters), as: UTF8.self)
         let list = try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "reader-" + UUID().uuidString, encodedContentRuleList: filterJSON)
         if let list { controller.add(list) }
@@ -52,12 +57,19 @@ public struct RenderedSourceFetcher: SourceFetcher {
         for _ in 0..<120 {
             try Task.checkCancellation()
             if let failure = session.failure { throw failure }
-            if extraction.format == .renderedJSON {
+            let ready: Bool
+            if let xpath = extraction.rendering?.readyXPath {
+                ready = (try? await view.callAsyncJavaScript(
+                    "return !!document.evaluate(xpath, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;",
+                    arguments: ["xpath": xpath], in: nil, contentWorld: .page) as? Bool) == true
+            } else { ready = !view.isLoading }
+            if extraction.format == .renderedJSON, extraction.rendering?.readyXPath == nil || ready {
                 if let html = try? await view.evaluateJavaScript("window.__readerSnapshot ? JSON.stringify(window.__readerSnapshot()) : null") as? String, !html.isEmpty, html != "null" {
                     guard html.utf8.count <= 8 * 1024 * 1024 else { throw ReaderError.tooLarge }
                     return SourceResponse(data: Data(html.utf8), url: view.url ?? url)
                 }
-            } else if !view.isLoading, let html = try? await view.evaluateJavaScript("document.documentElement.outerHTML") as? String, !html.isEmpty {
+            } else if extraction.format == .renderedHTML, ready,
+                      let html = try? await view.evaluateJavaScript("document.documentElement.outerHTML") as? String, !html.isEmpty {
                 guard html.utf8.count <= 8 * 1024 * 1024 else { throw ReaderError.tooLarge }
                 return SourceResponse(data: Data(html.utf8), url: view.url ?? url)
             }
@@ -77,7 +89,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failure = failure ?? error }
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failure = failure ?? error }
 
-    // Observe the first argument without invoking or changing the site's function behavior.
+    // Observe a normal call without invoking the function or changing its result.
     // Only publish it after the site creates the image selected by the rule's readiness XPath.
     private static let captureScript = """
     (() => {
@@ -102,7 +114,11 @@ public struct RenderedSourceFetcher: SourceFetcher {
         function prepare(value) {
           if (parts.length > 1) { watch(value, parts.slice(1)); return value; }
           if (typeof value !== 'function') return value;
-          return function() { captured = arguments[0]; return Reflect.apply(value, this, arguments); };
+          return function() {
+            const result = Reflect.apply(value, this, arguments);
+            captured = options.captureResult ? result : arguments[0];
+            return result;
+          };
         }
         let value = prepare(object[key]);
         Object.defineProperty(object, key, {
@@ -113,7 +129,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
       watch(window, options.captureFunction.split('.'));
       window.__readerSnapshot = () => {
         observeImage();
-        return imageURL && captured ? {data: captured, imageURL} : null;
+        return imageURL && captured ? {data: captured, imageURL, title: document.title, url: location.href} : null;
       };
     })();
     """

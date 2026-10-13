@@ -59,6 +59,14 @@ struct SettingsView: View {
             } header: { Text("Site rules") } footer: { Text("Drag to reorder. The first site opens in Browse. Removing a rule keeps reading history and saved titles.") }
             .disabled(model.repository == nil)
             Section {
+                Toggle("Background resource loading", isOn: Binding(get: { model.backgroundLoading }, set: { enabled in
+                    Task { await model.setBackgroundLoading(enabled) }
+                }))
+            } header: { Text("Website loading") } footer: {
+                Text("Allow website images and media, including ads, to load in the background. Ads are never displayed.")
+            }
+            .disabled(model.repository == nil)
+            Section {
                 LabeledContent("Image cache", value: ByteCountFormatter.string(fromByteCount: Int64(diskBytes), countStyle: .file))
                 Button("Clear image cache", systemImage: "photo.badge.arrow.down") {
                     Task { await model.repository?.clearImages(); diskBytes = await model.repository?.imageCacheUsage() ?? 0; status = String(localized: "Image cache cleared.") }

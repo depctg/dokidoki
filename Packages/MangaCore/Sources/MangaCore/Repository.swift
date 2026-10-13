@@ -14,13 +14,20 @@ public actor ObjectRepository {
     }
     private var inFlight: [ObjectKey: Request] = [:]
     private var generation = 0
+    private var backgroundLoading: Bool
 
     public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender = RequestSender(fetcher: RenderedSourceFetcher())) throws {
         self.store = store; registry = try RuleRegistry(rules: rules); self.sender = sender
         images = ImageLoader(sender: sender)
+        backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
     }
     public func clearImages() async { await images.clear() }
     public func imageCacheUsage() async -> Int { await images.diskUsage() }
+    public func setBackgroundLoading(_ enabled: Bool) throws {
+        try store.setPreference("backgroundLoading", value: enabled)
+        guard backgroundLoading != enabled else { return }
+        backgroundLoading = enabled; invalidate()
+    }
     public func installedRules() -> [SiteRule] { registry.rules }
     public func rule(for key: ObjectKey) throws -> SiteRule {
         guard let rule = registry.rules.first(where: { $0.id == key.ruleID }) else { throw ReaderError.missingRule }; return rule
@@ -63,9 +70,9 @@ public actor ObjectRepository {
         if let request = inFlight[key] { return try await consume(request, key: key) }
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
         guard canonical == key else { return try await resolve(canonical, hint: hint) }
-        let currentGeneration = generation
+        let currentGeneration = generation, backgroundLoading = backgroundLoading
         let task = Task<ContentObject, Error> { [sender] in
-            let response = try await sender.send(.source(key, kind: kind, rule: rule))
+            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading))
             try Task.checkCancellation()
             let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule)
             try Task.checkCancellation()

@@ -10,19 +10,39 @@ import AppKit
         catch { print("Probe failed: \(error.localizedDescription)"); exit(1) }
     }
     @MainActor static func run() async throws {
+        var arguments = Array(CommandLine.arguments.dropFirst())
+        var snapshotPath: String?
+        if let index = arguments.firstIndex(of: "--snapshot") {
+            guard arguments.indices.contains(index + 1) else { throw ReaderError.invalidRule("--snapshot requires an output file") }
+            snapshotPath = arguments[index + 1]
+            arguments.removeSubrange(index...index + 1)
+        }
+        var rules = try DemoContent.bundledRules()
+        if let index = arguments.firstIndex(of: "--rule") {
+            guard arguments.indices.contains(index + 1) else { throw ReaderError.invalidRule("Usage: manga-probe [--rule file.json] [--rendered] [--diagnostics] [URL]") }
+            let rule = try SiteRule.decode(Data(contentsOf: URL(fileURLWithPath: arguments[index + 1])))
+            rules.removeAll { $0.id == rule.id }; rules.append(rule)
+            arguments.removeSubrange(index...index + 1)
+        }
         #if os(macOS)
         if CommandLine.arguments.contains("--rendered") { NSApplication.shared.setActivationPolicy(.prohibited) }
         #endif
         let store = try ObjectStore()
         let fetcher: any SourceFetcher = CommandLine.arguments.contains("--rendered") ? RenderedSourceFetcher() : DefaultSourceFetcher()
         let sender = RequestSender(fetcher: fetcher)
-        let repository = try ObjectRepository(store: store, rules: DemoContent.bundledRules(), sender: sender)
-        let url = CommandLine.arguments.dropFirst().first(where: { !$0.hasPrefix("--") }).flatMap(URL.init(string:)) ?? DemoContent.directoryURL
+        let repository = try ObjectRepository(store: store, rules: rules, sender: sender)
+        let backgroundLoading = !arguments.contains("--no-background")
+        try await repository.setBackgroundLoading(backgroundLoading)
+        let url = arguments.first(where: { !$0.hasPrefix("--") }).flatMap(URL.init(string:)) ?? DemoContent.directoryURL
         let key = try await repository.key(for: url)
-        if CommandLine.arguments.contains("--diagnostics") {
+        if arguments.contains("--diagnostics") || snapshotPath != nil {
             let rule = try await repository.rule(for: key)
             let kind = try RuleRegistry(rules: [rule]).match(url).1
-            let response = try await sender.send(.source(key, kind: kind, rule: rule))
+            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading))
+            if let snapshotPath {
+                try response.data.write(to: URL(fileURLWithPath: snapshotPath), options: .atomic)
+                print("Saved source snapshot (\(response.data.count) bytes)")
+            }
             let html = String(decoding: response.data, as: UTF8.self)
             let regex = try NSRegularExpression(pattern: "https?://([^/\\\" ]+)")
             let hosts = Set(regex.matches(in: html, range: NSRange(html.startIndex..., in: html)).compactMap { Range($0.range(at: 1), in: html).map { String(html[$0]) } })
@@ -51,6 +71,9 @@ import AppKit
             if let rating = manga.rating { print("Rating: \(rating)") }
             if let status = manga.status { print("Status: \(status)") }
             if let tags = manga.tags { print("Tags: \(tags.joined(separator: ", "))") }
+            if arguments.contains("--references") {
+                for chapter in manga.chapterRefs { print("\(chapter.title) → \(chapter.key.identityURL.absoluteString)") }
+            }
         }
         if case .chapter(let chapter) = object {
             print("\(chapter.pageRefs.count) pages")

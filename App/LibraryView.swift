@@ -90,7 +90,7 @@ private struct LibraryRow: View {
         .accessibilityAction(named: starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
         .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(.object(key)) }
-        .task(id: "\(key.id)|\(model.ruleRevision)") { await loadDetails() }
+        .task(id: "\(key.id)|\(model.loadingRevision)") { await loadDetails() }
         .onChange(of: position?.chapterKey) { _, _ in loadCachedChapter() }
     }
     @ViewBuilder private var actions: some View {
