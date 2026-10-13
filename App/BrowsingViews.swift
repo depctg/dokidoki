@@ -3,10 +3,12 @@ import MangaCore
 
 struct RootView: View {
     @Bindable var model: AppModel
-    @State private var urlText = "https://www.manhuagui.com/"
+    @State private var urlText = ""
     @FocusState private var urlFocused: Bool
+    @State private var columns: NavigationSplitViewVisibility = .automatic
+    @State private var previousColumns: NavigationSplitViewVisibility = .automatic
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columns) {
             List(selection: Binding(get: { model.section }, set: { model.path = []; model.section = $0 })) {
                 Label("Browse", systemImage: "safari").tag("Browse")
                 Label("My Library", systemImage: "books.vertical").tag("My Library")
@@ -28,6 +30,16 @@ struct RootView: View {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
         .onChange(of: model.openURLRequest) { _, _ in urlFocused = true }
+        .onChange(of: model.readerImmersive) { _, immersive in
+            if immersive { previousColumns = columns; columns = .detailOnly }
+            else { columns = previousColumns }
+        }
+        .onChange(of: model.path) { _, _ in model.readerImmersive = false }
+        #if os(macOS)
+        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .windowToolbar)
+        #else
+        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar)
+        #endif
     }
     private var browse: some View {
         ScrollView {

@@ -40,13 +40,11 @@ public struct RuleExtractor: Sendable {
     public init() {}
     public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule) throws -> [ContentObject] {
         guard let spec = rule.extractors[kind.rawValue] else { throw ReaderError.extraction("Missing extractor.") }
-        let html = spec.format == .json ? nil : try HTMLDocument(data: data)
-        let json: Any? = spec.format == .json ? try JSONSerialization.jsonObject(with: data) : nil
-        func values(_ name: String) throws -> [(String, String)] {
-            guard let field = spec.fields[name] else { return [] }
-            if let html { return try html.values(field) }
+        let html = spec.format.isJSON ? nil : try HTMLDocument(data: data)
+        let json: Any? = spec.format.isJSON ? try JSONSerialization.jsonObject(with: data) : nil
+        func nodes(at path: String) -> [Any] {
             var nodes: [Any] = json.map { [$0] } ?? []
-            for component in field.path.split(separator: ".").map(String.init) {
+            for component in path.split(separator: ".").map(String.init) {
                 nodes = nodes.flatMap { node -> [Any] in
                     if component == "*", let array = node as? [Any] { return array }
                     if let dict = node as? [String: Any], let child = dict[component] { return [child] }
@@ -54,11 +52,61 @@ public struct RuleExtractor: Sendable {
                     return []
                 }
             }
-            return nodes.compactMap { node in
-                if let text = node as? String { return (text, text) }
-                if let dict = node as? [String: Any], let url = dict["url"] as? String { return (url, dict["title"] as? String ?? url) }
-                return nil
+            return nodes
+        }
+        func scalar(_ node: Any?) -> String? {
+            if let string = node as? String { return string }
+            if let number = node as? NSNumber { return number.stringValue }
+            return nil
+        }
+        var variables: [String: String] = [:]
+        func extract(_ field: Field) throws -> [(String, String)] {
+            let entries: [(String, String)]
+            if let html { entries = try html.values(field) }
+            else {
+                entries = nodes(at: field.path).compactMap { node in
+                    if let text = scalar(node) { return (text, text) }
+                    if let dict = node as? [String: Any], let url = dict["url"] as? String { return (url, dict["title"] as? String ?? url) }
+                    return nil
+                }
             }
+            let regex = try field.regex.map { try NSRegularExpression(pattern: $0) }
+            return try entries.compactMap { entry in
+                var value = entry.0
+                if let regex {
+                    let group = field.group ?? min(1, regex.numberOfCaptureGroups)
+                    guard let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+                          group >= 0, group < match.numberOfRanges,
+                          let range = Range(match.range(at: group), in: value) else { return nil }
+                    value = String(value[range])
+                }
+                if let template = field.urlTemplate {
+                    let expression = try NSRegularExpression(pattern: #"\{([^{}]+)\}"#)
+                    let selected = value
+                    value = template
+                    for match in expression.matches(in: template, range: NSRange(template.startIndex..., in: template)).reversed() {
+                        let token = String(template[Range(match.range(at: 1), in: template)!])
+                        let replacement = token == "value" ? selected : token.hasPrefix("vars.") ? variables[String(token.dropFirst(5))] : scalar(nodes(at: token).first)
+                        guard let replacement else { throw ReaderError.extraction("Missing URL template value: \(token).") }
+                        value.replaceSubrange(Range(match.range, in: value)!, with: replacement)
+                    }
+                }
+                if let path = field.queryPath {
+                    guard let query = nodes(at: path).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction("Query parameters must be a JSON object.") }
+                    let items = try query.keys.sorted().map { key in
+                        guard let value = scalar(query[key]) else { throw ReaderError.extraction("Query parameters must be strings or numbers.") }
+                        return URLQueryItem(name: key, value: value)
+                    }
+                    components.queryItems = (components.queryItems ?? []) + items
+                    guard let rendered = components.string else { throw ReaderError.extraction("Invalid image URL.") }; value = rendered
+                }
+                return (value, entry.1)
+            }
+        }
+        for (name, field) in spec.variables ?? [:] { variables[name] = try extract(field).first?.0 }
+        func values(_ name: String) throws -> [(String, String)] {
+            guard let field = spec.fields[name] else { return [] }
+            return try extract(field)
         }
         func first(_ name: String) throws -> String? { try values(name).first?.0 }
         func url(_ string: String) throws -> URL {

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 2,
+  "version": 3,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -73,18 +73,31 @@
       }
     },
     "chapter": {
-      "format": "renderedHTML",
+      "format": "renderedJSON",
+      "rendering": {
+        "contentMode": "desktop",
+        "captureFunction": "SMH.imgData",
+        "readyImageXPath": "//*[@id=\"mangaFile\"]"
+      },
+      "variables": {
+        "cdn": {
+          "path": "imageURL",
+          "regex": "^(https?://[^/]+)",
+          "group": 1
+        }
+      },
       "fields": {
         "title": {
-          "path": "//title"
+          "path": "data.cname"
         },
         "mangaLink": {
-          "path": "//a[@data-reader-parent]",
-          "read": "attr:href"
+          "path": "data.bid",
+          "urlTemplate": "https://www.manhuagui.com/comic/{value}/"
         },
         "pageImages": {
-          "path": "//img[@data-reader-page]",
-          "read": "attr:src"
+          "path": "data.files.*",
+          "urlTemplate": "{vars.cdn}{data.path}{value}",
+          "queryPath": "data.sl"
         }
       }
     }

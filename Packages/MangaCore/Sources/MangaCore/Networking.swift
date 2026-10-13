@@ -57,7 +57,7 @@ public struct DefaultSourceFetcher: SourceFetcher {
     public init(client: HTTPClient = HTTPClient()) { self.client = client }
     public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
         if let response = try DemoContent.response(for: url) { return response }
-        if rule.extractors[kind.rawValue]?.format == .renderedHTML { throw ReaderError.renderedSourceRequired }
+        if rule.extractors[kind.rawValue]?.format.isRendered == true { throw ReaderError.renderedSourceRequired }
         return try await client.download(url, rule: rule)
     }
 }

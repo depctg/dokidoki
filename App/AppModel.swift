@@ -19,6 +19,7 @@ import MangaCore
     }
     var section: String? = "Browse"
     var openURLRequest = 0
+    var readerImmersive = false
     private var started = false
 
     func start() async {

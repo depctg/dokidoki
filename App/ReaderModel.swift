@@ -15,6 +15,8 @@ import MangaCore
     var loading = true
     var revision = 0
     var size: CGSize = .zero
+    private var interacting = false
+    private var pendingReplan = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
     private var planning: Task<Void, Never>?
@@ -39,10 +41,13 @@ import MangaCore
             replan()
             loading = false
             if let key = chapter.mangaRef, let object = try? await repository.resolve(key), case .manga(let manga) = object,
-               let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }), manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
+               let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }) {
+                if manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
+            }
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
     func replan() {
+        guard !interacting else { pendingReplan = true; return }
         planning?.cancel()
         let context = ReaderContext(size: size, preferences: app.preferences, analysis: analysis, overrides: overrides)
         let keys = pages.map(\.key)
@@ -51,8 +56,16 @@ import MangaCore
             guard let pipeline = try? PagePipeline(ids: ids) else { return }
             let planned = await pipeline.plan(keys, context: context)
             guard !Task.isCancelled else { return }
-            plans = planned; revision += 1; schedulePrefetch()
+            guard !interacting else { pendingReplan = true; return }
+            if plans != planned { plans = planned }
+            // Mode/viewport changes need restoration even when the page regions stay identical.
+            revision += 1
+            schedulePrefetch()
         }
+    }
+    func setInteracting(_ value: Bool) {
+        interacting = value
+        if !value, pendingReplan { pendingReplan = false; replan() }
     }
     func learn(_ key: ObjectKey, image: CGImage) {
         guard analysis[key] == nil else { return }
@@ -61,7 +74,7 @@ import MangaCore
     func move(_ delta: Int) {
         guard !plans.isEmpty else { return }
         record(index: min(plans.count - 1, max(0, index + delta)), within: 0, preserveSource: false)
-        revision += 1; schedulePrefetch()
+        revision += 1
     }
     func record(index: Int, within: Double, preserveSource: Bool = true) {
         guard plans.indices.contains(index) else { return }
@@ -69,9 +82,9 @@ import MangaCore
         // Physical region order may be RTL. Progress follows original chapter order.
         let key = preserveSource && source.map(keys.contains) == true ? source : pages.first(where: { keys.contains($0.key) })?.key
         guard let key else { return }
-        let old = source
+        let oldIndex = self.index
         source = key; fraction = PagePipeline.fraction(index: index, withinPage: within, source: key, in: plans)
-        if old != source { schedulePrefetch() }
+        if oldIndex != self.index { schedulePrefetch() }
     }
     var withinPage: Double {
         guard let source else { return 0 }
@@ -100,8 +113,12 @@ import MangaCore
         prefetch?.cancel()
         guard let rule, !plans.isEmpty else { return }
         let neighborIndices = [index + 1, index - 1].filter { plans.indices.contains($0) }
-        let keys = Set(neighborIndices.flatMap { plans[$0].sourcePageKeys })
-        let neighbors = Array(pages.filter { keys.contains($0.key) }.prefix(3))
+        var keys: [ObjectKey] = []
+        for i in neighborIndices {
+            for key in plans[i].sourcePageKeys where !keys.contains(key) { keys.append(key) }
+        }
+        // Match the pager's neighbor window, prioritizing the next page over the previous page.
+        let neighbors = keys.prefix(3).compactMap { key in pages.first { $0.key == key } }
         prefetch = Task {
             var learned = false
             for page in neighbors {
@@ -120,6 +137,9 @@ import MangaCore
         let context = ReaderContext(size: size, preferences: app.preferences, analysis: analysis, overrides: overrides)
         guard let pipeline = try? PagePipeline(ids: rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"]) else { return }
         let newPlans = await pipeline.plan(pages.map(\.key), context: context)
-        if !Task.isCancelled { plans = newPlans; revision += 1 }
+        guard !Task.isCancelled else { return }
+        guard !interacting else { pendingReplan = true; return }
+        if plans != newPlans { plans = newPlans }
+        revision += 1
     }
 }

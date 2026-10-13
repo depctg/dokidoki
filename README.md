@@ -31,14 +31,24 @@ swift run --package-path Packages/MangaCore manga-probe
 swift run --package-path Packages/MangaCore manga-probe --rendered https://www.manhuagui.com/comic/32602/441493.html
 ```
 
-See [the rule format](docs/RULES.md) for XPath/JSON recipes. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
+See [the rule format](docs/RULES.md) for XPath/JSON selectors, regex captures, named variables, and simple URL templates. All site-specific parsing, including rendered chapter metadata and image URL construction, belongs in JSON. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
 
-Reader options include paged/vertical modes, reading direction, conservative margin trimming, spread detection, and facing pages in wide windows. You can keep, split, or pair the current original page manually. Arrow keys and edge taps turn pages; pinch or double-click/tap zooms in paged mode. Position is saved against original pages, including fractional scroll progress.
+Swipe horizontally to turn pages; the next and previous pages share the image prefetch cache. Tap/click the manga to hide or restore all controls, including the floating page counter. The compact title shows the chapter name. Pinch zooms in paged mode; arrow keys turn pages, Space toggles controls, and Escape restores them. On Mac, drag with the mouse or scroll with a trackpad to change pages.
+
+Reader options include paged/vertical modes, reading direction, conservative margin trimming, spread detection, and facing pages in wide windows. You can keep, split, or pair the current original page manually. Position is saved against original pages, including fractional scroll progress, and restored when switching modes.
 
 Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.
 
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 
-Run all automated checks with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
+Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. To run the native reader interaction test, choose an installed iOS simulator and use Product → Test, or:
 
-Manhuagui's live browsing and chapter images have been verified on iPhone and iPad simulators. The embedded WebKit adapter requests the desktop reader on every platform. Individual chapters/CDNs may still return source errors; the bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.
+```sh
+xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
+  -destination 'platform=iOS Simulator,id=<SIMULATOR-UDID>' \
+  -derivedDataPath build CODE_SIGNING_ALLOWED=NO test
+```
+
+Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
+
+Manhuagui's live browsing and chapter images have been verified on iPhone and iPad simulators. Its JSON rule requests desktop content and configures the generic WebKit observer; Swift contains no site-specific parser. Individual chapters/CDNs may still return source errors; the bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.
