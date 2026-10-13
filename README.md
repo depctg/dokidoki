@@ -28,7 +28,7 @@ Library and Recent rows show the cover, manga title, chapter, original page/tota
 
 One reader is shared by the whole app in a single main window. Opening another chapter replaces the active chapter. Collapse it to a small glass **Resume** bar with the manga cover, manga title, chapter and page progress; tapping it returns to the same page from any main view. In paged mode, pull down from the top; in scroll mode, swipe inward from the physical left edge. The collapse button and Escape also return to the main views. On iPhone the native accessory sits above the tabs and moves inline when they minimize; iPad keeps it at the bottom, visionOS uses a bottom window ornament, and macOS places it below the top toolbar. The iOS accessory follows Apple's [Music accessory pattern](https://developer.apple.com/videos/play/wwdc2025/323/); Mac uses an in-window adaptation.
 
-In **Browse**, choose **Open the reading room** for a complete offline fixture, or open `https://www.manhuagui.com/` to browse the bundled live rule. Chapter availability depends on the source website. The app does not bypass site access restrictions.
+In **Browse**, use **Switch site** to choose the bundled reading room for an offline fixture or Manhuagui for live shelves. Chapter availability depends on the source website. The app does not bypass site access restrictions.
 
 The command-line engine probe also supports a live rendered chapter:
 
@@ -36,6 +36,10 @@ The command-line engine probe also supports a live rendered chapter:
 swift run --package-path Packages/MangaCore manga-probe
 swift run --package-path Packages/MangaCore manga-probe --rendered https://www.manhuagui.com/comic/32602/441493.html
 ```
+
+Browse opens the first site in Settings order. Its rule supplies named shelves, displayed as horizontal cover rows; tap a heading for the full list or a cover for manga details. Search uses the selected site's JSON search URL, and the globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
+
+Drag Site rules in Settings to change the default site; iPhone/iPad also provide Edit handles. Order survives relaunch and recipe updates without restarting the reader. Rule rows show names and versions; network host permissions remain in JSON and in the import preview.
 
 See [the rule format](docs/RULES.md) for XPath/JSON selectors, regex captures, named variables, and simple URL templates. All site-specific parsing, including rendered chapter metadata and image URL construction, belongs in JSON. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
 
@@ -51,7 +55,7 @@ Loading belongs to core objects and references: chapters load their pages, manga
 
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 
-Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/navigation/actions, and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, reader preferences, and reading history. Run Product → Test, or:
+Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/Browse/navigation/actions (including site order), and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, site order, reader preferences, and reading history. Run Product → Test, or:
 
 ```sh
 xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \

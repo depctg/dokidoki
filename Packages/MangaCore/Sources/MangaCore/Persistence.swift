@@ -83,7 +83,14 @@ public final class ObjectStore: Sendable {
         }
     }
     public func rules() throws -> [SiteRule] {
-        try db.read { db in try Data.fetchAll(db, sql: "SELECT payload FROM rules ORDER BY id").map(SiteRule.decode) }
+        let rules = try db.read { db in try Data.fetchAll(db, sql: "SELECT payload FROM rules ORDER BY id").map(SiteRule.decode) }
+        let order = try preference("ruleOrder", as: [String].self) ?? []
+        return rules.sorted { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) }
+    }
+    public func setRuleOrder(_ ids: [String]) throws {
+        let installed = try rules().map(\.id)
+        guard ids.count == installed.count, Set(ids) == Set(installed) else { throw ReaderError.invalidRule("Rule order must contain each installed rule exactly once.") }
+        try setPreference("ruleOrder", value: ids)
     }
     public func saveRule(_ rule: SiteRule) throws {
         let data = try rule.exported()
@@ -93,6 +100,10 @@ public final class ObjectStore: Sendable {
         try db.write {
             try $0.execute(sql: "DELETE FROM objects WHERE ruleID = ?", arguments: [id])
             try $0.execute(sql: "DELETE FROM rules WHERE id = ?", arguments: [id])
+            if let data = try Data.fetchOne($0, sql: "SELECT payload FROM preferences WHERE key = 'ruleOrder'") {
+                let order = try JSONDecoder().decode([String].self, from: data).filter { $0 != id }
+                try $0.execute(sql: "UPDATE preferences SET payload = ? WHERE key = 'ruleOrder'", arguments: [try JSONEncoder().encode(order)])
+            }
         }
     }
     public func clearContent() throws { try db.write { try $0.execute(sql: "DELETE FROM objects") } }

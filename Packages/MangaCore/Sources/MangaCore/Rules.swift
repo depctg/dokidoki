@@ -34,6 +34,12 @@ public struct URLMatcher: Codable, Sendable {
     public let pattern: String
     public var priority: Int = 0
 }
+/// A named directory shown as a shelf on the site's Browse page.
+public struct BrowseList: Codable, Sendable, Identifiable {
+    public let title: String
+    public let url: URL
+    public var id: URL { url }
+}
 public struct SiteRule: Codable, Sendable, Identifiable {
     public let schemaVersion: Int
     public let id: String
@@ -43,6 +49,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
     public let matchers: [URLMatcher]
     public let extractors: [String: ExtractionRule]
     public var searchURLTemplate: String? = nil
+    public var browse: [BrowseList]? = nil
     public var processors: [String]? = nil
 
     public func permits(_ url: URL) -> Bool {
@@ -110,8 +117,19 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             }
         }
         guard (processors ?? []).allSatisfy({ ["identity", "marginAlign", "spreadDetect", "layout"].contains($0) }) else { throw ReaderError.invalidRule("Unknown page processor.") }
+        func isDirectory(_ url: URL) -> Bool {
+            guard permits(url), let normalized = try? RuleRegistry.normalize(url) else { return false }
+            let matches = matchers.filter { normalized.absoluteString.range(of: $0.pattern, options: .regularExpression) != nil }
+            let winners = matches.filter { $0.priority == matches.map(\.priority).max() }
+            return winners.count == 1 && winners[0].kind == .directory
+        }
+        let lists = browse ?? []
+        guard lists.count <= 24, Set(try lists.map { try RuleRegistry.normalize($0.url) }).count == lists.count,
+              lists.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isDirectory($0.url) }) else {
+            throw ReaderError.invalidRule("Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists).")
+        }
         if let template = searchURLTemplate {
-            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), permits(url) else { throw ReaderError.invalidRule("Search endpoint must use an allowed host and {query}.") }
+            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), isDirectory(url) else { throw ReaderError.invalidRule("Search must use an allowed directory URL and {query}.") }
         }
     }
     public func searchURL(query: String) -> URL? {
@@ -123,8 +141,11 @@ public struct SiteRule: Codable, Sendable, Identifiable {
         guard data.count <= 128 * 1024 else { throw ReaderError.tooLarge }
         // Unknown fields are rejected: secret-bearing headers/scripts cannot hide in an export.
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-        let supported: Set<String> = ["schemaVersion", "id", "name", "version", "allowedHosts", "matchers", "extractors", "searchURLTemplate", "processors"]
+        let supported: Set<String> = ["schemaVersion", "id", "name", "version", "allowedHosts", "matchers", "extractors", "searchURLTemplate", "browse", "processors"]
         guard Set(json.keys).isSubset(of: supported) else { throw ReaderError.invalidRule("Unsupported fields (scripts and request credentials are not allowed).") }
+        for list in json["browse"] as? [[String: Any]] ?? [] {
+            guard Set(list.keys).isSubset(of: ["title", "url"]) else { throw ReaderError.invalidRule("Browse lists contain only a title and URL.") }
+        }
         for extractor in (json["extractors"] as? [String: [String: Any]] ?? [:]).values {
             guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables"]) else { throw ReaderError.invalidRule("Unsupported extractor options.") }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)

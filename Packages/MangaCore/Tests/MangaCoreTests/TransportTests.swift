@@ -10,6 +10,7 @@ struct TransportTests {
         let client = HTTPClient(configuration: configuration)
         var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
         json["allowedHosts"] = ["transport.fixture.test"]
+        json.removeValue(forKey: "browse"); json.removeValue(forKey: "searchURLTemplate")
         let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
         let url = URL(string: "https://transport.fixture.test/")!
         let response = try await client.download(url.appendingPathComponent("okay"), rule: rule, limit: 8)

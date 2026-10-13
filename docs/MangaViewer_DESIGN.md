@@ -215,10 +215,13 @@ Use one SwiftUI multi-platform application target over the shared core package. 
 
 | View | Minimum experience |
 | --- | --- |
-| Directory | Grid/list of manga, local search, sort, open manga; optional pagination |
+| Browse | First site in persisted rule order; JSON-defined horizontal cover shelves with full-list links, selected-site search and site switcher |
+| Directory | Cover/title list of manga, local filter, sort, open manga; optional pagination |
 | Manga | Cover, metadata, ordered chapter list, resume/continue |
 | Chapter | Distraction-free reader, mode switch, reading direction, processing toggles, progress |
 | My / Settings | Saved titles, recent reads, reader defaults, installed rules, JSON import/export, QR share, cache clear |
+
+Site rules may provide a minimal `browse` array of named directory URLs and a `searchURLTemplate` containing `{query}`. Keep URLs and extraction in JSON. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
 
 **iPhone Duo:** closed display behaves like compact iPhone; unfolded display reflows into a wider layout with optional facing pages. Detect usable geometry, not a hard-coded device model or fold-state API. Preserve reading position through size changes.
 

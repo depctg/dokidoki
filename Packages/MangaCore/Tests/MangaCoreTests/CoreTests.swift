@@ -98,13 +98,13 @@ struct CoreTests {
         #expect(await fetcher.count == 1)
         _ = try await repository.resolve(key)
         #expect(await fetcher.count == 1)
-        var json = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]; json["version"] = 2
+        var json = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]; json["version"] = rule.version + 1
         let v2 = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
         try await repository.install(v2)
         await #expect(throws: ReaderError.self) { try await repository.resolve(key, hint: .offlineOnly) }
         _ = try await repository.resolve(key)
         #expect(await fetcher.count == 2)
-        #expect(try store.snapshot(key)?.ruleVersion == 2)
+        #expect(try store.snapshot(key)?.ruleVersion == rule.version + 1)
     }
 
     @Test func refreshingParentRemovesObsoleteChildren() async throws {
@@ -133,7 +133,7 @@ struct CoreTests {
         #expect(await fetcher.count == 2)
     }
 
-    @Test func cancellationPreservesOtherResolutionConsumers() async throws {
+    @Test func cancellationAndIdenticalImportPreserveSharedConsumers() async throws {
         let rules = try DemoContent.bundledRules()
         let fetcher = SlowFetcher()
         let repository = try ObjectRepository(store: ObjectStore(), rules: rules, sender: RequestSender(fetcher: fetcher))
@@ -142,6 +142,7 @@ struct CoreTests {
         let second = Task { try await repository.resolve(key) }
         // Leave both callers waiting on the delayed transport before cancelling one.
         try await Task.sleep(for: .milliseconds(50))
+        try await repository.install(rules[0])
         first.cancel()
         _ = try await second.value
         await #expect(throws: CancellationError.self) { try await first.value }

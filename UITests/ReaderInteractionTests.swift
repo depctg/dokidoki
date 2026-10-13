@@ -13,10 +13,22 @@ import XCTest
         XCTAssertTrue(libraryTab.isSelected)
 
         app.buttons.matching(identifier: "Browse").firstMatch.tap()
-        let url = app.textFields["Website URL"]
-        url.tap()
-        url.typeText("https://demo.mangaviewer.local/chapter/arrival")
-        app.buttons["Open"].tap()
+        app.buttons["Switch site"].tap()
+        app.buttons["Bundled reading room"].tap()
+        let shelf = app.buttons["browse.list.https://demo.mangaviewer.local/catalog"]
+        XCTAssertTrue(shelf.waitForExistence(timeout: 8))
+        shelf.tap()
+        XCTAssertTrue(app.navigationBars["Reading room"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons["The Observatory"].waitForExistence(timeout: 8))
+        app.navigationBars.buttons["Browse"].tap()
+        app.buttons["Search site"].tap()
+        let query = app.textFields["Search titles"]
+        XCTAssertTrue(query.waitForExistence(timeout: 5))
+        query.tap(); query.typeText("Observatory")
+        app.buttons["Search"].tap()
+        app.buttons["The Observatory"].tap()
+        XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
+        app.buttons["1 · Arrival"].tap()
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
         let position = counter.label
@@ -76,6 +88,21 @@ import XCTest
         XCTAssertTrue(wait { !row.exists })
         recentTab.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 5), "Reading makes the hidden history entry recent again")
+
+        // Reordering site rules belongs to shell coverage; persistence is checked in core tests.
+        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        let demo = app.staticTexts["Bundled reading room"]
+        let other = app.staticTexts["漫画柜 · Manhuagui"]
+        for _ in 0..<4 where !other.isHittable { app.swipeUp() }
+        XCTAssertTrue(demo.isHittable && other.isHittable)
+        let lower = demo.frame.minY > other.frame.minY ? demo : other
+        let upper = demo.frame.minY > other.frame.minY ? other : demo
+        lower.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .press(forDuration: 0.8, thenDragTo: upper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: -20)))
+        XCTAssertTrue(wait { lower.frame.minY < upper.frame.minY })
+        XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
+        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        XCTAssertEqual(app.staticTexts["browse.siteTitle"].label, lower.label)
     }
 
     // Reader-only gestures, chrome, and original-page/fraction restoration (including one relaunch).

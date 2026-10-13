@@ -30,7 +30,8 @@ public actor ObjectRepository {
         try rule.validate()
         if let existing = registry.rules.first(where: { $0.id == rule.id }) {
             let identical = try rule.exported() == existing.exported()
-            guard rule.version > existing.version || identical else { throw ReaderError.invalidRule("Changed rules must increase their version.") }
+            if identical { return }
+            guard rule.version > existing.version else { throw ReaderError.invalidRule("Changed rules must increase their version.") }
         }
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != rule.id } + [rule])
         try store.saveRule(rule); invalidate(); registry = next

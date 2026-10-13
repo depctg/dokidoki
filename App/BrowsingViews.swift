@@ -3,8 +3,6 @@ import MangaCore
 
 struct RootView: View {
     @Bindable var model: AppModel
-    @State private var urlText = ""
-    @FocusState private var urlFocused: Bool
     @State private var columns: NavigationSplitViewVisibility = .automatic
     var body: some View {
         Group {
@@ -65,16 +63,13 @@ struct RootView: View {
         .alert("MangaViewer", isPresented: Binding(get: { model.error != nil && !model.readerExpanded }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .onChange(of: model.openURLRequest) { _, _ in urlFocused = true }
-        .onChange(of: model.readerExpanded) { _, _ in urlFocused = false }
-        .onChange(of: model.section) { _, _ in urlFocused = false }
     }
     private func navigation(for section: AppSection) -> some View {
         NavigationStack(path: Binding(get: { model.paths[section, default: []] }, set: { model.paths[section] = $0 })) {
             Group {
                 switch section {
                 case .library, .recent: LibraryView(model: model, section: section)
-                case .browse: browse
+                case .browse: BrowseView(model: model)
                 case .settings: SettingsView(model: model)
                 }
             }
@@ -86,30 +81,7 @@ struct RootView: View {
             }
         }
     }
-    private var browse: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                Image(systemName: "book.pages").font(.system(size: 52)).foregroundStyle(.tint)
-                Text("Your next chapter").font(.largeTitle.bold())
-                Text("Open a supported URL, or explore the bundled reading room.").foregroundStyle(.secondary)
-                HStack {
-                    TextField("Website URL", text: $urlText).textFieldStyle(.roundedBorder)
-                        .focused($urlFocused)
-                        .onSubmit { urlFocused = false; Task { await model.open(urlText) } }
-                    Button("Open", systemImage: "arrow.right") { urlFocused = false; Task { await model.open(urlText) } }.buttonStyle(.borderedProminent)
-                }
-                Button { Task { await model.open(DemoContent.directoryURL.absoluteString) } } label: {
-                    Label("Open the reading room", systemImage: "sparkles").padding(.vertical, 8)
-                }.buttonStyle(.bordered)
-                ForEach(model.rules.filter { $0.id != "demo" }) { rule in
-                    VStack(alignment: .leading) {
-                        Text(rule.name).font(.headline)
-                        Text(rule.allowedHosts.first ?? "").font(.caption).foregroundStyle(.secondary)
-                    }
-                }
-            }.padding(32).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity)
-        }.navigationTitle("Browse")
-    }
+
 }
 
 struct ObjectScreen: View {
@@ -170,18 +142,20 @@ struct DirectoryView: View {
     var body: some View {
         List {
             ForEach(references) { ref in
-                NavigationLink(value: ref.key) { Label(ref.title, systemImage: "book.closed").padding(.vertical, 5) }
+                NavigationLink(value: ref.key) {
+                    HStack(spacing: 14) {
+                        MangaCover(reference: ref, model: model).frame(width: 52, height: 76)
+                        Text(ref.title).font(.headline)
+                    }.padding(.vertical, 4)
+                }
             }
             if let next = directory.nextURL {
-                Button("Next directory page") { Task { await model.open(next.absoluteString) } }
-            }
-            if !query.isEmpty, let rule = model.rules.first(where: { $0.id == directory.key.ruleID }), let search = rule.searchURL(query: query) {
-                Button("Search \(rule.name) for “\(query)”") { Task { await model.open(search.absoluteString) } }
+                NavigationLink("Next directory page", value: ObjectKey(ruleID: directory.key.ruleID, identityURL: next))
             }
         }
         .overlay { if references.isEmpty { ContentUnavailableView.search(text: query) } }
         .searchable(text: $query, prompt: "Filter titles")
-        .navigationTitle(directory.title)
+        .navigationTitle(model.rules.first(where: { $0.id == directory.key.ruleID })?.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == directory.key.identityURL })?.title ?? directory.title)
         .toolbar { ToolbarItem { Toggle("Sort by title", systemImage: "arrow.up.arrow.down", isOn: $sorted) } }
     }
 }

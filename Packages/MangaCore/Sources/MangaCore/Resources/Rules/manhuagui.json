@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 4,
+  "version": 5,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -102,5 +102,19 @@
         }
       }
     }
-  }
+  },
+  "browse": [
+    {
+      "title": "最近更新",
+      "url": "https://www.manhuagui.com/update/"
+    },
+    {
+      "title": "漫画大全",
+      "url": "https://www.manhuagui.com/list/"
+    },
+    {
+      "title": "冒险漫画",
+      "url": "https://www.manhuagui.com/list/maoxian/"
+    }
+  ]
 }

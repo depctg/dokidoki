@@ -25,7 +25,7 @@ struct SettingsView: View {
     @State private var diskBytes = 0
     @State private var status: String?
     var body: some View {
-        Form {
+        List {
             Section("Reader defaults") {
                 Picker("Mode", selection: $model.preferences.mode) { ForEach(ReadingMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 Picker("Direction", selection: $model.preferences.direction) { ForEach(ReadingDirection.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
@@ -39,7 +39,7 @@ struct SettingsView: View {
                         HStack {
                             VStack(alignment: .leading) {
                                 Text(rule.name).font(.headline)
-                                Text("Version \(rule.version) · \(rule.allowedHosts.count) allowed hosts").font(.caption).foregroundStyle(.secondary)
+                                Text("Version \(rule.version)").font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
                             Menu {
@@ -49,12 +49,12 @@ struct SettingsView: View {
                             } label: { Label("Rule actions", systemImage: "ellipsis.circle").labelStyle(.iconOnly) }
                             .accessibilityLabel("Actions for \(rule.name)")
                         }
-                        Text(rule.allowedHosts.joined(separator: ", ")).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
                     }.padding(.vertical, 4)
-                }
+                    .accessibilityIdentifier("rules.item.\(rule.id)")
+                }.onMove(perform: model.moveRules)
                 Button("Import JSON rule", systemImage: "square.and.arrow.down") { importing = true }
                 Button("Restore bundled rules", systemImage: "arrow.counterclockwise") { Task { await restoreRules() } }
-            } header: { Text("Site rules") } footer: { Text("Rules contain selectors and allowed hosts. Changed rules must use a higher version. Removing a rule keeps reading history and saved titles.") }
+            } header: { Text("Site rules") } footer: { Text("Drag to reorder. The first site opens in Browse. Removing a rule keeps reading history and saved titles.") }
             Section {
                 LabeledContent("Image cache", value: ByteCountFormatter.string(fromByteCount: Int64(diskBytes), countStyle: .file))
                 Button("Clear image cache", systemImage: "photo.badge.arrow.down") {
@@ -70,7 +70,11 @@ struct SettingsView: View {
             if let status { Section { Text(status).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) } }
             Section("About") { Text("MangaViewer 1.0"); Text("Native reading for iPhone, iPad, Mac, and Apple Vision Pro.").foregroundStyle(.secondary) }
         }
-        .formStyle(.grouped).navigationTitle("Settings")
+        .navigationTitle("Settings")
+        #if !os(macOS)
+        .listStyle(.insetGrouped)
+        .toolbar { ToolbarItem(placement: .primaryAction) { EditButton() } }
+        #endif
         .disabled(model.repository == nil)
         .task { diskBytes = await model.repository?.imageCacheUsage() ?? 0 }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
@@ -111,12 +115,12 @@ struct SettingsView: View {
     }
     private func install(_ rule: SiteRule) async {
         do {
-            try await model.repository?.install(rule); model.rules = await model.repository?.installedRules() ?? []
+            try await model.repository?.install(rule); model.rules = try model.store?.rules() ?? []
             pendingRule = nil; status = "Installed \(rule.name)."
         } catch { model.error = error.localizedDescription; pendingRule = nil }
     }
     private func remove(_ rule: SiteRule) async {
-        do { try await model.repository?.removeRule(rule.id); model.rules = await model.repository?.installedRules() ?? [] }
+        do { try await model.repository?.removeRule(rule.id); model.rules = try model.store?.rules() ?? [] }
         catch { model.error = error.localizedDescription }
     }
     private func restoreRules() async {
@@ -125,7 +129,7 @@ struct SettingsView: View {
                 if let installed = model.rules.first(where: { $0.id == rule.id }), installed.version >= rule.version { continue }
                 try await model.repository?.install(rule)
             }
-            model.rules = await model.repository?.installedRules() ?? []; status = "Bundled rules restored."
+            model.rules = try model.store?.rules() ?? []; status = "Bundled rules restored."
         } catch { model.error = error.localizedDescription }
     }
 }

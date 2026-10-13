@@ -23,7 +23,9 @@ URLs resolve against the final response URL and must still pass the exact-host p
 | chapter | title, pageImages | mangaLink |
 | page | image | title |
 
-`searchURLTemplate` uses `{query}`, escaped as one URL component. `processors` selects compiled `identity`, `marginAlign`, `spreadDetect`, and `layout` page processors. These affect display planning, not site parsing.
+Optional `browse` declares ordered shelves as `{ "title": "Recent updates", "url": "https://reader.example/recent" }` entries. Each URL must be an allowed directory URL matched by this rule. Titles must be nonempty; URLs must be unique after normalization; at most 24 shelves are accepted. Browse previews up to eight manga per shelf and opens the full directory when its heading is selected. Omission remains valid for older imported rules.
+
+`searchURLTemplate` uses `{query}`, escaped as one URL component, and must resolve to an allowed directory URL in the same rule. Search is submitted explicitly rather than requesting on every keystroke. `processors` selects compiled `identity`, `marginAlign`, `spreadDetect`, and `layout` page processors. These affect display planning, not site parsing.
 
 ## Rendered sources
 
@@ -59,3 +61,5 @@ Use `manga-probe --rendered <URL>` for WebKit sources. Without `--rendered`, the
 Rules never export scripts, credentials, or custom request headers. Settings exports canonical compact JSON. QR export uses that JSON up to a conservative 1200-byte limit; larger rules use files. No multi-code transport is supported.
 
 Reading state uses original source-page identities. Internal `reader://page/…?owner=…` keys are deterministic, scoped to a rule, and resolved through their owner without requesting the internal scheme over HTTP.
+
+The Settings rule order is a local preference, independent of JSON matcher priority and exported recipes. The first installed rule is Browse's default; switching sites lasts for the session. Reordering does not invalidate caches or restart the reader. Allowed hosts remain enforced even though Settings rows hide them.

@@ -17,7 +17,15 @@ enum AppSection: String, CaseIterable, Identifiable {
 @MainActor @Observable final class AppModel {
     var repository: ObjectRepository?
     var store: ObjectStore?
-    var rules: [SiteRule] = [] { didSet { ruleRevision += 1 } }
+    var rules: [SiteRule] = [] {
+        didSet {
+            // Reordering is a browsing preference, not a recipe change or reader refresh.
+            if Dictionary(uniqueKeysWithValues: oldValue.map { ($0.id, $0.version) }) != Dictionary(uniqueKeysWithValues: rules.map { ($0.id, $0.version) }) { ruleRevision += 1 }
+            if !rules.contains(where: { $0.id == browseSiteID }) { browseSiteID = nil }
+        }
+    }
+    var browseSiteID: String?
+    var browseSite: SiteRule? { rules.first(where: { $0.id == browseSiteID }) ?? rules.first }
     var ruleRevision = 0 { didSet { invalidateReader() } }
     var paths: [AppSection: [ObjectKey]] = [:]
     var path: [ObjectKey] {
@@ -71,9 +79,16 @@ enum AppSection: String, CaseIterable, Identifiable {
         do {
             let key = try await repository.key(for: url)
             if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
-            else { section = .browse; path = [key] }
+            else { browseSiteID = key.ruleID; section = .browse; path = [key] }
         }
         catch { self.error = error.localizedDescription }
+    }
+    func moveRules(from offsets: IndexSet, to destination: Int) {
+        var reordered = rules; reordered.move(fromOffsets: offsets, toOffset: destination)
+        do {
+            try store?.setRuleOrder(reordered.map(\.id)); rules = reordered
+            browseSiteID = nil; paths[.browse] = []
+        } catch { self.error = error.localizedDescription }
     }
     func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
         chapterRequest?.cancel()
@@ -114,6 +129,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         guard let reader, let manga = reader.chapter.mangaRef else { return }
         collapseReader()
         chapterToReveal = reader.chapter.key
+        browseSiteID = manga.ruleID
         section = .browse
         if let index = paths[.browse]?.firstIndex(of: manga) { paths[.browse] = Array(paths[.browse, default: []].prefix(index + 1)) }
         else { paths[.browse] = [manga] }

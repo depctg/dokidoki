@@ -7,6 +7,7 @@ import os
     private func rule(rendered: Bool = false) throws -> SiteRule {
         var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
         json["allowedHosts"] = ["a.sender.test", "b.sender.test", "c.sender.test"]
+        json.removeValue(forKey: "browse"); json.removeValue(forKey: "searchURLTemplate")
         if rendered {
             var extractors = json["extractors"] as! [String: [String: Any]]
             extractors["directory"]?["format"] = "renderedHTML"
