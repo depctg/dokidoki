@@ -1,0 +1,94 @@
+import Foundation
+import Testing
+@testable import MangaCore
+
+struct CoreTests {
+    @Test func matchingAndRuleRoundTrip() throws {
+        let rules = try DemoContent.bundledRules()
+        let registry = try RuleRegistry(rules: rules)
+        #expect(try registry.match(DemoContent.directoryURL).1 == .directory)
+        let normalized = try RuleRegistry.normalize(URL(string: "HTTPS://EXAMPLE.COM:443/a?q=2#fragment")!)
+        #expect(normalized.absoluteString == "https://example.com/a?q=2")
+        #expect(throws: ReaderError.self) { try registry.match(URL(string: "https://evil.test/catalog")!) }
+        #expect(throws: ReaderError.self) { try RuleRegistry(rules: [rules[0], rules[0]]) }
+        for rule in rules { #expect(try SiteRule.decode(rule.exported()).exported() == rule.exported()) }
+        var json = try JSONSerialization.jsonObject(with: rules[0].exported()) as! [String: Any]
+        json["headers"] = ["Cookie": "secret"]
+        #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: json)) }
+    }
+
+    @Test func fullGraphPersistsAndProgressSurvivesEviction() async throws {
+        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let rules = try DemoContent.bundledRules()
+        let store = try ObjectStore(path: path)
+        let repository = try ObjectRepository(store: store, rules: rules)
+        let key = try await repository.key(for: DemoContent.directoryURL)
+        guard case .directory(let directory) = try await repository.resolve(key),
+              case .manga(let manga) = try await repository.resolve(directory.mangaRefs[0].key),
+              case .chapter(let chapter) = try await repository.resolve(manga.chapterRefs[0].key),
+              case .page(let page) = try await repository.resolve(chapter.pageRefs[0]) else { Issue.record("Unexpected graph"); return }
+        #expect(chapter.pageRefs.count == 4)
+        #expect(page.imageURL.absoluteString == "https://demo.mangaviewer.local/images/1.png")
+        #expect(page.key.owner == chapter.key)
+        #expect(chapter.mangaRef == manga.key)
+        try store.savePosition(ReadingPosition(mangaKey: manga.key, chapterKey: chapter.key, sourcePageKey: page.key, fractionalOffset: 0.4, title: manga.title))
+        try store.setSaved(SavedManga(key: manga.key, title: manga.title), saved: true)
+        let reopened = try ObjectStore(path: path)
+        #expect(try reopened.snapshot(chapter.key)?.object.key == chapter.key)
+        try await repository.clearContent()
+        #expect(try reopened.positions().first?.fractionalOffset == 0.4)
+        #expect(try reopened.savedManga().count == 1)
+        #expect(try reopened.snapshot(chapter.key) == nil)
+        // Synthetic page resolution rebuilds its owner after eviction, never requests reader://.
+        #expect(try await repository.resolve(page.key).key == page.key)
+    }
+
+    @Test func htmlFallbackRelativeLinksAndHostEnforcement() throws {
+        let rule = try DemoContent.bundledRules()[0]
+        let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/series/test")!)
+        let html = Data("<h1>Test &amp; title</h1><img src='../images/1.png'><a href='../chapter/arrival'>One</a><a href='../chapter/arrival'>Duplicate</a>".utf8)
+        let objects = try RuleExtractor().extract(data: html, responseURL: key.identityURL, key: key, kind: .manga, rule: rule)
+        guard case .manga(let manga) = objects[0], case .page(let cover) = objects[1] else { Issue.record("Missing manga"); return }
+        #expect(manga.title == "Test & title"); #expect(manga.chapterRefs.count == 1)
+        #expect(cover.imageURL.path == "/images/1.png")
+        #expect(throws: ReaderError.self) { try RuleExtractor().extract(data: Data("<h1>T</h1><img src='https://evil.test/a.jpg'>".utf8), responseURL: key.identityURL, key: key, kind: .manga, rule: rule) }
+    }
+
+    @Test func deduplicationAndVersionInvalidation() async throws {
+        let rule = try DemoContent.bundledRules()[0]
+        let fetcher = CountingFetcher()
+        let store = try ObjectStore()
+        let repository = try ObjectRepository(store: store, rules: [rule], fetcher: fetcher)
+        let key = try await repository.key(for: DemoContent.directoryURL)
+        async let a = repository.resolve(key)
+        async let b = repository.resolve(key)
+        _ = try await (a, b)
+        #expect(await fetcher.count == 1)
+        _ = try await repository.resolve(key)
+        #expect(await fetcher.count == 1)
+        var json = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]; json["version"] = 2
+        let v2 = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+        try await repository.install(v2)
+        await #expect(throws: ReaderError.self) { try await repository.resolve(key, hint: .offlineOnly) }
+        _ = try await repository.resolve(key)
+        #expect(await fetcher.count == 2)
+        #expect(try store.snapshot(key)?.ruleVersion == 2)
+    }
+
+    @Test func refreshingParentRemovesObsoleteChildren() async throws {
+        let rules = try DemoContent.bundledRules(); let store = try ObjectStore()
+        let repository = try ObjectRepository(store: store, rules: rules)
+        let key = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
+        guard case .chapter(let chapter) = try await repository.resolve(key) else { Issue.record("Missing chapter"); return }
+        let replacement = ChapterObject(key: key, sourceURL: key.identityURL, title: "Now empty", mangaRef: chapter.mangaRef, pageRefs: [])
+        try store.upsert([.chapter(replacement)], version: 1, ttl: 3600)
+        #expect(try store.snapshot(chapter.pageRefs[0]) == nil)
+    }
+}
+private actor CountingFetcher: SourceFetcher {
+    var count = 0
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+        count += 1; try await Task.sleep(for: .milliseconds(40)); return try DemoContent.response(for: url)!
+    }
+}

@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "id": "manhuagui",
+  "name": "漫画柜 · Manhuagui",
+  "version": 1,
+  "allowedHosts": [
+    "www.manhuagui.com",
+    "cf.mhgui.com",
+    "i.hamreus.com",
+    "eu.hamreus.com",
+    "us.hamreus.com",
+    "ru.hamreus.com"
+  ],
+  "matchers": [
+    {
+      "kind": "directory",
+      "pattern": "^https://www\\.manhuagui\\.com/(|list/.*|update/.*|s/.*)$",
+      "priority": 0
+    },
+    {
+      "kind": "manga",
+      "pattern": "^https://www\\.manhuagui\\.com/(comic|book)/[0-9]+/$",
+      "priority": 0
+    },
+    {
+      "kind": "chapter",
+      "pattern": "^https://www\\.manhuagui\\.com/(comic|book)/[0-9]+/[0-9]+\\.html$",
+      "priority": 0
+    }
+  ],
+  "searchURLTemplate": "https://www.manhuagui.com/s/{query}.html",
+  "extractors": {
+    "directory": {
+      "format": "html",
+      "fields": {
+        "title": {
+          "path": "//title"
+        },
+        "mangaLinks": {
+          "path": "//a[starts-with(@href,\"/comic/\") or starts-with(@href,\"/book/\")]",
+          "read": "attr:href"
+        },
+        "next": {
+          "path": "//a[@class=\"next\"]",
+          "read": "attr:href"
+        }
+      }
+    },
+    "manga": {
+      "format": "html",
+      "fields": {
+        "title": {
+          "path": "//h1"
+        },
+        "author": {
+          "path": "//li[contains(.,\"漫画作者\")]/a"
+        },
+        "summary": {
+          "path": "//*[@id=\"intro-all\"]"
+        },
+        "coverImage": {
+          "path": "//div[contains(@class,\"book-cover\")]//img",
+          "read": "attr:src"
+        },
+        "chapterLinks": {
+          "path": "//div[contains(@class,\"chapter-list\")]//a",
+          "read": "attr:href"
+        }
+      }
+    },
+    "chapter": {
+      "format": "renderedHTML",
+      "fields": {
+        "title": {
+          "path": "//title"
+        },
+        "mangaLink": {
+          "path": "//a[@data-reader-parent]",
+          "read": "attr:href"
+        },
+        "pageImages": {
+          "path": "//img[@data-reader-page]",
+          "read": "attr:src"
+        }
+      }
+    }
+  }
+}

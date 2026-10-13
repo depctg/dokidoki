@@ -1,0 +1,98 @@
+import Foundation
+@preconcurrency import libxml2
+
+/// XPath is evaluated without external entities or network access. Each document stays on one task.
+private final class HTMLDocument {
+    let document: htmlDocPtr
+    init(data: Data) throws {
+        let options = Int32(HTML_PARSE_RECOVER.rawValue | HTML_PARSE_NOERROR.rawValue | HTML_PARSE_NOWARNING.rawValue | HTML_PARSE_NONET.rawValue)
+        guard let doc = data.withUnsafeBytes({ raw in
+            htmlReadMemory(raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), nil, "UTF-8", options)
+        }) else { throw ReaderError.extraction("Invalid HTML.") }
+        document = doc
+    }
+    deinit { xmlFreeDoc(document) }
+    func values(_ field: Field) throws -> [(String, String)] {
+        guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction("Could not create XPath context.") }
+        defer { xmlXPathFreeContext(context) }
+        guard let result = xmlXPathEvalExpression(field.path, context) else { throw ReaderError.extraction("Invalid XPath.") }
+        defer { xmlXPathFreeObject(result) }
+        guard let set = result.pointee.nodesetval, set.pointee.nodeNr > 0 else { return [] }
+        func string(_ pointer: UnsafeMutablePointer<xmlChar>?) -> String {
+            guard let pointer else { return "" }; defer { xmlFree(pointer) }
+            return String(cString: pointer).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return (0..<Int(set.pointee.nodeNr)).compactMap { index in
+            guard let node = set.pointee.nodeTab[index] else { return nil }
+            let title = string(xmlGetProp(node, "title"))
+            let text = string(xmlNodeGetContent(node))
+            func read(_ mode: String) -> String {
+                mode.hasPrefix("attr:") ? string(xmlGetProp(node, String(mode.dropFirst(5)))) : text
+            }
+            var value = read(field.read ?? "text")
+            if value.isEmpty, let fallback = field.fallback { value = read(fallback) }
+            return value.isEmpty ? nil : (value, title.isEmpty ? text : title)
+        }
+    }
+}
+
+public struct RuleExtractor: Sendable {
+    public init() {}
+    public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule) throws -> [ContentObject] {
+        guard let spec = rule.extractors[kind.rawValue] else { throw ReaderError.extraction("Missing extractor.") }
+        let html = spec.format == .json ? nil : try HTMLDocument(data: data)
+        let json: Any? = spec.format == .json ? try JSONSerialization.jsonObject(with: data) : nil
+        func values(_ name: String) throws -> [(String, String)] {
+            guard let field = spec.fields[name] else { return [] }
+            if let html { return try html.values(field) }
+            var nodes: [Any] = json.map { [$0] } ?? []
+            for component in field.path.split(separator: ".").map(String.init) {
+                nodes = nodes.flatMap { node -> [Any] in
+                    if component == "*", let array = node as? [Any] { return array }
+                    if let dict = node as? [String: Any], let child = dict[component] { return [child] }
+                    if let array = node as? [Any], let index = Int(component), array.indices.contains(index) { return [array[index]] }
+                    return []
+                }
+            }
+            return nodes.compactMap { node in
+                if let text = node as? String { return (text, text) }
+                if let dict = node as? [String: Any], let url = dict["url"] as? String { return (url, dict["title"] as? String ?? url) }
+                return nil
+            }
+        }
+        func first(_ name: String) throws -> String? { try values(name).first?.0 }
+        func url(_ string: String) throws -> URL {
+            guard let url = URL(string: string, relativeTo: responseURL)?.absoluteURL, rule.permits(url) else { throw ReaderError.blockedHost }
+            return try RuleRegistry.normalize(url)
+        }
+        func refs(_ name: String, expected: ContentKind) throws -> [ContentReference] {
+            let registry = try RuleRegistry(rules: [rule]); var seen: Set<ObjectKey> = []
+            return try values(name).compactMap { value, label in
+                let destination = try url(value)
+                // Selectors may include other site links; retain only references of the requested kind.
+                guard let (_, kind, childKey) = try? registry.match(destination), kind == expected, seen.insert(childKey).inserted else { return nil }
+                return ContentReference(key: childKey, title: label.isEmpty ? destination.lastPathComponent : label)
+            }
+        }
+        let title = try first("title") ?? "Untitled"
+        switch kind {
+        case .directory:
+            return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title, mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try first("next").map(url)))]
+        case .manga:
+            let cover = try first("coverImage").map { value in
+                PageObject(key: .page(owner: key, index: -1), ownerRef: key, role: .cover, sourceIndex: nil, imageURL: try url(value), refererURL: responseURL)
+            }
+            let manga = MangaObject(key: key, sourceURL: responseURL, title: title, author: try first("author"), summary: try first("summary"), coverPageRef: cover?.key, chapterRefs: try refs("chapterLinks", expected: .chapter))
+            return [.manga(manga)] + (cover.map { [.page($0)] } ?? [])
+        case .chapter:
+            let pages = try values("pageImages").enumerated().map { index, entry in
+                PageObject(key: .page(owner: key, index: index), ownerRef: key, sourceIndex: index, imageURL: try url(entry.0), refererURL: responseURL)
+            }
+            let parent = try refs("mangaLink", expected: .manga).first?.key
+            return [.chapter(ChapterObject(key: key, sourceURL: responseURL, title: title, mangaRef: parent, pageRefs: pages.map(\.key)))] + pages.map(ContentObject.page)
+        case .page:
+            guard let image = try first("image") else { throw ReaderError.extraction("Missing image URL.") }
+            return [.page(PageObject(key: key, ownerRef: nil, sourceIndex: nil, imageURL: try url(image), refererURL: responseURL))]
+        }
+    }
+}
