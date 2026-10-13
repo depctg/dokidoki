@@ -33,6 +33,12 @@ import AppKit
         print("\(object.kind.rawValue): \(object.title)")
         if case .directory(let directory) = object {
             print("\(directory.mangaRefs.count) manga references")
+            for (label, options, selected) in [("Sort by", directory.sortBy, directory.selectedSortBy), ("Order", directory.sortOrder, directory.selectedSortOrder)] {
+                for option in options ?? [] {
+                    print("\(label): \(option.title)\(option.key == selected ? " [selected]" : "") → \(option.key.identityURL.absoluteString)")
+                }
+            }
+            if let next = directory.nextURL { print("Next list page: \(next.absoluteString)") }
             if url == DemoContent.directoryURL, let ref = directory.mangaRefs.first,
                case .manga(let manga) = try await ref.load(using: repository), let chapter = manga.chapterRefs.first,
                case .chapter(let chapter) = try await chapter.load(using: repository), let page = chapter.pageRefs.first,

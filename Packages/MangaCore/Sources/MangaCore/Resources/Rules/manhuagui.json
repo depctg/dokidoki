@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 6,
+  "version": 7,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -45,7 +45,15 @@
           "read": "attr:href"
         },
         "next": {
-          "path": "//a[@class=\"next\"]",
+          "path": "//div[@class=\"pager\"]/a[normalize-space(.)=\"下一页\"]",
+          "read": "attr:href"
+        },
+        "sortByLinks": {
+          "path": "//div[contains(concat(\" \",normalize-space(@class),\" \"),\" book-sort \")]//li/a",
+          "read": "attr:href"
+        },
+        "selectedSortBy": {
+          "path": "//div[contains(concat(\" \",normalize-space(@class),\" \"),\" book-sort \")]//li[@class=\"current\" or @class=\"selected\"]/a",
           "read": "attr:href"
         }
       }

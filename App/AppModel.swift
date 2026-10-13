@@ -1,6 +1,15 @@
 import SwiftUI
 import MangaCore
 
+enum AppRoute: Hashable {
+    case object(ObjectKey)
+    case search(String)
+}
+struct SiteSearchState {
+    var query = ""
+    var resultKey: ObjectKey?
+}
+
 enum AppSection: String, CaseIterable, Identifiable {
     case library = "My Library", browse = "Browse", recent = "Recent", settings = "Settings"
     var id: Self { self }
@@ -35,8 +44,9 @@ enum AppSection: String, CaseIterable, Identifiable {
     var browseSiteID: String?
     var browseSite: SiteRule? { rules.first(where: { $0.id == browseSiteID }) ?? rules.first }
     var ruleRevision = 0 { didSet { invalidateReader() } }
-    var paths: [AppSection: [ObjectKey]] = [:]
-    var path: [ObjectKey] {
+    var paths: [AppSection: [AppRoute]] = [:]
+    var searches: [String: SiteSearchState] = [:]
+    var path: [AppRoute] {
         get { paths[section, default: []] }
         set { paths[section] = newValue }
     }
@@ -87,7 +97,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         do {
             let key = try await repository.key(for: url)
             if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
-            else { browseSiteID = key.ruleID; section = .browse; path = [key] }
+            else { browseSiteID = key.ruleID; section = .browse; path = [.object(key)] }
         }
         catch { self.error = error.localizedDescription }
     }
@@ -139,8 +149,8 @@ enum AppSection: String, CaseIterable, Identifiable {
         chapterToReveal = reader.chapter.key
         browseSiteID = manga.ruleID
         section = .browse
-        if let index = paths[.browse]?.firstIndex(of: manga) { paths[.browse] = Array(paths[.browse, default: []].prefix(index + 1)) }
-        else { paths[.browse] = [manga] }
+        if let index = paths[.browse]?.firstIndex(of: .object(manga)) { paths[.browse] = Array(paths[.browse, default: []].prefix(index + 1)) }
+        else { paths[.browse] = [.object(manga)] }
     }
     private func invalidateReader() {
         chapterRequest?.cancel(); openingChapter = false

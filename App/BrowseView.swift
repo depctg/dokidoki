@@ -3,7 +3,7 @@ import MangaCore
 
 struct BrowseView: View {
     @Bindable var model: AppModel
-    @State private var entry: BrowseEntry?
+    @State private var openingURL = false
     var body: some View {
         ScrollView {
             if model.section != .browse { Color.clear }
@@ -24,7 +24,9 @@ struct BrowseView: View {
         .navigationTitle("Browse")
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
-                Button("Search site", systemImage: "magnifyingglass") { entry = .search }
+                Button("Search site", systemImage: "magnifyingglass") {
+                    if let site = model.browseSite { model.paths[.browse, default: []].append(.search(site.id)) }
+                }
                     .disabled(model.browseSite?.searchURLTemplate == nil)
                 Menu {
                     Picker("Site", selection: Binding(get: { model.browseSite?.id ?? "" }, set: { model.browseSiteID = $0 })) {
@@ -32,25 +34,48 @@ struct BrowseView: View {
                     }
                 } label: { Label("Switch site", systemImage: "globe") }
                 .disabled(model.rules.isEmpty)
-                Button("Open URL", systemImage: "link") { entry = .url }
+                Button("Open URL", systemImage: "link") { openingURL = true }
             }
         }
-        .sheet(item: $entry) { entry in BrowseEntryView(entry: entry, site: model.browseSite, model: model) }
+        .sheet(isPresented: $openingURL) { OpenURLView(model: model) }
         .onChange(of: model.openURLRequest, initial: true) { _, request in
-            if request > 0 { entry = .url; model.openURLRequest = 0 }
+            if request > 0 { openingURL = true; model.openURLRequest = 0 }
         }
-        .onChange(of: model.ruleRevision) { _, _ in entry = nil }
+        .onChange(of: model.ruleRevision) { _, _ in openingURL = false }
     }
 }
 
-private enum BrowseEntry: String, Identifiable {
-    case search, url
-    var id: Self { self }
+struct SiteSearchView: View {
+    let site: SiteRule
+    let model: AppModel
+    @State private var searchPresented = false
+    private var resultKey: ObjectKey? { model.searches[site.id]?.resultKey }
+    private var query: Binding<String> {
+        Binding(get: { model.searches[site.id]?.query ?? "" }, set: { model.searches[site.id, default: SiteSearchState()].query = $0 })
+    }
+    var body: some View {
+        Group {
+            if let resultKey {
+                ObjectScreen(key: resultKey, model: model, openChapter: { model.presentChapter($0) }, isSearchResult: true,
+                             changeDirectory: { model.searches[site.id, default: SiteSearchState()].resultKey = $0 })
+                    .id(resultKey)
+            } else {
+                ContentUnavailableView("Search this site", systemImage: "magnifyingglass", description: Text(site.name))
+            }
+        }
+        .navigationTitle("Search results")
+        .searchable(text: query, isPresented: $searchPresented, prompt: "Search titles")
+        .onAppear { if resultKey == nil { searchPresented = true } }
+        .onSubmit(of: .search) {
+            let text = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, let url = site.searchURL(query: text), let canonical = try? RuleRegistry.normalize(url) else { return }
+            model.searches[site.id, default: SiteSearchState()].resultKey = ObjectKey(ruleID: site.id, identityURL: canonical)
+            searchPresented = false
+        }
+    }
 }
 
-private struct BrowseEntryView: View {
-    let entry: BrowseEntry
-    let site: SiteRule?
+private struct OpenURLView: View {
     let model: AppModel
     @State private var text = ""
     @FocusState private var focused: Bool
@@ -59,17 +84,16 @@ private struct BrowseEntryView: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField(entry == .search ? String(localized: "Search titles") : String(localized: "Website URL"), text: $text)
+                TextField("Website URL", text: $text)
                     .focused($focused).onSubmit(submit)
                     #if !os(macOS)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     #endif
-                if entry == .search, let site { Text(site.name).foregroundStyle(.secondary) }
             }
-            .navigationTitle(entry == .search ? String(localized: "Search site") : String(localized: "Open URL"))
+            .navigationTitle("Open URL")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(entry == .search ? String(localized: "Search") : String(localized: "Open"), action: submit).disabled(query.isEmpty) }
+                ToolbarItem(placement: .confirmationAction) { Button("Open", action: submit).disabled(query.isEmpty) }
             }
             .onAppear { focused = true }
         }.frame(minWidth: 300, idealWidth: 480, minHeight: 220)
@@ -78,13 +102,8 @@ private struct BrowseEntryView: View {
     private func submit() {
         guard !query.isEmpty else { return }
         focused = false
-        if entry == .search {
-            guard let site, let url = site.searchURL(query: query), let canonical = try? RuleRegistry.normalize(url) else { return }
-            model.paths[.browse, default: []].append(ObjectKey(ruleID: site.id, identityURL: canonical))
-        } else {
-            let url = query
-            Task { await model.open(url) }
-        }
+        let url = query
+        Task { await model.open(url) }
         dismiss()
     }
 }
@@ -99,7 +118,7 @@ private struct BrowseShelf: View {
     private var key: ObjectKey { ObjectKey(ruleID: ruleID, identityURL: list.url) }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: key) {
+            NavigationLink(value: AppRoute.object(key)) {
                 HStack(spacing: 6) {
                     Text(list.title).font(.title2.bold())
                     Image(systemName: "chevron.right").font(.headline).foregroundStyle(.secondary)
@@ -113,7 +132,7 @@ private struct BrowseShelf: View {
                     ScrollView(.horizontal) {
                         LazyHStack(alignment: .top, spacing: 16) {
                             ForEach(Array(directory.mangaRefs.prefix(8))) { reference in
-                                NavigationLink(value: reference.key) {
+                                NavigationLink(value: AppRoute.object(reference.key)) {
                                     MangaPreview(reference: reference, model: model, shelf: true)
                                 }.buttonStyle(.plain).accessibilityIdentifier("manga.item.\(reference.key.id)")
                             }

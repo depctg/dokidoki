@@ -89,7 +89,7 @@ private struct LibraryRow: View {
         .contextMenu { actions }
         .accessibilityAction(named: starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
-        .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(key) }
+        .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(.object(key)) }
         .task(id: "\(key.id)|\(model.ruleRevision)") { await loadDetails() }
         .onChange(of: position?.chapterKey) { _, _ in loadCachedChapter() }
     }
@@ -97,7 +97,7 @@ private struct LibraryRow: View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
         Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
             .tint(.orange)
-        Button("Manga details", systemImage: "book.closed") { model.paths[section, default: []].append(key) }
+        Button("Manga details", systemImage: "book.closed") { model.paths[section, default: []].append(.object(key)) }
             .tint(.blue)
     }
     private func loadDetails() async {

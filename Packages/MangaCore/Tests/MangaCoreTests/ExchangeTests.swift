@@ -5,7 +5,13 @@ import Testing
 
 struct ExchangeTests {
     @Test func smallRuleQRDecodesAndLargeRuleFallsBack() throws {
-        let rule = try DemoContent.bundledRules()[0]
+        // Keep the small-payload check independent of the expanding bundled demo recipe.
+        let rule = try SiteRule.decode(Data(#"""
+        {"schemaVersion":1,"id":"qr-test","name":"Small rule","version":1,
+         "allowedHosts":["reader.example"],
+         "matchers":[{"kind":"directory","pattern":"^https://reader\\.example/list$","priority":0}],
+         "extractors":{"directory":{"format":"html","fields":{"title":{"path":"//h1"},"mangaLinks":{"path":"//a","read":"attr:href"}}}}}
+        """#.utf8))
         let image = try #require(try RuleExchange.qrImage(for: rule))
         let detector = try #require(CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
         let decoded = try #require((detector.features(in: CIImage(cgImage: image)).first as? CIQRCodeFeature)?.messageString)

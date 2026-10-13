@@ -16,8 +16,14 @@ public enum DemoContent {
         guard url.host == directoryURL.host else { return nil }
         let name: String; let ext: String
         switch url.path {
-        case "/catalog": name = "catalog"; ext = "html"
+        case "/catalog":
+            // Offline fixture responses, not website parsing or client-side sorting.
+            let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+            let byTitle = query.contains(URLQueryItem(name: "sort", value: "title"))
+            let descending = query.contains(URLQueryItem(name: "order", value: "descending"))
+            name = byTitle ? (descending ? "catalog-descending" : "catalog-title") : "catalog"; ext = "html"
         case "/series/observatory": name = "manga"; ext = "html"
+        case "/series/aster": name = "aster"; ext = "html"
         case "/chapter/arrival": name = "arrival"; ext = "json"
         case "/chapter/starlight": name = "starlight"; ext = "json"
         case let path where path.hasPrefix("/images/"): name = url.deletingPathExtension().lastPathComponent; ext = "png"

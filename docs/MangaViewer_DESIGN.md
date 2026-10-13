@@ -26,7 +26,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 
 **Include:**
 - Add a supported URL or import a site rule; browse a directory, open a manga, select a chapter, and read its pages.
-- Directory: manga list, local search/filter, and sorting by available metadata. Remote search only when a rule explicitly defines a search endpoint.
+- Directory: manga list, local filter, and optional source-defined sorting by/order. Remote search uses a native results list only when a rule explicitly defines a search endpoint.
 - Manga: cover/title-page object, metadata, ordered chapters, and resume reading.
 - Chapter reader: paged and continuous-scroll modes, left-to-right/right-to-left order, memory/disk image cache, prefetch, and configurable page processing.
 - My/Settings: saved manga, recent reading, reader preferences, site-rule management, JSON file export/import, and QR export for suitably small rules.
@@ -58,12 +58,12 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 
 | Object | Required role | Main fields |
 | --- | --- | --- |
-| `DirectoryObject` | A listing of manga | `title`, ordered `mangaRefs`, optional `nextURL` |
+| `DirectoryObject` | A listing of manga | `title`, ordered `mangaRefs`, optional `nextURL`, sort-by/order references and selected keys |
 | `MangaObject` | A series and its chapters | `title`, optional author/summary/rating/status/tags, `coverPageRef`, ordered `chapterRefs` |
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
 | `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, `imageURL`, optional `refererURL`, dimensions/analysis |
 
-Use `ObjectKey` references, not embedded recursive object graphs. Lists are ordered as extracted; the UI may present a different sort order without modifying source objects.
+Use `ObjectKey` references, not embedded recursive object graphs. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object.
 
 Manga rating and publication status are optional source text, and tags are an optional ordered string list. Rules capture their values using existing selectors/regex; the engine trims blanks and removes duplicate tags. Browse/list/Library/Recent rows and manga details display available values. Preserve the source's score scale and finished/ongoing wording without site-specific Swift mappings or guessed defaults. Metadata and covers share one manga load; missing fields remain compatible with older snapshots.
 
@@ -220,10 +220,12 @@ Use native Apple localization and system/per-app language selection. App text li
 | View | Minimum experience |
 | --- | --- |
 | Browse | First site in persisted rule order; JSON-defined horizontal cover shelves with full-list links, selected-site search and site switcher |
-| Directory | Cover/title list of manga, local filter, sort, open manga; optional pagination |
+| Directory | Cover/title list of manga, local filter, optional rule-extracted sort-by/order links, open manga; optional pagination |
 | Manga | Cover, metadata, ordered chapter list, resume/continue |
 | Chapter | Distraction-free reader, mode switch, reading direction, processing toggles, progress |
 | My / Settings | Saved titles, recent reads, reader defaults, installed rules, JSON import/export, QR share, cache clear |
+
+Search uses a native editable results list. Search and object destinations share a typed native navigation path, so opening a result and returning retains the search. Directory objects optionally expose rule-extracted sort-by/order references and active keys; source links define the available choices and URLs. Selecting a sort loads that directory through the shared core pipeline. Omitted axes have no controls; do not impose a local sort or derive source URL parameters. Older snapshots remain decodable.
 
 Site rules may provide a minimal `browse` array of named directory URLs and a `searchURLTemplate` containing `{query}`. Keep URLs and extraction in JSON. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
 

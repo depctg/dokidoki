@@ -2,14 +2,14 @@
   "schemaVersion": 1,
   "id": "demo",
   "name": "Bundled reading room",
-  "version": 3,
+  "version": 4,
   "allowedHosts": [
     "demo.mangaviewer.local"
   ],
   "matchers": [
     {
       "kind": "directory",
-      "pattern": "^https://demo\\.mangaviewer\\.local/catalog(\\?q=.*)?$",
+      "pattern": "^https://demo\\.mangaviewer\\.local/catalog(\\?.*)?$",
       "priority": 0
     },
     {
@@ -31,7 +31,23 @@
           "path": "//h1"
         },
         "mangaLinks": {
-          "path": "//a",
+          "path": "//a[@class=\"manga\"]",
+          "read": "attr:href"
+        },
+        "sortByLinks": {
+          "path": "//nav[@id=\"sortBy\"]/a",
+          "read": "attr:href"
+        },
+        "selectedSortBy": {
+          "path": "//nav[@id=\"sortBy\"]/a[@aria-current=\"true\"]",
+          "read": "attr:href"
+        },
+        "sortOrderLinks": {
+          "path": "//nav[@id=\"sortOrder\"]/a",
+          "read": "attr:href"
+        },
+        "selectedSortOrder": {
+          "path": "//nav[@id=\"sortOrder\"]/a[@aria-current=\"true\"]",
           "read": "attr:href"
         }
       }

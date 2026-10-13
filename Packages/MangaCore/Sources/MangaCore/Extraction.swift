@@ -133,7 +133,13 @@ public struct RuleExtractor: Sendable {
         let title = try first("title") ?? String(localized: "Untitled", bundle: .module)
         switch kind {
         case .directory:
-            return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title, mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try first("next").map(url)))]
+            let by = try refs("sortByLinks", expected: .directory)
+            let order = try refs("sortOrderLinks", expected: .directory)
+            return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title,
+                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try first("next").map(url),
+                sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
+                selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
+                selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]
         case .manga:
             let cover = try first("coverImage").map { value in
                 PageObject(key: .page(owner: key, index: -1), ownerRef: key, role: .cover, sourceIndex: nil, imageURL: try url(value), refererURL: responseURL)

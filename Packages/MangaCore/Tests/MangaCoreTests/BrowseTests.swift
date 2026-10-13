@@ -11,7 +11,7 @@ struct BrowseTests {
         let repository = try ObjectRepository(store: store, rules: [rule])
         let key = ObjectKey(ruleID: rule.id, identityURL: list.url)
         guard case .directory(let directory) = try await key.load(using: repository) else { Issue.record("Missing list"); return }
-        #expect(directory.mangaRefs.count == 1)
+        #expect(directory.mangaRefs.count == 2)
         let query = "星 & title/?# +"
         let url = try #require(rule.searchURL(query: query))
         #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "q", value: query)])
@@ -31,6 +31,38 @@ struct BrowseTests {
         }
         var invalidSearch = base; invalidSearch["searchURLTemplate"] = "https://demo.mangaviewer.local/chapter/{query}"
         #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: invalidSearch)) }
+    }
+
+    @Test func directorySortLinksLoadSourceOrderAndPreserveLegacySnapshots() async throws {
+        let rule = try DemoContent.bundledRules()[0]
+        let repository = try ObjectRepository(store: ObjectStore(), rules: [rule])
+        let key = ObjectKey(ruleID: rule.id, identityURL: DemoContent.directoryURL)
+        guard case .directory(let original) = try await key.load(using: repository) else { Issue.record("Missing directory"); return }
+        #expect(original.mangaRefs.map(\.title) == ["The Observatory", "Aster House"])
+        #expect(original.sortOrder == nil)
+        #expect(original.selectedSortBy == key)
+        let byTitle = try #require(original.sortBy?.first(where: { $0.title == "Title" }))
+        guard case .directory(let ascending) = try await byTitle.load(using: repository) else { Issue.record("Missing sorted directory"); return }
+        #expect(ascending.mangaRefs.map(\.title) == ["Aster House", "The Observatory"])
+        #expect(ascending.selectedSortBy == byTitle.key)
+        #expect(ascending.selectedSortOrder == byTitle.key)
+        let descending = try #require(ascending.sortOrder?.first(where: { $0.title == "Descending" }))
+        guard case .directory(let reversed) = try await descending.load(using: repository) else { Issue.record("Missing reverse directory"); return }
+        #expect(reversed.mangaRefs == original.mangaRefs)
+        #expect(reversed.selectedSortOrder == descending.key)
+        #expect(reversed.key != original.key) // Sort URLs are distinct cache identities.
+        #expect(try JSONDecoder().decode(DirectoryObject.self, from: JSONEncoder().encode(reversed)).sortOrder == reversed.sortOrder)
+
+        var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(original)) as! [String: Any]
+        for field in ["sortBy", "sortOrder", "selectedSortBy", "selectedSortOrder"] { legacy.removeValue(forKey: field) }
+        let decoded = try JSONDecoder().decode(DirectoryObject.self, from: JSONSerialization.data(withJSONObject: legacy))
+        #expect(decoded.sortBy == nil && decoded.sortOrder == nil)
+
+        let html = "<html><h1>List</h1><nav id='sortBy'><a href='https://outside.example/list'>Denied</a></nav></html>"
+        do {
+            _ = try RuleExtractor().extract(data: Data(html.utf8), responseURL: key.identityURL, key: key, kind: .directory, rule: rule)
+            Issue.record("Off-host sort destination accepted")
+        } catch ReaderError.blockedHost {}
     }
 
     @Test func ruleOrderSurvivesRestartAndRecipeReplacement() throws {

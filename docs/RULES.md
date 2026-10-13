@@ -18,7 +18,7 @@ URLs resolve against the final response URL and must still pass the exact-host p
 
 | Kind | Required fields | Optional fields |
 | --- | --- | --- |
-| directory | title, mangaLinks | next |
+| directory | title, mangaLinks | next, sortByLinks, sortOrderLinks, selectedSortBy, selectedSortOrder |
 | manga | title, chapterLinks | author, summary, coverImage, rating, status, tags |
 | chapter | title, pageImages | mangaLink |
 | page | image | title |
@@ -26,6 +26,17 @@ URLs resolve against the final response URL and must still pass the exact-host p
 Manga `rating` and `status` use the first nonblank selected value; `tags` uses all nonblank selected values, deduplicated in source order. They use the existing XPath/JSON path and regex options. Rating and status remain source text (for example `4.5 / 5`, `Ongoing`, or `已完结`); Swift does not invent a scale, translate source labels, or infer a status. Omitted fields and unmatched selectors produce no metadata UI. Exclude site placeholders with a rule regex when necessary. Older manga snapshots without these keys remain readable.
 
 Optional `browse` declares ordered shelves as `{ "title": "Recent updates", "url": "https://reader.example/recent" }` entries. Each URL must be an allowed directory URL matched by this rule. Titles must be nonempty; URLs must be unique after normalization; at most 24 shelves are accepted. Browse previews up to eight manga per shelf and opens the full directory when its heading is selected. Omission remains valid for older imported rules.
+
+Directory sorting is optional and uses the existing `Field` language. `sortByLinks` and `sortOrderLinks` select titled links to directory URLs; `selectedSortBy` and `selectedSortOrder` select the active links. HTML normally uses XPath plus `read: "attr:href"`; JSON can select `{ "url": "…", "title": "…" }` objects. Each axis is independent: missing or empty links produce no picker, and both missing means no sort control. The app keeps source order and does not invent local title sorting or reverse a single fetched page.
+
+```json
+"sortByLinks": { "path": "//nav[@id='sort-by']/a", "read": "attr:href" },
+"selectedSortBy": { "path": "//nav[@id='sort-by']/a[@aria-current='true']", "read": "attr:href" },
+"sortOrderLinks": { "path": "//nav[@id='sort-order']/a", "read": "attr:href" },
+"selectedSortOrder": { "path": "//nav[@id='sort-order']/a[@aria-current='true']", "read": "attr:href" }
+```
+
+Sort links must retain the desired search/filter context and point to the desired first page. The app follows them as supplied, replacing the displayed directory through core object loading. It never constructs site-specific sort parameters. URLs must satisfy the rule's exact-host policy and match directory objects; repeated destinations are deduplicated. Selected options are matched by object key; if omitted, the current directory key can identify an active option. Labels are source data. Pagination follows the `next` URL, preserving whatever sorting the source encodes. Older rules and snapshots without these fields remain valid.
 
 `searchURLTemplate` uses `{query}`, escaped as one URL component, and must resolve to an allowed directory URL in the same rule. Search is submitted explicitly rather than requesting on every keystroke. `processors` selects compiled `identity`, `marginAlign`, `spreadDetect`, and `layout` page processors. These affect display planning, not site parsing.
 

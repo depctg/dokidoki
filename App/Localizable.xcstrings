@@ -1256,6 +1256,22 @@
         }
       }
     },
+    "Order": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Order"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "顺序"
+          }
+        }
+      }
+    },
     "Page %@ / %@": {
       "localizations": {
         "en": {
@@ -1784,18 +1800,18 @@
         }
       }
     },
-    "Search": {
+    "Search results": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Search"
+            "value": "Search results"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "搜索"
+            "value": "搜索结果"
           }
         }
       }
@@ -1812,6 +1828,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "站内搜索"
+          }
+        }
+      }
+    },
+    "Search this site": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Search this site"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "搜索此站点"
           }
         }
       }
@@ -1928,18 +1960,34 @@
         }
       }
     },
-    "Sort by title": {
+    "Sort": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Sort by title"
+            "value": "Sort"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "按标题排序"
+            "value": "排序"
+          }
+        }
+      }
+    },
+    "Sort by": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sort by"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "排序依据"
           }
         }
       }
@@ -2276,6 +2324,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "下一章等你来读"
+          }
+        }
+      }
+    },
+    "Site unavailable": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Site unavailable"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "站点不可用"
           }
         }
       }

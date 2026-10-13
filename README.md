@@ -39,7 +39,9 @@ swift run --package-path Packages/MangaCore manga-probe
 swift run --package-path Packages/MangaCore manga-probe --rendered https://www.manhuagui.com/comic/32602/441493.html
 ```
 
-Browse opens the first site in Settings order. Its rule supplies named shelves, displayed as horizontal cover rows; tap a heading for the full list or a cover for manga details. Search uses the selected site's JSON search URL, and the globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
+Browse opens the first site in Settings order. Its rule supplies named shelves, displayed as horizontal cover rows; tap a heading for the full list or a cover for manga details. Search opens a native results list with an editable search field and uses the selected site's JSON search URL. The globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
+
+Directory and search lists show a native Sort menu only when their JSON extraction defines sort-by or order links. Selecting an option loads the website's sorted list; there is no hardcoded local title sort. Either axis may be absent. Manhuagui exposes its existing catalog/search choices, while its update list retains source order.
 
 Drag Site rules in Settings to change the default site; iPhone/iPad also provide Edit handles. Order survives relaunch and recipe updates without restarting the reader. Rule rows show names and versions; network host permissions remain in JSON and in the import preview.
 

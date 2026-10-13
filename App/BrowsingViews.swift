@@ -73,10 +73,20 @@ struct RootView: View {
                 case .settings: SettingsView(model: model)
                 }
             }
-            .navigationDestination(for: ObjectKey.self) { key in
-                ObjectScreen(key: key, model: model) { chapter in
-                    if model.paths[section]?.last == key { model.paths[section]?.removeLast() }
-                    model.presentChapter(chapter)
+            .navigationDestination(for: AppRoute.self) { route in
+                switch route {
+                case .object(let key):
+                    ObjectScreen(key: key, model: model, openChapter: { chapter in
+                        if model.paths[section]?.last == .object(key) { model.paths[section]?.removeLast() }
+                        model.presentChapter(chapter)
+                    }, changeDirectory: { target in
+                        if let index = model.paths[section]?.lastIndex(of: .object(key)) {
+                            model.paths[section]?[index] = .object(target)
+                        }
+                    })
+                case .search(let ruleID):
+                    if let site = model.rules.first(where: { $0.id == ruleID }) { SiteSearchView(site: site, model: model) }
+                    else { ContentUnavailableView("Site unavailable", systemImage: "globe") }
                 }
             }
         }
@@ -88,15 +98,19 @@ struct ObjectScreen: View {
     let key: ObjectKey
     let model: AppModel
     let openChapter: (ChapterObject) -> Void
+    var isSearchResult = false
+    let changeDirectory: (ObjectKey) -> Void
     @State private var object: ContentObject?
     @State private var error: String?
     @State private var loading = false
     @State private var revision = UUID()
+    @State private var loadID = UUID()
     var body: some View {
         Group {
             if let object {
                 switch object {
-                case .directory(let directory): DirectoryView(directory: directory, model: model)
+                case .directory(let directory):
+                    DirectoryView(directory: directory, model: model, isSearchResult: isSearchResult, changeSort: changeDirectory)
                 case .manga(let manga): MangaView(manga: manga, model: model)
                 case .chapter: ProgressView("Opening reader…")
                 case .page(let page): PageImageView(page: page, model: model)
@@ -107,10 +121,10 @@ struct ObjectScreen: View {
         .id(revision)
         .task(id: "\(key.id)|\(model.ruleRevision)") { object = nil; await load(.refreshIfStale) }
         .toolbar {
-            ToolbarItem {
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await load(.forceRefresh) } }.disabled(loading)
+                Link(destination: key.identityURL) { Label("Source website", systemImage: "safari") }
             }
-            ToolbarItem { Link(destination: key.identityURL) { Label("Source website", systemImage: "safari") } }
         }
         .alert("Refresh failed", isPresented: Binding(get: { error != nil && object != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
@@ -118,42 +132,20 @@ struct ObjectScreen: View {
     }
     private func load(_ hint: CacheHint) async {
         guard let repository = model.repository else { return }
-        loading = true; error = nil; defer { loading = false }
+        let request = UUID(); loadID = request
+        let target = key
+        loading = true; error = nil
+        defer { if loadID == request { loading = false } }
         do {
-            let result = if let object { try await object.reload(using: repository, hint: hint) }
-                else { try await key.load(using: repository, hint: hint) }
+            let result = try await target.load(using: repository, hint: hint)
             try Task.checkCancellation()
+            guard loadID == request, key == target else { return }
             object = result; revision = UUID()
             if case .chapter(let chapter) = result { openChapter(chapter) }
         }
-        catch is CancellationError {} catch { self.error = error.localizedDescription }
-    }
-}
-
-struct DirectoryView: View {
-    let directory: DirectoryObject
-    let model: AppModel
-    @State private var query = ""
-    @State private var sorted = false
-    private var references: [ContentReference] {
-        let refs = directory.mangaRefs.filter { query.isEmpty || $0.title.localizedStandardContains(query) }
-        return sorted ? refs.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending } : refs
-    }
-    var body: some View {
-        List {
-            ForEach(references) { ref in
-                NavigationLink(value: ref.key) {
-                    MangaPreview(reference: ref, model: model)
-                }.accessibilityIdentifier("manga.item.\(ref.key.id)")
-            }
-            if let next = directory.nextURL {
-                NavigationLink("Next directory page", value: ObjectKey(ruleID: directory.key.ruleID, identityURL: next))
-            }
+        catch is CancellationError {} catch {
+            if !Task.isCancelled, loadID == request, key == target { self.error = error.localizedDescription }
         }
-        .overlay { if references.isEmpty { ContentUnavailableView.search(text: query) } }
-        .searchable(text: $query, prompt: "Filter titles")
-        .navigationTitle(model.rules.first(where: { $0.id == directory.key.ruleID })?.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == directory.key.identityURL })?.title ?? directory.title)
-        .toolbar { ToolbarItem { Toggle("Sort by title", systemImage: "arrow.up.arrow.down", isOn: $sorted) } }
     }
 }
 

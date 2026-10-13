@@ -34,6 +34,11 @@ public struct DirectoryObject: Codable, Sendable {
     public let title: String
     public let mangaRefs: [ContentReference]
     public let nextURL: URL?
+    /// Optional source-provided sort destinations; absent fields keep older snapshots readable.
+    public var sortBy: [ContentReference]? = nil
+    public var sortOrder: [ContentReference]? = nil
+    public var selectedSortBy: ObjectKey? = nil
+    public var selectedSortOrder: ObjectKey? = nil
 }
 public struct MangaObject: Codable, Sendable {
     public let key: ObjectKey
