@@ -143,11 +143,8 @@ struct DirectoryView: View {
         List {
             ForEach(references) { ref in
                 NavigationLink(value: ref.key) {
-                    HStack(spacing: 14) {
-                        MangaCover(reference: ref, model: model).frame(width: 52, height: 76)
-                        Text(ref.title).font(.headline)
-                    }.padding(.vertical, 4)
-                }
+                    MangaPreview(reference: ref, model: model)
+                }.accessibilityIdentifier("manga.item.\(ref.key.id)")
             }
             if let next = directory.nextURL {
                 NavigationLink("Next directory page", value: ObjectKey(ruleID: directory.key.ruleID, identityURL: next))
@@ -173,6 +170,7 @@ struct MangaView: View {
                         VStack(alignment: .leading, spacing: 10) {
                             Text(manga.title).font(.title2.bold())
                             if let author = manga.author { Text(author).foregroundStyle(.secondary) }
+                            MangaMetadataView(manga: manga)
                             if let summary = manga.summary { Text(summary).font(.callout).lineLimit(8) }
                         }
                     }.padding(.vertical, 12)

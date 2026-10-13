@@ -19,15 +19,20 @@ import XCTest
         XCTAssertTrue(shelf.waitForExistence(timeout: 8))
         shelf.tap()
         XCTAssertTrue(app.navigationBars["Reading room"].waitForExistence(timeout: 8))
-        XCTAssertTrue(app.buttons["The Observatory"].waitForExistence(timeout: 8))
+        let listedManga = app.buttons["manga.item.demo|https://demo.mangaviewer.local/series/observatory"]
+        XCTAssertTrue(listedManga.waitForExistence(timeout: 8))
+        XCTAssertTrue(wait { listedManga.label.contains("9.2 / 10") && listedManga.label.contains("Finished") && listedManga.label.contains("Science fiction") })
         app.navigationBars.buttons["Browse"].tap()
         app.buttons["Search site"].tap()
         let query = app.textFields["Search titles"]
         XCTAssertTrue(query.waitForExistence(timeout: 5))
         query.tap(); query.typeText("Observatory")
         app.buttons["Search"].tap()
-        app.buttons["The Observatory"].tap()
+        listedManga.tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.staticTexts["Rating: 9.2 / 10"].exists)
+        XCTAssertTrue(app.staticTexts["Status: Finished"].exists)
+        XCTAssertTrue(app.staticTexts["Tags: Science fiction, Adventure"].exists)
         app.buttons["1 · Arrival"].tap()
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "demo",
   "name": "Bundled reading room",
-  "version": 2,
+  "version": 3,
   "allowedHosts": [
     "demo.mangaviewer.local"
   ],
@@ -55,6 +55,15 @@
         "chapterLinks": {
           "path": "//a",
           "read": "attr:href"
+        },
+        "rating": {
+          "path": "//p[@class=\"rating\"]"
+        },
+        "status": {
+          "path": "//p[@class=\"status\"]"
+        },
+        "tags": {
+          "path": "//ul[@class=\"tags\"]/li"
         }
       }
     },

@@ -40,7 +40,12 @@ import AppKit
                 print("\(manga.title) → \(chapter.title) → \(chapter.pageRefs.count) pages; first image: \(page.imageURL.lastPathComponent)")
             }
         }
-        if case .manga(let manga) = object { print("\(manga.chapterRefs.count) chapters; cover: \(manga.coverPageRef != nil)") }
+        if case .manga(let manga) = object {
+            print("\(manga.chapterRefs.count) chapters; cover: \(manga.coverPageRef != nil)")
+            if let rating = manga.rating { print("Rating: \(rating)") }
+            if let status = manga.status { print("Status: \(status)") }
+            if let tags = manga.tags { print("Tags: \(tags.joined(separator: ", "))") }
+        }
         if case .chapter(let chapter) = object {
             print("\(chapter.pageRefs.count) pages")
             if let key = chapter.pageRefs.first, case .page(let page) = try await key.load(using: repository) {

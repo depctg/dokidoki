@@ -110,6 +110,13 @@ public struct RuleExtractor: Sendable {
             return try extract(field)
         }
         func first(_ name: String) throws -> String? { try values(name).first?.0 }
+        func metadata(_ name: String) throws -> [String] {
+            var seen: Set<String> = []
+            return try values(name).compactMap { value, _ in
+                let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return !text.isEmpty && seen.insert(text).inserted ? text : nil
+            }
+        }
         func url(_ string: String) throws -> URL {
             guard let url = URL(string: string, relativeTo: responseURL)?.absoluteURL, rule.permits(url) else { throw ReaderError.blockedHost }
             return try RuleRegistry.normalize(url)
@@ -131,7 +138,8 @@ public struct RuleExtractor: Sendable {
             let cover = try first("coverImage").map { value in
                 PageObject(key: .page(owner: key, index: -1), ownerRef: key, role: .cover, sourceIndex: nil, imageURL: try url(value), refererURL: responseURL)
             }
-            let manga = MangaObject(key: key, sourceURL: responseURL, title: title, author: try first("author"), summary: try first("summary"), coverPageRef: cover?.key, chapterRefs: try refs("chapterLinks", expected: .chapter))
+            let tags = try metadata("tags")
+            let manga = MangaObject(key: key, sourceURL: responseURL, title: title, author: try first("author"), summary: try first("summary"), coverPageRef: cover?.key, chapterRefs: try refs("chapterLinks", expected: .chapter), rating: try metadata("rating").first, status: try metadata("status").first, tags: tags.isEmpty ? nil : tags)
             return [.manga(manga)] + (cover.map { [.page($0)] } ?? [])
         case .chapter:
             let pages = try values("pageImages").enumerated().map { index, entry in

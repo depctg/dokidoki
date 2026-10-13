@@ -1,5 +1,14 @@
 # Development state
 
+## Manga metadata — 2026-10-13
+
+- Added optional rating/status strings and ordered tags to MangaObject, with backward-compatible decoding for existing snapshots. Existing rule fields select all metadata via XPath/JSON paths/regex; no language feature, schema migration, Swift status mapping or rating scale assumption was added. Blanks are omitted and tags are deduplicated in source order.
+- A shared metadata view renders available values in Browse shelves, directory rows, Library/Recent and manga details. Browse preview rows share one object load for cover and metadata; the global sender and existing cache hints remain unchanged. Stable manga-link identifiers keep the existing shell UI journey independent of composed accessibility labels.
+- Demo v3 supplies all three fields. Manhuagui v6 selects the exact status span and genre anchors; its score regex excludes the HTML placeholder. Live HTML inspection confirms Manhuagui's score is loaded by JavaScript and is unavailable to the ordinary HTML extractor; no new rendered sessions or ad hoc API requests were introduced for it.
+- All 32 core tests pass (`/tmp/mangaviewer-metadata-core.log`). Two focused metadata tests cover JSON numeric/string fields, source status wording, exact XPath selection, blank/duplicate tags, absent selectors, placeholder exclusion, Codable round trips and older snapshots. The existing shell journey passes on iPhone and iPad (`/tmp/mangaviewer-metadata-{phone,pad}.xcresult`), checking metadata in a list and manga details while retaining the navigation/library checks. No new UI journey; reader code and gesture coverage are unchanged.
+- Live core probes resolve ongoing `/comic/39443/` as 连载中 with 搞笑/爱情, and finished `/comic/61871/` as 已完结 with 耽美 (`/tmp/mangaviewer-metadata-live-{ongoing,finished}.log`). Phone/tablet captures confirm the live labels/covers; the original fixture capture shows rating/status/tags together. Both user preview apps were updated without clearing data and left on those live manga details. Captures stay under `/tmp/mangaviewer-metadata-*.png`; third-party artwork is not committed.
+- iOS Simulator test builds, macOS arm64 and visionOS Simulator builds pass (`/tmp/mangaviewer-metadata-{phone,pad,macos,visionos}.log`). Clean-session review found no material issues in compatibility, loading/cancellation, accessibility, or the JSON-only boundary. Production Swift/bridge audit and `git diff --check` pass. README/design/rule docs/AGENTS are synchronized. No remaining implementation work for this milestone; Manhuagui's unavailable HTML rating and the existing Mac/visionOS/Duo manual-check limitations remain documented.
+
 ## Plan
 
 - M1 complete: models, validated XPath/JSON rules, bounded HTTP fetcher, SQLite snapshots/reading state, repository and fixture tests.
@@ -16,7 +25,7 @@
 
 ## Resume
 
-Read AGENTS.md and design. Implementation, core request ownership, bidirectional overscroll reading, and rule-driven Browse/site ordering below are complete. iOS 27 simulators are installed (see simulator follow-up below). Run `bash scripts/verify.sh` for core tests and platform builds, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
+Read AGENTS.md and design. Implementation, core request ownership, bidirectional overscroll reading, rule-driven Browse/site ordering, and manga metadata are complete. iOS 27 simulators are installed (see simulator follow-up below). Run `bash scripts/verify.sh` for core tests and platform builds, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
 
 ## M1 verification and review
 

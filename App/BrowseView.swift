@@ -114,11 +114,8 @@ private struct BrowseShelf: View {
                         LazyHStack(alignment: .top, spacing: 16) {
                             ForEach(Array(directory.mangaRefs.prefix(8))) { reference in
                                 NavigationLink(value: reference.key) {
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        MangaCover(reference: reference, model: model).frame(width: 148, height: 210)
-                                        Text(reference.title).font(.subheadline).lineLimit(2)
-                                    }.frame(width: 148, alignment: .leading)
-                                }.buttonStyle(.plain)
+                                    MangaPreview(reference: reference, model: model, shelf: true)
+                                }.buttonStyle(.plain).accessibilityIdentifier("manga.item.\(reference.key.id)")
                             }
                         }.scrollTargetLayout()
                     }
@@ -142,25 +139,49 @@ private struct BrowseShelf: View {
     }
 }
 
-/// A bounded, lazy cover load shared by Browse shelves and directory rows.
-struct MangaCover: View {
+/// One lazy object load supplies the cover and metadata in shelves and directory rows.
+struct MangaPreview: View {
     let reference: ContentReference
     let model: AppModel
+    var shelf = false
+    @State private var manga: MangaObject?
     @State private var cover: PageObject?
     var body: some View {
+        Group {
+            if shelf {
+                VStack(alignment: .leading, spacing: 8) {
+                    artwork.frame(width: 148, height: 210)
+                    details
+                }.frame(width: 148, alignment: .leading)
+            } else {
+                HStack(spacing: 14) {
+                    artwork.frame(width: 52, height: 76)
+                    details
+                }.padding(.vertical, 4)
+            }
+        }
+        .task(id: "\(reference.id.id)|\(model.ruleRevision)") {
+            manga = nil; cover = nil
+            do {
+                guard let repository = model.repository, case .manga(let loaded) = try await reference.load(using: repository, hint: .preferCache) else { return }
+                try Task.checkCancellation(); manga = loaded
+                let page = try await loaded.coverPage(using: repository, hint: .preferCache)
+                try Task.checkCancellation(); cover = page
+            } catch { /* Keep the title and available metadata if the source or cover is unavailable. */ }
+        }
+    }
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(manga?.title ?? reference.title).font(shelf ? .subheadline : .headline).lineLimit(2)
+            if let manga { MangaMetadataView(manga: manga, compact: true) }
+        }
+    }
+    private var artwork: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 8).fill(.quaternary)
             if let cover { PageImageView(page: cover, model: model) }
             else { Image(systemName: "book.closed").font(.title).foregroundStyle(.secondary) }
         }
         .clipShape(.rect(cornerRadius: 8)).accessibilityHidden(true)
-        .task(id: "\(reference.id.id)|\(model.ruleRevision)") {
-            cover = nil
-            do {
-                guard let repository = model.repository, case .manga(let manga) = try await reference.load(using: repository, hint: .preferCache) else { return }
-                let page = try await manga.coverPage(using: repository, hint: .preferCache)
-                try Task.checkCancellation(); cover = page
-            } catch { /* Keep the title and a placeholder if the cover is unavailable. */ }
-        }
     }
 }

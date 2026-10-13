@@ -59,11 +59,13 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 | Object | Required role | Main fields |
 | --- | --- | --- |
 | `DirectoryObject` | A listing of manga | `title`, ordered `mangaRefs`, optional `nextURL` |
-| `MangaObject` | A series and its chapters | `title`, optional author/summary, `coverPageRef`, ordered `chapterRefs` |
+| `MangaObject` | A series and its chapters | `title`, optional author/summary/rating/status/tags, `coverPageRef`, ordered `chapterRefs` |
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
 | `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, `imageURL`, optional `refererURL`, dimensions/analysis |
 
 Use `ObjectKey` references, not embedded recursive object graphs. Lists are ordered as extracted; the UI may present a different sort order without modifying source objects.
+
+Manga rating and publication status are optional source text, and tags are an optional ordered string list. Rules capture their values using existing selectors/regex; the engine trims blanks and removes duplicate tags. Browse/list/Library/Recent rows and manga details display available values. Preserve the source's score scale and finished/ongoing wording without site-specific Swift mappings or guessed defaults. Metadata and covers share one manga load; missing fields remain compatible with older snapshots.
 
 ### Identity and URL semantics
 

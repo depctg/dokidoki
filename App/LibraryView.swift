@@ -74,6 +74,7 @@ private struct LibraryRow: View {
                     Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                     Text(progress).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     Text(lastRead).font(.caption).foregroundStyle(.secondary)
+                    if let manga { MangaMetadataView(manga: manga, compact: true) }
                 }
                 Spacer(minLength: 0)
             }
