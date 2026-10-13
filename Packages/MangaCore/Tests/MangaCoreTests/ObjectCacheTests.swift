@@ -51,6 +51,50 @@ struct ObjectCacheTests {
         #expect(try reopened.positions().first?.mangaKey == second.key)
     }
 
+    @Test(arguments: [ContentKind.directory, .manga])
+    func previewPromotionSurvivesSourceRefreshAndReopen(kind: ContentKind) async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let path = folder.appendingPathComponent("cache.sqlite").path
+        let rule = try #require(DemoContent.bundledRules().first { $0.id == "demo" })
+        let store = try ObjectStore(path: path), fetcher = TestFetcher()
+        let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
+        let source = ObjectKey(ruleID: rule.id, identityURL: kind == .directory
+            ? URL(string: "https://demo.mangaviewer.local/home")! : DemoContent.directoryURL)
+        let graph = try await source.load(using: repository)
+        let ref: ContentReference
+        switch graph {
+        case .site(let site): ref = try #require(site.directoryRefs.first)
+        case .directory(let directory): ref = try #require(directory.mangaRefs.first)
+        default: throw ReaderError.invalidResponse
+        }
+        let preview = try await ref.preview(using: repository)
+        #expect(!preview.isComplete && preview.kind == kind)
+        await #expect(throws: ReaderError.self) { try await ref.load(using: repository, hint: .offlineOnly) }
+        #expect(await fetcher.count == 1)
+        let full = try await ref.load(using: repository)
+        #expect(full.isComplete)
+        let saved = try #require(try store.snapshot(full.key))
+        let cover: PageObject?
+        if case .manga(let manga) = full { cover = try await manga.coverPage(using: repository) }
+        else { cover = nil }
+        _ = try await source.load(using: repository, hint: .forceRefresh)
+        #expect(await fetcher.count == 3)
+        #expect(try store.snapshot(full.key)?.fetchedAt == saved.fetchedAt)
+        let db = try DatabaseQueue(path: path)
+        try await db.write { try $0.execute(sql: "UPDATE objects SET accessedAt = 0") }
+        let reopened = try ObjectRepository(store: ObjectStore(path: path), rules: [rule], sender: RequestSender(fetcher: fetcher))
+        let retained = try await ref.load(using: reopened, hint: .offlineOnly)
+        let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
+        #expect(try encoder.encode(retained) == encoder.encode(full))
+        if case .manga(let manga) = retained {
+            let retainedCover = try await manga.coverPage(using: reopened, hint: .offlineOnly)
+            #expect(try encoder.encode(retainedCover) == encoder.encode(cover))
+        }
+        #expect(await fetcher.count == 3)
+    }
+
     @Test func fetchedObjectsStillReturnWhenCacheDeclinesStorage() async throws {
         let store = try ObjectStore(cacheLimit: 0)
         let repository = try ObjectRepository(store: store, rules: DemoContent.bundledRules())

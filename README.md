@@ -16,6 +16,8 @@ swift test --package-path Packages/MangaCore
 
 Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required.
 
+The UI test target keeps two journeys: Library/Browse actions, and reader gestures/position restoration. Core tests own parsing, cache/persistence, request/session policy and diagnostics; shared contracts use parameterized cases and per-test fixture transports.
+
 For an iOS preview, select an iPhone or iPad simulator and Run. Xcode 27 opens simulators in Device Hub. The local `MangaViewer Compact` and `MangaViewer Expanded` devices have iOS 27 installed. The actual iPhone Duo simulator requires [Xcode 27.1](https://developer.apple.com/iphone-duo/prepare/); an iPhone/iPad comparison checks adaptive layout but does not simulate folding.
 
 ```sh

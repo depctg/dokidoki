@@ -7,6 +7,31 @@ struct ChapterListTests {
     private func demo() throws -> SiteRule { try #require(DemoContent.bundledRules().first { $0.id == "demo" }) }
     private var mangaKey: ObjectKey { ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/series/observatory")!) }
 
+    @Test(arguments: [false, true])
+    func adjacencyUsesSelectedListOrderAndStopsAtItsBoundaries(grouped: Bool) {
+        let refs = [3, 1, 2].map { number in
+            ContentReference(key: ObjectKey(ruleID: mangaKey.ruleID,
+                identityURL: URL(string: "https://demo.mangaviewer.local/chapter/\(number)")!), title: "Chapter \(number)")
+        }
+        let manga = MangaObject(key: mangaKey, sourceURL: mangaKey.identityURL, title: "Series",
+            chapterRefs: grouped ? nil : refs, chapterLists: grouped ? [
+                ChapterList(id: "main", chapters: Array(refs.prefix(2))),
+                ChapterList(id: "books", chapters: [refs[0], refs[2]]),
+                ChapterList(id: "empty", chapters: [])] : nil)
+        for list in manga.chapterLists {
+            for (index, ref) in list.chapters.enumerated() {
+                #expect(manga.previousChapter(before: ref.key, in: list.id) == (index > 0 ? list.chapters[index - 1] : nil))
+                #expect(manga.nextChapter(after: ref.key, in: list.id) == (index + 1 < list.chapters.count ? list.chapters[index + 1] : nil))
+            }
+            let foreign = ObjectKey(ruleID: "other", identityURL: refs[0].key.identityURL)
+            #expect(manga.nextChapter(after: foreign, in: list.id) == nil)
+            #expect(manga.previousChapter(before: foreign, in: list.id) == nil)
+        }
+        #expect(manga.nextChapter(after: refs[0].key) == refs[1]) // Default chooses the first containing list.
+        let empty = MangaObject(key: mangaKey, sourceURL: mangaKey.identityURL, title: "Empty", chapterRefs: [])
+        #expect(empty.nextChapter(after: refs[0].key) == nil && empty.previousChapter(before: refs[0].key) == nil)
+    }
+
     @Test func htmlGroupsKeepHeadingsAndReverseEachListIndependently() throws {
         let rule = try #require(DemoContent.bundledRules().first { $0.id == "manhuagui" })
         let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.manhuagui.com/comic/123/")!)
@@ -19,16 +44,13 @@ struct ChapterListTests {
         #expect(manga.nextChapter(after: manga.chapterRefs[1].key) == nil)
     }
 
-    @Test func groupedNavigationAndOldSnapshotsKeepSourceOrder() async throws {
+    @Test func oldSnapshotsPreserveFlatChapterOrder() async throws {
         let rule = try demo(), store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: DefaultSourceFetcher()))
         guard case .manga(let manga) = try await mangaKey.load(using: repository) else { throw ReaderError.invalidResponse }
         #expect(manga.chapterLists.map(\.title) == ["Chapters", "Books", "Extras"])
         #expect(manga.chapterLists.map(\.indexTitle) == ["C", "B", "E"])
         #expect(manga.chapterLists.map { $0.chapters.count } == [2, 1, 1])
-        #expect(manga.nextChapter(after: manga.chapterRefs[0].key)?.key == manga.chapterRefs[1].key)
-        #expect(manga.nextChapter(after: manga.chapterRefs[1].key) == nil)
-        #expect(manga.previousChapter(before: manga.chapterRefs[2].key) == nil)
         var old = try JSONSerialization.jsonObject(with: JSONEncoder().encode(manga)) as! [String: Any]
         old.removeValue(forKey: "chapterLists"); old.removeValue(forKey: "chapterStatuses")
         let decoded = try JSONDecoder().decode(MangaObject.self, from: JSONSerialization.data(withJSONObject: old))
@@ -36,11 +58,7 @@ struct ChapterListTests {
         #expect(decoded.chapterRefs == manga.chapterRefs)
         #expect(decoded.nextChapter(after: manga.chapterRefs[1].key)?.key == manga.chapterRefs[2].key)
         #expect(decoded.readingStatus(for: manga.chapterRefs[0].key) == .unread)
-        let overlapping = MangaObject(key: mangaKey, sourceURL: mangaKey.identityURL, title: "Shared chapters", chapterLists: [
-            ChapterList(id: "main", chapters: Array(manga.chapterRefs.prefix(2))),
-            ChapterList(id: "books", chapters: [manga.chapterRefs[0], manga.chapterRefs[2]])])
-        #expect(overlapping.nextChapter(after: manga.chapterRefs[0].key, in: "books")?.key == manga.chapterRefs[2].key)
-        #expect(overlapping.nextChapter(after: manga.chapterRefs[0].key)?.key == manga.chapterRefs[1].key)
+
     }
 
     @Test func jsonGroupsUseRelativeFieldsAndRejectInvalidRulesAndHosts() throws {

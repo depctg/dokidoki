@@ -6,7 +6,6 @@ struct MangaView: View {
     let model: AppModel
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var coverWidth = 112.0
-    @State private var cover: PageObject?
     @State private var readingState: MangaObject?
     @State private var reversedLists: Set<String> = []
     @State private var reveal: ChapterListReveal?
@@ -23,9 +22,6 @@ struct MangaView: View {
                         model.toggleStar(manga.key, title: manga.title)
                     }.accessibilityIdentifier("manga.star")
                 }
-            }
-            .task(id: manga.coverPageRef) {
-                if let repository = model.repository { cover = try? await manga.coverPage(using: repository) }
             }
             .onAppear { refreshReadingState() }
             .onChange(of: position?.updatedAt) { _, _ in refreshReadingState() }
@@ -74,7 +70,7 @@ struct MangaView: View {
         VStack(alignment: .leading, spacing: 16) {
             let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
             layout {
-                CoverImageView(page: cover, model: model, bounds: CGSize(width: min(170, coverWidth), height: 260))
+                CoverImageView(key: manga.coverPageRef, model: model, bounds: CGSize(width: min(170, coverWidth), height: 260))
                 VStack(alignment: .leading, spacing: 10) {
                     Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
                     if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }

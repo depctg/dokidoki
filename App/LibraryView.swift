@@ -35,7 +35,6 @@ private struct LibraryRow: View {
     let section: AppSection
     let now: Date
     @State private var manga: MangaObject?
-    @State private var cover: PageObject?
     @State private var cachedChapter: ChapterObject?
     private var saved: SavedManga? { model.saved.first { $0.key == key } }
     private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == key } }
@@ -60,7 +59,7 @@ private struct LibraryRow: View {
         HStack(spacing: 12) {
             NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 16) {
-                    CoverImageView(page: cover, model: model, bounds: CGSize(width: 76, height: 140))
+                    CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 76, height: 140), hint: manga == nil ? .offlineOnly : .preferCache)
                         .frame(width: 76)
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -108,21 +107,14 @@ private struct LibraryRow: View {
         }
     }
     private func loadDetails() async {
-        manga = nil; cover = nil; loadCachedChapter()
+        manga = nil; loadCachedChapter()
         guard let repository else { return }
         do {
             // No chapter extraction just to draw history: standalone chapters use a cached page.
-            if key == position?.chapterKey {
-                if let pageKey = cachedChapter?.pageRefs.first,
-                   case .page(let page) = try model.store?.snapshot(pageKey)?.object { cover = page }
-                return
-            }
+            if key == position?.chapterKey { return }
             let reference = ContentReference(key: key, title: title)
             guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
             try Task.checkCancellation(); manga = loaded
-            if let page = try await loaded.coverPage(using: repository, hint: .preferCache) {
-                try Task.checkCancellation(); cover = page
-            }
             loadCachedChapter()
         } catch { /* Keep the durable title/progress and a cover placeholder when unavailable. */ }
     }

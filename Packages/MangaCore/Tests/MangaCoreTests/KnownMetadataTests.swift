@@ -19,7 +19,7 @@ struct KnownMetadataTests {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
         let path = folder.appendingPathComponent("cache.sqlite").path
-        let rules = try DemoContent.bundledRules(), fetcher = MetadataFixtureFetcher()
+        let rules = try DemoContent.bundledRules(), fetcher = TestFetcher()
         let store = try ObjectStore(path: path)
         let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         guard case .directory(let list) = try await key.load(using: repository) else { throw ReaderError.invalidResponse }
@@ -81,9 +81,9 @@ struct KnownMetadataTests {
         #expect(throws: ReaderError.self) { try self.rule(fields: bad, format: "json") }
     }
 
-    @Test func previewsSkipDetailRequestsThenPromoteWithoutDirectoryDowngrade() async throws {
+    @Test func previewsReuseKnownCoversAndMergeOnlySameVersionKnowledge() async throws {
         let rules = try DemoContent.bundledRules(), rule = try #require(rules.first { $0.id == "demo" })
-        let fetcher = MetadataFixtureFetcher(), store = try ObjectStore()
+        let fetcher = TestFetcher(), store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         guard case .directory(let list) = try await key.load(using: repository) else { throw ReaderError.invalidResponse }
         for ref in list.mangaRefs {
@@ -93,25 +93,6 @@ struct KnownMetadataTests {
             #expect(cover.sessionURL == list.key.identityURL && cover.ownerRef == preview.key)
         }
         #expect(await fetcher.kinds == [.directory]) // Neither card needs its detail document.
-        let ref = try #require(list.mangaRefs.first)
-        await #expect(throws: ReaderError.self) { try await ref.load(using: repository, hint: .offlineOnly) }
-        guard case .manga(let full) = try await ref.load(using: repository) else { throw ReaderError.invalidResponse }
-        #expect(full.chapters?.count == 4 && full.tags == ["Science fiction", "Adventure"])
-        #expect(await fetcher.kinds == [.directory, .manga])
-        let before = try #require(try store.snapshot(full.key))
-        let originalCover = try #require(try await full.coverPage(using: repository))
-        _ = try await key.load(using: repository, hint: .forceRefresh)
-        guard case .manga(let kept) = try await ref.load(using: repository, hint: .offlineOnly) else { throw ReaderError.invalidResponse }
-        #expect(kept.chapters?.count == 4 && kept.tags == full.tags)
-        #expect(try store.snapshot(full.key)?.fetchedAt == before.fetchedAt)
-        let keptCover = try #require(try await kept.coverPage(using: repository))
-        #expect(keptCover.refererURL == originalCover.refererURL && keptCover.sessionURL == originalCover.sessionURL)
-        // A fresh repository/process sees the same complete snapshot, including old serialized chapterRefs.
-        let reopened = try ObjectRepository(store: store, rules: rules)
-        guard case .manga(let reopenedManga) = try await ref.preview(using: reopened) else { throw ReaderError.invalidResponse }
-        #expect(reopenedManga.chapters?.count == 4)
-        let decoded = try JSONDecoder().decode(MangaObject.self, from: JSONEncoder().encode(full))
-        #expect(decoded.chapters?.count == 4)
         // Partial updates merge optional knowledge, but a changed rule cannot inherit old metadata.
         let partialKey = list.mangaRefs[1].key
         let empty = MangaObject(key: partialKey, sourceURL: partialKey.identityURL, title: "Updated label")
@@ -121,13 +102,5 @@ struct KnownMetadataTests {
         try store.upsert([.manga(empty)], version: rule.version + 1)
         guard case .manga(let changed) = try #require(try store.snapshot(partialKey)).object else { throw ReaderError.invalidResponse }
         #expect(changed.coverPageRef == nil)
-    }
-}
-
-private actor MetadataFixtureFetcher: SourceFetcher {
-    var kinds: [ContentKind] = []
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        kinds.append(kind)
-        return try #require(try DemoContent.response(for: url))
     }
 }

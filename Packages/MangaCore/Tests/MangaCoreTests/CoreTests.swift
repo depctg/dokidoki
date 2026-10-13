@@ -3,24 +3,6 @@ import Testing
 @testable import MangaCore
 
 struct CoreTests {
-    @Test func mangaOwnsNavigationInDeclaredOrder() {
-        let key = ObjectKey(ruleID: "test", identityURL: URL(string: "https://reader.example/series")!)
-        let refs = [3, 1, 2].map { number in
-            ContentReference(key: ObjectKey(ruleID: key.ruleID, identityURL: URL(string: "https://reader.example/chapter/\(number)")!), title: "Chapter \(number)")
-        }
-        let manga = MangaObject(key: key, sourceURL: key.identityURL, title: "Series", author: nil, summary: nil, coverPageRef: nil, chapterRefs: refs)
-        #expect(manga.nextChapter(after: refs[0].key) == refs[1])
-        #expect(manga.nextChapter(after: refs[1].key) == refs[2])
-        #expect(manga.previousChapter(before: refs[1].key) == refs[0])
-        #expect(manga.previousChapter(before: refs[0].key) == nil)
-        #expect(manga.nextChapter(after: refs[2].key) == nil)
-        let foreign = ObjectKey(ruleID: "other", identityURL: refs[1].key.identityURL)
-        #expect(manga.nextChapter(after: foreign) == nil)
-        #expect(manga.previousChapter(before: foreign) == nil)
-        let empty = MangaObject(key: key, sourceURL: key.identityURL, title: "Empty", author: nil, summary: nil, coverPageRef: nil, chapterRefs: [])
-        #expect(empty.nextChapter(after: refs[0].key) == nil)
-        #expect(empty.previousChapter(before: refs[0].key) == nil)
-    }
     @Test func fixtureImageDecodesWithBoundedSize() async throws {
         let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
@@ -88,7 +70,7 @@ struct CoreTests {
 
     @Test func deduplicationAndVersionInvalidation() async throws {
         let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
-        let fetcher = CountingFetcher()
+        let fetcher = TestFetcher(delay: .milliseconds(40))
         let store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
@@ -120,7 +102,7 @@ struct CoreTests {
     @Test func abandonedResolutionCancelsTransportAndCanRetry() async throws {
         let rules = try DemoContent.bundledRules()
         let store = try ObjectStore()
-        let fetcher = SlowFetcher()
+        let fetcher = TestFetcher(delay: .milliseconds(250))
         let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         let request = Task { try await repository.resolve(key) }
@@ -137,7 +119,7 @@ struct CoreTests {
 
     @Test func cancellationAndIdenticalImportPreserveSharedConsumers() async throws {
         let rules = try DemoContent.bundledRules()
-        let fetcher = SlowFetcher()
+        let fetcher = TestFetcher(delay: .milliseconds(250))
         let repository = try ObjectRepository(store: ObjectStore(), rules: rules, sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         let first = Task { try await repository.resolve(key) }
@@ -153,7 +135,7 @@ struct CoreTests {
     }
 
     @Test func backgroundLoadingDefaultsOnPersistsAndCancelsOldPolicy() async throws {
-        let rules = try DemoContent.bundledRules(), store = try ObjectStore(), fetcher = SlowFetcher()
+        let rules = try DemoContent.bundledRules(), store = try ObjectStore(), fetcher = TestFetcher(delay: .milliseconds(250))
         let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         let old = Task { try await key.load(using: repository) }
@@ -169,23 +151,5 @@ struct CoreTests {
         try await reopened.setBackgroundLoading(true)
         _ = try await key.load(using: reopened, hint: .forceRefresh)
         #expect(await fetcher.backgroundPolicies == [true, false, true])
-    }
-}
-private actor SlowFetcher: SourceFetcher {
-    var count = 0
-    var cancellations = 0
-    var backgroundPolicies: [Bool] = []
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        count += 1
-        backgroundPolicies.append(backgroundLoading)
-        do { try await Task.sleep(for: .milliseconds(250)) }
-        catch { cancellations += 1; throw error }
-        return try DemoContent.response(for: url)!
-    }
-}
-private actor CountingFetcher: SourceFetcher {
-    var count = 0
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        count += 1; try await Task.sleep(for: .milliseconds(40)); return try DemoContent.response(for: url)!
     }
 }

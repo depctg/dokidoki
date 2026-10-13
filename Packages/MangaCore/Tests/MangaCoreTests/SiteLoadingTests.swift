@@ -5,8 +5,8 @@ import Testing
 struct SiteLoadingTests {
     private func rule() throws -> SiteRule { try #require(DemoContent.bundledRules().first { $0.id == "demo" }) }
 
-    @Test func oneHomeBuildsListsAndMangaWithoutDetailRequestsAndPreservesFullSnapshots() async throws {
-        let rule = try rule(), site = try SiteObject(rule: rule), store = try ObjectStore(), fetcher = SiteFixtureFetcher()
+    @Test func oneHomeBuildsListsAndMangaWithoutDetailRequests() async throws {
+        let rule = try rule(), site = try SiteObject(rule: rule), store = try ObjectStore(), fetcher = TestFetcher(delay: .milliseconds(50))
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         async let first = site.load(using: repository)
         async let duplicate = site.load(using: repository)
@@ -14,7 +14,7 @@ struct SiteLoadingTests {
         #expect(lists.map(\.key) == again.map(\.key))
         #expect(lists.count == 2 && lists.allSatisfy { $0.isPreview == true && $0.hasMore == nil })
         #expect(lists.map { $0.mangaRefs.count } == [2, 2])
-        #expect(await fetcher.requests.map(\.path) == ["/home"])
+        #expect(await fetcher.requests.map { $0.url.path } == ["/home"])
         let preview = try #require(lists.first), mangaRef = try #require(preview.mangaRefs.first)
         guard case .manga(let manga) = try await mangaRef.preview(using: repository),
               let cover = try await manga.coverPage(using: repository) else { throw ReaderError.invalidResponse }
@@ -26,12 +26,6 @@ struct SiteLoadingTests {
         await #expect(throws: ReaderError.self) { try await preview.key.load(using: repository, hint: .offlineOnly) }
         guard case .directory(let full) = try await preview.key.load(using: repository) else { throw ReaderError.invalidResponse }
         #expect(full.isPreview != true && full.sortBy?.count == 2)
-        let saved = try #require(try store.snapshot(full.key))
-        _ = try await site.load(using: repository, hint: .forceRefresh)
-        guard case .directory(let retained) = try #require(try store.snapshot(full.key)).object else { throw ReaderError.invalidResponse }
-        #expect(retained.sortBy == full.sortBy && retained.isPreview != true)
-        #expect(try store.snapshot(full.key)?.fetchedAt == saved.fetchedAt)
-        #expect(await fetcher.requests.map(\.path) == ["/home", "/catalog", "/home"])
         var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(full)) as! [String: Any]
         legacy.removeValue(forKey: "isPreview")
         let decoded = try JSONDecoder().decode(DirectoryObject.self, from: JSONSerialization.data(withJSONObject: legacy))
@@ -50,7 +44,10 @@ struct SiteLoadingTests {
         let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json)), site = try SiteObject(rule: rule)
         let first = #"{"name":"First","lists":[{"url":"/catalog?list=a","name":"A","items":[{"url":"/series/a","name":"Manga A","cover":"/images/1.png"}]},{"url":"/catalog?list=empty","name":"Empty","items":[]}]}"#
         let second = #"{"name":"Second","lists":[{"url":"/catalog?list=a","name":"Repeated A","items":[{"url":"/series/a","name":"Manga A","cover":"/images/1.png"}]},{"url":"/catalog?list=b","name":"B","items":[{"url":"/series/b","name":"Manga B","cover":"/images/2.png"}]}]}"#
-        let fetcher = SiteFixtureFetcher(sources: ["part=1": first, "part=2": second]), store = try ObjectStore()
+        let fetcher = TestFetcher(response: { url in
+            try await Task.sleep(for: .milliseconds(url.query == "part=2" ? 5 : 50))
+            return SourceResponse(data: Data((url.query == "part=1" ? first : second).utf8), url: url)
+        }), store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         let lists = try await site.load(using: repository)
         #expect(lists.map(\.title) == ["A", "Empty", "B"])
@@ -79,7 +76,7 @@ struct SiteLoadingTests {
             "directoryLinks": ["path": "//section/h2/a", "read": "attr:href", "fields": ["title": ["path": "."]]]]]
         json["extractors"] = extractors
         let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json)), site = try SiteObject(rule: rule)
-        let store = try ObjectStore(), fetcher = SiteFixtureFetcher()
+        let store = try ObjectStore(), fetcher = TestFetcher(delay: .milliseconds(50))
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         let lists = try await site.load(using: repository), first = try #require(lists.first)
         #expect(lists.count == 2 && lists.allSatisfy { $0.isPreview != true })
@@ -89,8 +86,8 @@ struct SiteLoadingTests {
             let loaded = try await site.load(using: repository, hint: hint)
             #expect(loaded.map(\.key) == lists.map(\.key))
             let added = await fetcher.requests.dropFirst(before.count)
-            #expect(added.filter { $0.path == "/catalog" } == [first.sourceURL])
-            #expect(added.filter { $0.path == "/home" }.count == (hint == .forceRefresh ? 1 : 0))
+            #expect(added.filter { $0.url.path == "/catalog" }.map(\.url) == [first.sourceURL])
+            #expect(added.filter { $0.url.path == "/home" }.count == (hint == .forceRefresh ? 1 : 0))
             #expect(try store.snapshot(first.key)?.ruleVersion == rule.version)
         }
     }
@@ -114,17 +111,5 @@ struct SiteLoadingTests {
             json["extractors"] = extractors
             #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: json)) }
         }
-    }
-}
-
-private actor SiteFixtureFetcher: SourceFetcher {
-    var requests: [URL] = []
-    let sources: [String: String]
-    init(sources: [String: String] = [:]) { self.sources = sources }
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        requests.append(url)
-        try await Task.sleep(for: .milliseconds(url.query == "part=2" ? 5 : 50))
-        if let source = sources[url.query ?? ""] { return SourceResponse(data: Data(source.utf8), url: url) }
-        return try #require(try DemoContent.response(for: url))
     }
 }

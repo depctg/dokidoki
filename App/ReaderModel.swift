@@ -25,7 +25,7 @@ struct ChapterPreview {
         plans.last.map { $0.sourcePageKeys.allSatisfy { analysis[$0] != nil } } ?? false
     }
     var mangaTitle: String?
-    var mangaCover: PageObject?
+    var mangaCover: ObjectKey?
     var previews: [ChapterDirection: ChapterPreview] = [:]
     private let startAtEnd: Bool
     var error: String?
@@ -104,7 +104,7 @@ struct ChapterPreview {
             chapterListID = manga.chapterList(containing: chapter.key, preferredID: chapterListID)?.id
             previousChapter = manga.previousChapter(before: chapter.key, in: chapterListID)
             nextChapter = manga.nextChapter(after: chapter.key, in: chapterListID)
-            mangaCover = try? await manga.coverPage(using: repository)
+            mangaCover = manga.coverPageRef
             try Task.checkCancellation()
             metadataLoaded = true
             if active { save() }

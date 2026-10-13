@@ -11,8 +11,7 @@ struct DirectoryView: View {
     @State private var loadingMore = false
     @State private var loadRequest = 0
     @State private var loadError: String?
-    @State private var phase = ScrollPhase.idle
-    @State private var pull: CGFloat = 0
+    @State private var pull = ScrollPull()
     private let threshold: CGFloat = 72
     private var current: DirectoryObject { accumulated ?? directory }
     private var hasMore: Bool { current.hasMore != false }
@@ -64,7 +63,7 @@ struct DirectoryView: View {
                 }
             }.padding(.horizontal, 20)
             Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles")
-                 : pull >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"))
+                 : pull.distance >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"))
                 .font(.footnote).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity).padding(.vertical, 24)
                 .accessibilityIdentifier("directory.loadMore")
@@ -75,14 +74,9 @@ struct DirectoryView: View {
         }
         .accessibilityIdentifier("directory.list")
         .scrollBounceBehavior(.always)
-        .onScrollGeometryChange(for: CGFloat.self) { distance($0) } action: { _, value in
-            if phase == .interacting { pull = value }
-        }
-        .onScrollPhaseChange { old, new, context in
-            phase = new
-            if old == .interacting, new == .decelerating || new == .idle, distance(context.geometry) >= threshold { requestMore() }
-            if new != .interacting { pull = 0 }
-        }
+        .modifier(ScrollOverpull(enabled: hasMore && !loadingMore, pull: $pull) { pull in
+            if pull.distance >= threshold { requestMore() }
+        })
         .task(id: loadRequest) {
             guard loadingMore, let repository = model.repository else { return }
             defer { loadingMore = false }
@@ -101,10 +95,6 @@ struct DirectoryView: View {
     private func requestMore() {
         guard hasMore, !loadingMore, model.repository != nil else { return }
         loadError = nil; loadingMore = true; loadRequest += 1
-    }
-    private func distance(_ geometry: ScrollGeometry) -> CGFloat {
-        let end = max(-geometry.contentInsets.top, geometry.contentSize.height - geometry.containerSize.height + geometry.contentInsets.bottom)
-        return max(0, geometry.contentOffset.y - end)
     }
     private func sortPicker(_ title: LocalizedStringKey, options: [ContentReference], selected: ObjectKey?) -> some View {
         Picker(title, selection: Binding<ObjectKey?>(get: {

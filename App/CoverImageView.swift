@@ -4,14 +4,15 @@ import MangaCore
 /// A cover is decorative artwork at its original ratio, bounded by the available
 /// space. The decoded object image comes from core's shared cache, with no page pipeline.
 struct CoverImageView: View {
-    let page: PageObject?
+    let key: ObjectKey?
     let model: AppModel
     let bounds: CGSize
+    var hint: CacheHint = .preferCache
     var cornerRadius = 8.0
     @State private var image: CGImage?
     @State private var active = false
     private var requestID: String {
-        "\(page?.key.id ?? "")|\(page?.imageURL?.absoluteString ?? "")|\(page?.refererURL?.absoluteString ?? "")|\(model.loadingRevision)|\(active)"
+        "\(key?.id ?? "")|\(hint)|\(model.loadingRevision)|\(active)"
     }
     var body: some View {
         ZStack {
@@ -31,8 +32,9 @@ struct CoverImageView: View {
         .task(id: requestID) {
             guard active else { return }
             image = nil
-            guard let page, let repository = model.repository else { return }
+            guard let key, let repository = model.repository else { return }
             do {
+                guard case .page(let page) = try await key.load(using: repository, hint: hint) else { return }
                 let decoded = try await page.image(using: repository, maxPixel: 768)
                 try Task.checkCancellation()
                 guard active else { return }

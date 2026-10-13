@@ -3,13 +3,14 @@ import Testing
 @testable import MangaCore
 
 struct PagePreparationTests {
-    private func context() throws -> (PageObject, ObjectRepository, RequestSender, PreparedResourceFetcher) {
+    private func context() throws -> (PageObject, ObjectRepository, RequestSender, TestFetcher) {
         let rule = try #require(DemoContent.bundledRules().first { $0.id == "demo" })
         let owner = ObjectKey(ruleID: rule.id, identityURL: DemoContent.directoryURL)
         // Each test uses an uncached resource identity, without clearing other tests' caches.
         let url = URL(string: "https://demo.mangaviewer.local/images/1.png?preparation=\(UUID())")!
         let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0, imageURL: url, refererURL: owner.identityURL)
-        let fetcher = PreparedResourceFetcher(), sender = RequestSender(fetcher: fetcher)
+        let fetcher = TestFetcher(delay: .milliseconds(180), resource: { try DemoContent.response(for: $0) },
+                                  response: { _ in throw ReaderError.invalidResponse }), sender = RequestSender(fetcher: fetcher)
         return (page, try ObjectRepository(store: ObjectStore(), rules: [rule], sender: sender), sender, fetcher)
     }
 
@@ -35,19 +36,5 @@ struct PagePreparationTests {
         #expect(try await visible.value.height > 0)
         #expect(await fetcher.lookups == 1)
         #expect(await fetcher.cancellations == 0)
-    }
-}
-
-private actor PreparedResourceFetcher: SourceFetcher {
-    var lookups = 0
-    var cancellations = 0
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) throws -> SourceResponse {
-        throw ReaderError.invalidResponse
-    }
-    func cachedResource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) async -> SourceResponse? {
-        lookups += 1
-        do { try await Task.sleep(for: .milliseconds(180)) }
-        catch { cancellations += 1; return nil }
-        return try? SourceResponse(data: DemoContent.resource("1", extension: "png"), url: url)
     }
 }

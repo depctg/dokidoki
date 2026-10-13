@@ -175,7 +175,6 @@ struct MangaPreview: View {
     let model: AppModel
     var shelf = false
     @State private var manga: MangaObject?
-    @State private var cover: PageObject?
     var body: some View {
         Group {
             if shelf {
@@ -191,13 +190,11 @@ struct MangaPreview: View {
             }
         }
         .task(id: "\(reference.id.id)|\(model.loadingRevision)") {
-            manga = nil; cover = nil
+            manga = nil
             do {
                 guard let repository = model.repository else { return }
                 guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
                 try Task.checkCancellation(); manga = loaded
-                let page = try await loaded.coverPage(using: repository, hint: .preferCache)
-                try Task.checkCancellation(); cover = page
             } catch { /* Keep the title and available metadata if the source or cover is unavailable. */ }
         }
     }
@@ -208,6 +205,6 @@ struct MangaPreview: View {
         }
     }
     private var artwork: some View {
-        CoverImageView(page: cover, model: model, bounds: shelf ? CGSize(width: 148, height: 210) : CGSize(width: 52, height: 90))
+        CoverImageView(key: manga?.coverPageRef, model: model, bounds: shelf ? CGSize(width: 148, height: 210) : CGSize(width: 52, height: 90))
     }
 }

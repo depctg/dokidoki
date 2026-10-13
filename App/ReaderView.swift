@@ -16,14 +16,14 @@ struct ReaderView: View {
     @State private var userScrolling = false
     @State private var pendingRestore = false
     @State private var restoreRequest = 0
-    @State private var chapterPull = 0.0
+    @State private var chapterPull = ScrollPull()
     @State private var chapterTransition: ChapterTransition?
     @GestureState private var mousePull = 0.0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
-    private var signedPull: Double { mousePull == 0 ? chapterPull : mousePull }
+    private var signedPull: Double { mousePull == 0 ? chapterPull.fraction : mousePull }
     private var pullReveal: Double { chapterTransition?.fraction ?? abs(signedPull) }
     private var advancing: Bool { chapterTransition != nil }
     private var previewDirection: ChapterDirection? {
@@ -126,7 +126,7 @@ struct ReaderView: View {
         .onKeyPress(.space) { toggleChrome(); return .handled }
         .onKeyPress(.escape) { model.collapseReader(); return .handled }
         .onChange(of: model.preferences) { old, new in
-            reader.save(); zoom = 1; zoomStart = 1; chapterTransition = nil; chapterPull = 0
+            reader.save(); zoom = 1; zoomStart = 1; chapterTransition = nil; chapterPull = ScrollPull()
             // A remounted pager needs a fresh scroll request, even for the same source page.
             if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
             reader.replan(restore: true)
@@ -135,9 +135,9 @@ struct ReaderView: View {
             if finished { reader.finishReading() }
         }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; chapterPull = 0 } }
-        .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; chapterPull = 0 } }
-        .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; chapterPull = 0 } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; chapterPull = ScrollPull() } }
+        .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; chapterPull = ScrollPull() } }
+        .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; chapterPull = ScrollPull() } }
         .overlay { if model.openingChapter { ProgressView("Opening chapter…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) } }
         .onDisappear { chapterTransition = nil; reader.stop() }
         .task(id: model.loadingRevision) {
@@ -273,10 +273,12 @@ struct ReaderView: View {
         .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in scrollOffset = offset; recordScroll() }
         .modifier(chapterOverscroll)
     }
-    private var chapterOverscroll: ReaderOverscroll {
-        ReaderOverscroll(axis: model.preferences.mode == .paged ? .horizontal : .vertical,
+    private var chapterOverscroll: ScrollOverpull {
+        ScrollOverpull(axis: model.preferences.mode == .paged ? .horizontal : .vertical,
                          enabled: zoom == 1 && !advancing && !model.openingChapter && scenePhase == .active,
-                         pull: $chapterPull, onRelease: advanceChapter, onPhaseChange: scrollPhaseChanged)
+                         pull: $chapterPull, onRelease: { pull in
+                             if abs(pull.fraction) >= 0.25 { advanceChapter(pull.distance < 0 ? .previous : .next) }
+                         }, onPhaseChange: scrollPhaseChanged)
     }
     private func scrollPhaseChanged(_ phase: ScrollPhase) {
         userScrolling = phase != .idle
@@ -298,7 +300,7 @@ struct ReaderView: View {
         } completion: {
             guard chapterTransition?.id == transition.id else { return }
             guard model.reader?.id == reader.id, model.readerExpanded, !model.openingChapter else {
-                chapterTransition = nil; chapterPull = 0; return
+                chapterTransition = nil; chapterPull = ScrollPull(); return
             }
             reader.openAdjacent(reference, fromEnd: direction == .previous)
         }

@@ -15,7 +15,7 @@ struct ImageCacheTests {
         let url = URL(string: "https://demo.mangaviewer.local/images/1.png")!
         let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, role: .cover,
             sourceIndex: nil, imageURL: url, refererURL: owner.identityURL)
-        let fetcher = CacheProbe()
+        let fetcher = TestFetcher(resource: { try DemoContent.response(for: $0) }, response: { _ in throw ReaderError.cacheMiss })
         // Upgrade an existing version-keyed cache without touching the sender.
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let identity = "\(rule.id)|\(rule.version)|\(url.absoluteString)|\(owner.identityURL.absoluteString)"
@@ -55,16 +55,5 @@ struct ImageCacheTests {
         #expect(await fetcher.lookups == 4)
         await reopened.clear()
         #expect(await reopened.diskUsage() == 0)
-    }
-}
-
-private actor CacheProbe: SourceFetcher {
-    var lookups = 0
-    func cachedResource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) async -> SourceResponse? {
-        lookups += 1
-        return try? DemoContent.response(for: url)
-    }
-    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        throw ReaderError.cacheMiss
     }
 }
