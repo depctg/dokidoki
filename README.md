@@ -43,7 +43,7 @@ Swipe horizontally to turn pages; the next and previous pages share the image pr
 
 Reader settings use icon choices for paged/scroll mode and right-to-left/left-to-right direction. Image adjustments contain margin trimming, spread detection, facing pages in wide windows and per-page overrides. Refresh and Source website are also in this menu. Opening it does not request text input. Position is saved against original pages, including fractional scroll progress, and restored when switching modes.
 
-Near the end, the reader preloads the next chapter's metadata and first image. Pull past the last page to reveal its title and image; continue when a forward pull reveals 25% of the viewport and is released or finishes decelerating. Short paged pulls return to the last page. The preview also has an explicit Open next chapter action. This uses native SwiftUI scroll geometry, phases and target behavior; 25% is the app's chosen threshold. Chapter changes retain immersive mode.
+`MangaObject` decides previous/next chapters using its ordered chapter references. Near the end, the reader preloads the next chapter's metadata and first image. Pull past the last page to reveal its title and image; continue when a forward pull reveals 25% of the viewport and is released or finishes decelerating. Short paged pulls return to the last page. The preview also has an explicit Open next chapter action. This uses native SwiftUI scroll geometry, phases and target behavior; 25% is the app's chosen threshold. Chapter changes retain immersive mode.
 
 Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.
 

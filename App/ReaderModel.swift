@@ -67,10 +67,8 @@ import MangaCore
             guard case .manga(let manga) = try await repository.resolve(key) else { return }
             try Task.checkCancellation()
             mangaTitle = manga.title
-            if let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }) {
-                if i > 0 { previousChapter = manga.chapterRefs[i - 1] }
-                if manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
-            }
+            previousChapter = manga.previousChapter(before: chapter.key)
+            nextChapter = manga.nextChapter(after: chapter.key)
             if let cover = manga.coverPageRef, case .page(let page) = try? await repository.resolve(cover) { mangaCover = page }
             try Task.checkCancellation()
             metadataLoaded = true

@@ -3,6 +3,24 @@ import Testing
 @testable import MangaCore
 
 struct CoreTests {
+    @Test func mangaOwnsNavigationInDeclaredOrder() {
+        let key = ObjectKey(ruleID: "test", identityURL: URL(string: "https://reader.example/series")!)
+        let refs = [3, 1, 2].map { number in
+            ContentReference(key: ObjectKey(ruleID: key.ruleID, identityURL: URL(string: "https://reader.example/chapter/\(number)")!), title: "Chapter \(number)")
+        }
+        let manga = MangaObject(key: key, sourceURL: key.identityURL, title: "Series", author: nil, summary: nil, coverPageRef: nil, chapterRefs: refs)
+        #expect(manga.nextChapter(after: refs[0].key) == refs[1])
+        #expect(manga.nextChapter(after: refs[1].key) == refs[2])
+        #expect(manga.previousChapter(before: refs[1].key) == refs[0])
+        #expect(manga.previousChapter(before: refs[0].key) == nil)
+        #expect(manga.nextChapter(after: refs[2].key) == nil)
+        let foreign = ObjectKey(ruleID: "other", identityURL: refs[1].key.identityURL)
+        #expect(manga.nextChapter(after: foreign) == nil)
+        #expect(manga.previousChapter(before: foreign) == nil)
+        let empty = MangaObject(key: key, sourceURL: key.identityURL, title: "Empty", author: nil, summary: nil, coverPageRef: nil, chapterRefs: [])
+        #expect(empty.nextChapter(after: refs[0].key) == nil)
+        #expect(empty.previousChapter(before: refs[0].key) == nil)
+    }
     @Test func fixtureImageDecodesWithBoundedSize() async throws {
         let rule = try DemoContent.bundledRules()[0]
         let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)

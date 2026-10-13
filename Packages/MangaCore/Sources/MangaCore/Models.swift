@@ -42,7 +42,17 @@ public struct MangaObject: Codable, Sendable {
     public let author: String?
     public let summary: String?
     public let coverPageRef: ObjectKey?
+    /// Reading order supplied by the parsing rule; this object owns chapter navigation.
     public let chapterRefs: [ContentReference]
+
+    public func nextChapter(after chapter: ObjectKey) -> ContentReference? {
+        guard let index = chapterRefs.firstIndex(where: { $0.key == chapter }), index + 1 < chapterRefs.count else { return nil }
+        return chapterRefs[index + 1]
+    }
+    public func previousChapter(before chapter: ObjectKey) -> ContentReference? {
+        guard let index = chapterRefs.firstIndex(where: { $0.key == chapter }), index > 0 else { return nil }
+        return chapterRefs[index - 1]
+    }
 }
 public struct ChapterObject: Codable, Sendable {
     public let key: ObjectKey
