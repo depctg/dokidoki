@@ -17,12 +17,23 @@ struct ReaderView: View {
     @State private var pendingRestore = false
     @State private var restoreRequest = 0
     @State private var nextReveal = 0.0
-    @State private var pullStart = 0.0
-    @State private var advancing = false
+    @State private var pullEdges: Set<ChapterDirection> = []
+    @State private var pullDirection: ChapterDirection?
+    @State private var chapterTransition: UUID?
+    @GestureState private var mousePull = 0.0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @FocusState private var focused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
+    private var pullReveal: Double { max(nextReveal, abs(mousePull)) }
+    private var advancing: Bool { chapterTransition != nil }
+    private var previewDirection: ChapterDirection? { mousePull == 0 ? pullDirection : (mousePull > 0 ? .next : .previous) }
     private var rtl: Bool { model.preferences.direction == .rightToLeft }
+    private var preloadHint: String? {
+        guard reader.chapterToPrefetch(.next) != nil else { return nil }
+        if reader.previews[.next]?.page != nil { return nil }
+        return reader.previews[.next]?.error ?? "Preloading next chapter…"
+    }
     var body: some View {
         GeometryReader { geometry in
             Group {
@@ -34,14 +45,30 @@ struct ReaderView: View {
                 } else if model.preferences.mode == .paged { paged(size: geometry.size) }
                 else { continuous(size: geometry.size) }
             }
+            .overlay {
+                if pullReveal > 0, let direction = previewDirection {
+                    chapterPreview(direction, size: geometry.size).allowsHitTesting(false)
+                }
+            }
             .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan() }
         }
         .background(Color(white: 0.08)).preferredColorScheme(.dark)
         .overlay(alignment: .bottomTrailing) {
             if !reader.plans.isEmpty {
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(chapter.title).lineLimit(1)
-                    Text("\(reader.index + 1) / \(reader.plans.count)").monospacedDigit()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(chapter.title).lineLimit(1)
+                        Text("\(reader.index + 1) / \(reader.plans.count)").monospacedDigit()
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Page \(reader.index + 1) of \(reader.plans.count)")
+                    .accessibilityValue(chapter.title)
+                    .accessibilityAddTraits(.isStaticText)
+                    .accessibilityIdentifier("reader.pageCounter")
+                    if let preloadHint {
+                        Text(preloadHint).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                            .accessibilityIdentifier("reader.preloadHint")
+                    }
                 }
                     .font(.caption).padding(.horizontal, 10).padding(.vertical, 6)
                     #if os(visionOS)
@@ -51,11 +78,6 @@ struct ReaderView: View {
                     #endif
                     .frame(maxWidth: 220, alignment: .trailing)
                     .padding(16).padding(.bottom, 16).allowsHitTesting(false)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Page \(reader.index + 1) of \(reader.plans.count)")
-                    .accessibilityValue(chapter.title)
-                    .accessibilityAddTraits(.isStaticText)
-                    .accessibilityIdentifier("reader.pageCounter")
             }
         }
         // Toolbars overlay the same full-size reading surface in either chrome state.
@@ -98,23 +120,25 @@ struct ReaderView: View {
         .onKeyPress(.space) { toggleChrome(); return .handled }
         .onKeyPress(.escape) { model.collapseReader(); return .handled }
         .onChange(of: model.preferences) { old, new in
-            reader.save(); zoom = 1; zoomStart = 1; nextReveal = 0
+            reader.save(); zoom = 1; zoomStart = 1; chapterTransition = nil; nextReveal = 0; pullEdges = []; pullDirection = nil
             // A remounted pager needs a fresh scroll request, even for the same source page.
             if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
             reader.replan()
         }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
-        .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save() } }
-        .onChange(of: model.openingChapter) { _, opening in if !opening { advancing = false } }
+        .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; nextReveal = 0; pullEdges = []; pullDirection = nil } }
+        .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; nextReveal = 0; pullEdges = []; pullDirection = nil } }
+        .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; nextReveal = 0; pullDirection = nil } }
         .overlay { if model.openingChapter { ProgressView("Opening chapter…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) } }
-        .onDisappear { reader.stop() }
+        .onDisappear { chapterTransition = nil; reader.stop() }
         .task {
             #if os(macOS)
             focused = true
             #endif
             await reader.activate()
         }
-        .task(id: reader.nextChapterToPrefetch) { await reader.preloadNextChapter() }
+        .task(id: reader.chapterToPrefetch(.next)) { await reader.preloadChapter(.next) }
+        .task(id: reader.chapterToPrefetch(.previous)) { await reader.preloadChapter(.previous) }
         .task(id: "\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
     }
     private var options: some View {
@@ -145,7 +169,9 @@ struct ReaderView: View {
         withAnimation(.easeInOut(duration: 0.2)) { model.readerImmersive.toggle() }
     }
     private func turn(_ delta: Int) {
-        if delta > 0, reader.index == reader.plans.count - 1, reader.nextChapter != nil { advanceChapter(); return }
+        guard !advancing, !model.openingChapter else { return }
+        if delta > 0, reader.index == reader.plans.count - 1 { advanceChapter(.next); return }
+        if delta < 0, reader.index == 0 { advanceChapter(.previous); return }
         reader.move(delta)
         withAnimation(.easeOut(duration: 0.2)) { pagedID = reader.current?.id }
     }
@@ -159,14 +185,13 @@ struct ReaderView: View {
                             .contentShape(Rectangle()).onTapGesture { toggleChrome() }
                             .id(plan.id)
                     }
-                    if reader.nextChapter != nil { nextChapterPreview(size: size).id("next-chapter") }
                 }.scrollTargetLayout()
             }
             .scrollIndicators(.hidden)
-            .scrollTargetBehavior(ChapterPaging(hasNext: reader.nextChapter != nil, reveal: nextReveal))
+            .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
+            .scrollBounceBehavior(.always, axes: .horizontal)
             .scrollPosition(id: $pagedID)
             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
-            .coordinateSpace(name: "chapterViewport")
             .scrollDisabled(zoom > 1)
             .opacity(zoom > 1 ? 0 : 1)
             .onScrollGeometryChange(for: Bool.self) { $0.contentSize.width > 0 && $0.containerSize.width > 0 } action: { _, ready in
@@ -176,18 +201,11 @@ struct ReaderView: View {
                 guard userScrolling, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
                 reader.record(index: index, within: 0, preserveSource: false)
             }
-            .onScrollPhaseChange { old, phase in
-                if phase == .tracking { pullStart = nextReveal }
-                if (old == .interacting || old == .decelerating) && (phase == .decelerating || phase == .idle), nextReveal >= 0.25, nextReveal > pullStart { advanceChapter() }
-                userScrolling = phase != .idle
-                reader.setInteracting(userScrolling)
-                if phase == .idle {
-                    if let index = reader.plans.firstIndex(where: { $0.id == pagedID }) {
-                        reader.record(index: index, within: 0, preserveSource: false)
-                    }
-                    reader.save()
-                    if pendingRestore { pendingRestore = false; restoreRequest += 1 }
-                }
+            .onScrollGeometryChange(for: Double.self) { pullFraction($0) } action: { _, fraction in
+                updatePull(fraction)
+            }
+            .onScrollPhaseChange { old, phase, context in
+                scrollPhaseChanged(from: old, to: phase, geometry: context.geometry)
             }
             if zoom > 1, let plan = reader.current {
                 ScrollView([.horizontal, .vertical]) {
@@ -202,12 +220,20 @@ struct ReaderView: View {
             .onChanged { zoom = min(3, max(1, zoomStart * $0.magnification)) }
             .onEnded { _ in zoomStart = zoom })
         #if os(macOS)
-        .simultaneousGesture(DragGesture(minimumDistance: 30).onEnded { value in
-            guard zoom == 1, abs(value.translation.width) > abs(value.translation.height) else { return }
-            let delta = (value.translation.width > 0 ? 1 : -1) * (rtl ? 1 : -1)
-            if delta > 0, reader.index == reader.plans.count - 1, abs(value.translation.width) < size.width * 0.25 { return }
-            turn(delta)
-        })
+        .simultaneousGesture(DragGesture(minimumDistance: 30)
+            .updating($mousePull) { value, pull, _ in
+                pull = 0
+                guard !advancing, zoom == 1, abs(value.translation.width) > abs(value.translation.height) else { return }
+                let fraction = value.translation.width * (rtl ? 1 : -1) / size.width
+                if (fraction > 0 && reader.index == reader.plans.count - 1) || (fraction < 0 && reader.index == 0) { pull = fraction }
+            }
+            .onEnded { value in
+                guard zoom == 1, abs(value.translation.width) > abs(value.translation.height) else { return }
+                let delta = (value.translation.width > 0 ? 1 : -1) * (rtl ? 1 : -1)
+                if (delta > 0 && reader.index == reader.plans.count - 1) || (delta < 0 && reader.index == 0) {
+                    if abs(value.translation.width) >= size.width * 0.25 { advanceChapter(delta > 0 ? .next : .previous) }
+                } else { turn(delta) }
+            })
         #endif
     }
     private func continuous(size: CGSize) -> some View {
@@ -222,54 +248,131 @@ struct ReaderView: View {
                             Color.clear.preference(key: ReaderFrames.self, value: [plan.id: geometry.frame(in: .named("readerViewport"))])
                         })
                 }
-                if reader.nextChapter != nil { nextChapterPreview(size: CGSize(width: size.width - 24, height: size.height)) }
             }.padding(.horizontal, 12).scrollTargetLayout()
         }
         .accessibilityIdentifier("reader.viewport")
         .coordinateSpace(name: "readerViewport")
-        .coordinateSpace(name: "chapterViewport")
+        .scrollBounceBehavior(.always)
         .scrollPosition($scrollPosition)
         .onPreferenceChange(ReaderFrames.self) { frames = $0; recordScroll() }
         // ScrollPosition's y coordinate starts after the top inset, unlike contentOffset.
         .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in scrollOffset = offset; recordScroll() }
-        .onScrollPhaseChange { old, phase in
-            if phase == .tracking { pullStart = scrollOffset }
-            if (old == .interacting || old == .decelerating) && (phase == .decelerating || phase == .idle), nextReveal >= 0.25, scrollOffset > pullStart { advanceChapter() }
-            userScrolling = phase == .interacting || phase == .decelerating
-            reader.setInteracting(userScrolling)
-            if phase == .idle {
-                reader.save()
-                if pendingRestore { pendingRestore = false; restoreRequest += 1 }
+        .onScrollGeometryChange(for: Double.self) { pullFraction($0) } action: { _, fraction in
+            updatePull(fraction)
+        }
+        .onScrollPhaseChange { old, phase, context in
+            scrollPhaseChanged(from: old, to: phase, geometry: context.geometry)
+        }
+    }
+    // Negative distance is native rubber-banding beyond a boundary, excluding insets.
+    private func distanceToBoundary(_ geometry: ScrollGeometry, _ direction: ChapterDirection) -> Double {
+        if model.preferences.mode == .paged {
+            return direction == .previous ? geometry.contentOffset.x + geometry.contentInsets.leading
+                : max(-geometry.contentInsets.leading, geometry.contentSize.width - geometry.containerSize.width + geometry.contentInsets.trailing) - geometry.contentOffset.x
+        }
+        return direction == .previous ? geometry.contentOffset.y + geometry.contentInsets.top
+            : max(-geometry.contentInsets.top, geometry.contentSize.height - geometry.containerSize.height + geometry.contentInsets.bottom) - geometry.contentOffset.y
+    }
+    private func pullFraction(_ geometry: ScrollGeometry) -> Double {
+        let extent = model.preferences.mode == .paged ? geometry.containerSize.width : geometry.containerSize.height
+        let start = distanceToBoundary(geometry, .previous)
+        return (start < 0 ? start : max(0, -distanceToBoundary(geometry, .next))) / max(1, extent)
+    }
+    private func updatePull(_ fraction: Double) {
+        guard !advancing else { return }
+        let direction: ChapterDirection = fraction < 0 ? .previous : .next
+        nextReveal = pullEdges.contains(direction) ? abs(fraction) : 0
+        if nextReveal > 0 { pullDirection = direction }
+    }
+    private func scrollPhaseChanged(from old: ScrollPhase, to phase: ScrollPhase, geometry: ScrollGeometry) {
+        if !advancing, phase == .tracking || (old == .idle && phase == .interacting) {
+            // A fresh pull starts at a settled boundary; arriving by scrolling/momentum cannot arm it.
+            pullEdges = old == .idle && zoom == 1 ? Set(ChapterDirection.allCases.filter { abs(distanceToBoundary(geometry, $0)) < 2 }) : []
+            nextReveal = 0; pullDirection = nil
+        }
+        let fraction = pullFraction(geometry)
+        let direction: ChapterDirection = fraction < 0 ? .previous : .next
+        if old == .interacting && (phase == .decelerating || phase == .idle), pullEdges.contains(direction), abs(fraction) >= 0.25 {
+            advanceChapter(direction)
+        }
+        userScrolling = phase != .idle
+        reader.setInteracting(userScrolling)
+        if phase == .idle {
+            if !advancing { nextReveal = 0; pullDirection = nil }; pullEdges = []
+            if model.preferences.mode == .paged, let index = reader.plans.firstIndex(where: { $0.id == pagedID }) {
+                reader.record(index: index, within: 0, preserveSource: false)
+            }
+            reader.save()
+            if pendingRestore { pendingRestore = false; restoreRequest += 1 }
+        }
+    }
+    private func chapterPreview(_ direction: ChapterDirection, size: CGSize) -> some View {
+        let paged = model.preferences.mode == .paged
+        let forward = direction == .next
+        let reference = reader.adjacentChapter(direction)
+        let preview = reader.previews[direction]
+        let ready = pullReveal >= 0.25 && reference != nil
+        let gap = min(paged ? size.width : size.height, (paged ? size.width : size.height) * pullReveal)
+        let restingGap = (paged ? size.width : size.height) * 0.25
+        let left = forward == rtl
+        let center = paged ? CGPoint(x: left ? gap / 2 : size.width - gap / 2, y: size.height / 2)
+            : CGPoint(x: size.width / 2, y: forward ? size.height - gap / 2 : gap / 2)
+        let growth = min(1.15, pullReveal / 0.25)
+        let imageWidth = max(1, min(paged ? 260 : 240, size.width * (paged ? 0.42 : 0.34)) * growth)
+        let imageHeight = max(1, size.height * (paged ? 0.4 : 0.23) * growth)
+        return ZStack {
+            // Fixed typography/position: the expanding gap unmasks text without reflowing it.
+            VStack(spacing: 6) {
+                Text(reference?.title ?? (forward ? "No next chapter" : "No previous chapter"))
+                    .font(.caption.bold()).lineLimit(2).accessibilityIdentifier("reader.continuationTitle")
+                Image(systemName: reference == nil ? "book.closed" : (ready ? "checkmark.circle.fill" : "arrow.down.circle"))
+                    .contentTransition(.symbolEffect(.replace)).font(.title3).frame(width: 24, height: 24)
+                ZStack {
+                    Text("Pull farther to continue").opacity(reference != nil && !ready ? 1 : 0)
+                    Text("Release for \(forward ? "next" : "previous") chapter").opacity(ready ? 1 : 0)
+                    Text(forward ? "End of manga" : "Beginning of manga").opacity(reference == nil ? 1 : 0)
+                }.font(.caption2).accessibilityIdentifier("reader.continuationHint")
+            }
+            .multilineTextAlignment(.center)
+            .foregroundStyle(ready ? Color.accentColor : .secondary)
+            .padding(.horizontal, 8)
+            .frame(width: paged ? min(180, restingGap - 8) : size.width * 0.55)
+            .fixedSize(horizontal: false, vertical: true)
+            .position(x: paged ? (left ? restingGap / 2 : size.width - restingGap / 2) : size.width * 0.7,
+                      y: paged ? size.height * 0.72 : (forward ? size.height - restingGap * 0.75 : restingGap * 0.75))
+            .animation(.smooth(duration: 0.2), value: ready)
+            .mask {
+                Rectangle().frame(width: paged ? gap : size.width, height: paged ? size.height : gap).position(center)
+            }
+            if reference != nil {
+                Group {
+                    if let page = preview?.page { PageImageView(page: page, model: model).accessibilityIdentifier("reader.continuationImage") }
+                    else if let error = preview?.error { Text(error).font(.caption) }
+                    else { Image(systemName: "photo").foregroundStyle(.secondary) }
+                }
+                .frame(width: advancing ? size.width : imageWidth, height: advancing ? size.height : imageHeight)
+                .background(Color(white: 0.08))
+                .position(x: advancing ? size.width / 2 : (paged ? center.x : size.width * 0.24),
+                          y: advancing ? size.height / 2 : (paged ? size.height * 0.43 : center.y))
+                .opacity(advancing ? 1 : min(1, pullReveal / 0.08))
             }
         }
-    }
-    private func nextChapterPreview(size: CGSize) -> some View {
-        let paged = model.preferences.mode == .paged
-        return VStack(spacing: 16) {
-            Text("Next chapter").font(.caption).foregroundStyle(.secondary)
-            Text(reader.nextChapter?.title ?? "").font(.headline).accessibilityIdentifier("reader.nextChapterTitle")
-            if let page = reader.nextPreview {
-                PageImageView(page: page, model: model).frame(maxWidth: 260, maxHeight: size.height * 0.45)
-                    .accessibilityIdentifier("reader.nextPreviewImage")
-            } else if let error = reader.nextPreviewError { Text(error).font(.caption) }
-            else { ProgressView("Loading preview…") }
-            Text(nextReveal >= 0.25 ? "Release to continue" : "Keep pulling to continue").font(.caption).foregroundStyle(.secondary)
-            Button("Open next chapter", systemImage: "forward.end") { advanceChapter() }.buttonStyle(.bordered)
-        }
-        .frame(maxWidth: 260)
-        .padding(24)
-        .frame(width: size.width, height: size.height, alignment: paged ? (rtl ? .trailing : .leading) : .top)
         .environment(\.layoutDirection, .leftToRight)
-        .onGeometryChange(for: Double.self) { geometry in
-            let visible = geometry.frame(in: .named("chapterViewport")).intersection(CGRect(origin: .zero, size: size))
-            guard !visible.isNull else { return 0 }
-            return paged ? visible.width / max(1, size.width) : visible.height / max(1, size.height)
-        } action: { nextReveal = $0 }
     }
-    private func advanceChapter() {
-        guard !advancing, reader.nextChapter != nil else { return }
-        advancing = true
-        reader.openAdjacent(reader.nextChapter)
+    private func advanceChapter(_ direction: ChapterDirection) {
+        guard !advancing, !model.openingChapter, let reference = reader.adjacentChapter(direction) else { return }
+        let transition = UUID()
+        pullDirection = direction; nextReveal = max(0.25, pullReveal)
+        // Complete the native enlargement after release, before replacing the reader.
+        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
+            chapterTransition = transition
+        } completion: {
+            guard chapterTransition == transition else { return }
+            guard model.reader?.id == reader.id, model.readerExpanded, !model.openingChapter else {
+                chapterTransition = nil; nextReveal = 0; pullDirection = nil; return
+            }
+            reader.openAdjacent(reference, fromEnd: direction == .previous)
+        }
     }
     private func recordScroll() {
         guard !restoring, userScrolling else { return }
@@ -292,18 +395,6 @@ struct ReaderView: View {
         do { try await Task.sleep(for: .milliseconds(100)); try Task.checkCancellation() } catch { return }
         guard !userScrolling else { pendingRestore = true; return }
         if let rect = frames[plan.id] { scrollPosition.scrollTo(y: max(0, scrollOffset + rect.minY + within * rect.height)) }
-    }
-}
-/// Native paging everywhere except a short pull into the next-chapter preview, which snaps back.
-private struct ChapterPaging: ScrollTargetBehavior {
-    let hasNext: Bool
-    let reveal: Double
-    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        PagingScrollTargetBehavior().updateTarget(&target, context: context)
-        guard hasNext, reveal < 0.25 else { return }
-        let width = context.containerSize.width
-        // Scroll targets use logical content coordinates, including in right-to-left layouts.
-        target.rect.origin.x = min(target.rect.minX, max(0, context.contentSize.width - 2 * width))
     }
 }
 private struct ReaderFrames: PreferenceKey {

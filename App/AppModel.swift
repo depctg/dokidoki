@@ -75,7 +75,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
         catch { self.error = error.localizedDescription }
     }
-    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false) {
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
         chapterRequest?.cancel()
         if reader?.chapter.key == key, hint != .forceRefresh {
             openingChapter = false
@@ -88,16 +88,16 @@ enum AppSection: String, CaseIterable, Identifiable {
             do {
                 guard let repository, case .chapter(let chapter) = try await key.load(using: repository, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
                 try Task.checkCancellation()
-                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion)
+                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd)
             } catch is CancellationError {} catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
-    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false) {
+    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
         chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
         reader?.stop()
-        reader = ReaderModel(chapter: chapter, app: self)
+        reader = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd)
         if !preserveImmersion { readerImmersive = false }
         readerExpanded = expand
     }

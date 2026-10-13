@@ -203,11 +203,11 @@ protocol PageProcessor: Sendable {
 Sophisticated image stitching, seam reconstruction, and content-aware art repair are follow-up processors, not V1 requirements. Use Image I/O for efficient decode/downsampling, Core Graphics for cropping/composition, and Core Image where filters actually help. No third-party computer-vision dependency is needed initially.
 
 **Reading modes:**
-- **Paged:** snap through display units with tap/click and keyboard navigation; zoom to fit, retain an optional two-page presentation on wide screens.
+- **Paged:** use native view-aligned scrolling with an always-by-one limit for each swipe, plus keyboard navigation; zoom to fit, retain an optional two-page presentation on wide screens.
 - **Continuous scroll:** lazily render display units vertically, with stable spacing and alignment. Avoid preloading the full chapter.
 - **Position:** store progress by `(chapterKey, original sourcePageKey, fractionalOffset)` rather than a mutable display index. Switching modes, processors, or window widths must not lose the user's place.
 
-Handle loading, failed images (retry), empty chapters, and end-of-chapter navigation. Processing failures degrade to the original page instead of blocking reading.
+Handle loading, failed images (retry), empty chapters, and end-of-chapter navigation. Both reading modes require a fresh overscroll pull from a settled boundary and a 25% viewport threshold on release for adjacent chapter navigation. Normal scrolling/deceleration never triggers it. Keep previews outside scrollable content; native geometry/phases own the interaction. A boundary image grows in the overscroll gap above plain, readable title/threshold feedback with fixed typography and position; clip the initial reveal instead of reflowing text, with no progress bar. Finish native enlargement quickly after release before switching; invalidate delayed navigation if the interaction is canceled or superseded. Show next-chapter loading/unavailable status in the small badge on the final two display pages; hide it when ready. Reduce Motion skips enlargement. Backward pulls enter the previous chapter at its last page; forward pulls enter the next chapter at its first. Missing neighbors show a boundary message. Processing failures degrade to the original page instead of blocking reading.
 
 ## 8. Views and adaptive platforms
 

@@ -1,6 +1,12 @@
 import SwiftUI
 import MangaCore
 
+enum ChapterDirection: CaseIterable { case previous, next }
+struct ChapterPreview {
+    var page: PageObject?
+    var error: String?
+}
+
 @MainActor @Observable final class ReaderModel: Identifiable {
     let id = UUID()
     let chapter: ChapterObject
@@ -15,8 +21,8 @@ import MangaCore
     var nextChapter: ContentReference?
     var mangaTitle: String?
     var mangaCover: PageObject?
-    var nextPreview: PageObject?
-    var nextPreviewError: String?
+    var previews: [ChapterDirection: ChapterPreview] = [:]
+    private let startAtEnd: Bool
     var error: String?
     var loading = true
     var revision = 0
@@ -27,13 +33,19 @@ import MangaCore
     private var metadataLoaded = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
-    var nextChapterToPrefetch: ObjectKey? { !plans.isEmpty && index >= plans.count - 2 ? nextChapter?.key : nil }
+    func adjacentChapter(_ direction: ChapterDirection) -> ContentReference? {
+        direction == .next ? nextChapter : previousChapter
+    }
+    func chapterToPrefetch(_ direction: ChapterDirection) -> ObjectKey? {
+        guard !plans.isEmpty, direction == .next ? index >= plans.count - 2 : index <= 1 else { return nil }
+        return adjacentChapter(direction)?.key
+    }
     private var planning: Task<Void, Never>?
     private var prefetch: Task<Void, Never>?
     private var rule: SiteRule?
 
-    init(chapter: ChapterObject, app: AppModel) {
-        self.chapter = chapter; self.app = app
+    init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false) {
+        self.chapter = chapter; self.app = app; self.startAtEnd = startAtEnd
         mangaTitle = app.saved.first { $0.key == chapter.mangaRef }?.title
             ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle
     }
@@ -53,8 +65,8 @@ import MangaCore
             try Task.checkCancellation(); pages = loaded
             overrides = try app.store?.preference("overrides:" + chapter.key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
             let position = try app.store?.positions().first { $0.chapterKey == chapter.key }
-            source = pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key
-            fraction = position?.fractionalOffset ?? 0
+            source = startAtEnd ? pages.last?.key : (pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key)
+            fraction = startAtEnd ? 0.999_999 : (position?.fractionalOffset ?? 0)
             replan()
             loading = false
             await loadMangaMetadata()
@@ -74,21 +86,23 @@ import MangaCore
             if active { save() }
         } catch { /* Pages remain usable; activation retries metadata after cancellation/failure. */ }
     }
-    /// Only the adjacent chapter metadata and its first image; the view owns cancellation.
-    func preloadNextChapter() async {
-        guard let key = nextChapterToPrefetch, nextPreview == nil, let repository = app.repository else { return }
-        nextPreviewError = nil
+    /// Only adjacent metadata and the boundary image; the view owns cancellation.
+    func preloadChapter(_ direction: ChapterDirection) async {
+        guard let key = chapterToPrefetch(direction), previews[direction]?.page == nil, let repository = app.repository else { return }
+        previews[direction] = ChapterPreview()
         do {
-            guard case .chapter(let next) = try await key.load(using: repository),
-                  let page = try await next.page(at: 0, using: repository) else { nextPreviewError = "Preview unavailable"; return }
+            guard case .chapter(let chapter) = try await key.load(using: repository),
+                  let page = try await chapter.page(at: direction == .next ? 0 : chapter.pageRefs.count - 1, using: repository) else {
+                previews[direction] = ChapterPreview(error: "Preview unavailable"); return
+            }
             _ = try await page.image(using: repository)
             try Task.checkCancellation()
-            nextPreview = page
-        } catch is CancellationError {} catch { if !Task.isCancelled { nextPreviewError = "Preview unavailable" } }
+            previews[direction] = ChapterPreview(page: page)
+        } catch is CancellationError {} catch { if !Task.isCancelled { previews[direction] = ChapterPreview(error: "Preview unavailable") } }
     }
-    func openAdjacent(_ reference: ContentReference?) {
-        guard let reference else { return }
-        app.openChapter(reference.key, preserveImmersion: true)
+    func openAdjacent(_ reference: ContentReference?, fromEnd: Bool = false) {
+        guard app.reader?.id == id, let reference else { return }
+        app.openChapter(reference.key, preserveImmersion: true, fromEnd: fromEnd)
     }
     func replan() {
         guard active else { return }
@@ -142,7 +156,8 @@ import MangaCore
         catch { app.error = error.localizedDescription }; replan()
     }
     func save() {
-        guard let source else { return }
+        // An outgoing view may settle during the chapter crossfade after stop().
+        guard active, app.reader?.id == id, let source else { return }
         do {
             try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
                 sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,

@@ -106,6 +106,11 @@ import XCTest
         start.press(forDuration: 0.05, thenDragTo: end)
         XCTAssertTrue(wait { counter.label.hasPrefix("Page 2 ") && self.visiblePage(in: app) == "Comic page 2" })
         let advanced = counter.label
+        // Native one-view targeting must also bound fast flicks in either direction.
+        start.press(forDuration: 0.05, thenDragTo: end, withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(wait { counter.label.hasPrefix("Page 3 ") && self.visiblePage(in: app) == "Comic page 3" })
+        end.press(forDuration: 0.05, thenDragTo: start, withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertTrue(wait { counter.label == advanced && self.visiblePage(in: app) == "Comic page 2" })
 
         // Paged mode collapses from a top pull, then resumes the actual same source image.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.13))
@@ -155,12 +160,15 @@ import XCTest
             let from = leftward ? end : start, to = leftward ? start : end
             for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { from.press(forDuration: 0.05, thenDragTo: to) }
             XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
+            XCTAssertEqual(title.label, "1 · Arrival", "Reaching the last page must not open the next chapter")
+            XCTAssertFalse(app.staticTexts["reader.continuationTitle"].exists)
             from.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.7 : 0.35, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
             XCTAssertEqual(title.label, "1 · Arrival")
             XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" })
             let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             if leftward { center.tap() }
-            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
+            app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.9 : 0.1, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.1 : 0.9, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
             XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" })
             XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 1" })
             if leftward {
@@ -169,14 +177,47 @@ import XCTest
             }
             XCTAssertTrue(wait { app.buttons["Previous chapter"].isEnabled })
             XCTAssertFalse(app.buttons["Next chapter"].isEnabled)
-            app.buttons["Previous chapter"].tap()
-            XCTAssertTrue(wait { title.label == "1 · Arrival" })
+            to.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.35 : 0.7, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            XCTAssertEqual(title.label, "2 · Starlight", "A short backward pull must not switch chapters")
+            app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.1 : 0.9, dy: 0.5))
+                .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.9 : 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            XCTAssertTrue(wait { title.label == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
+            XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" })
         }
         select("Scroll", in: "Mode", app: app)
-        for _ in 0..<8 where title.label == "1 · Arrival" {
+        let lastPage = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 4")).firstMatch
+        for _ in 0..<8 where !lastPage.exists || lastPage.frame.maxY > app.frame.maxY + 2 {
             app.swipeUp()
+            XCTAssertEqual(title.label, "1 · Arrival", "Scrolling to the bottom must not switch chapters")
         }
+        XCTAssertTrue(lastPage.exists && lastPage.frame.maxY <= app.frame.maxY + 2)
+        XCTAssertFalse(app.staticTexts["reader.continuationTitle"].exists)
+        // A short flick may bounce farther after release; momentum must never arm continuation.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)), withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertEqual(title.label, "1 · Arrival")
+        XCTAssertTrue(wait { !app.staticTexts["reader.continuationTitle"].exists })
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.3)
         XCTAssertTrue(wait { title.label == "2 · Starlight" })
+        // The matching top-edge pull returns to the previous chapter's last page/bottom.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)), withVelocity: .fast, thenHoldForDuration: 0)
+        XCTAssertEqual(title.label, "2 · Starlight")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        XCTAssertTrue(wait { title.label == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
+        XCTAssertTrue(wait { lastPage.exists && abs(lastPage.frame.maxY - app.frame.maxY) < 3 })
+        // Missing adjacent chapters stay on the boundary even after a long pull.
+        app.buttons["Next chapter"].tap()
+        XCTAssertTrue(wait { title.label == "2 · Starlight" })
+        select("Paged", in: "Mode", app: app)
+        for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { end.press(forDuration: 0.05, thenDragTo: start) }
+        XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 1)
+        XCTAssertEqual(title.label, "2 · Starlight")
+        XCTAssertTrue(counter.label.hasPrefix("Page 4 "))
     }
     private func checkImmersion(in app: XCUIApplication) {
         let image = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch
