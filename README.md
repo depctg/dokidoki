@@ -22,7 +22,9 @@ xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
 open build/Build/Products/Debug/MangaViewer.app
 ```
 
-The app opens in **My Library**, with saved titles and recent reading. On iPhone, iPad, and visionOS, native floating tabs switch between **My Library**, **Browse**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own navigation history. macOS uses a sidebar. Reading history retains one chapter per manga; switching between two chapters of the same manga in different sections can reset the older chapter's page position.
+The app opens in **My Library**, with saved titles and recent reading. On iPhone, iPad, and visionOS, native floating tabs switch between **My Library**, **Browse**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own browsing history. macOS uses a sidebar.
+
+One reader is shared by the whole app in a single main window. Opening another chapter replaces the active chapter. Collapse it to a small glass **Resume** bar, available across the main views; tapping the bar returns to the same page. In paged mode, pull down from the top; in scroll mode, swipe inward from the physical left edge. The collapse button and Escape also return to the main views. On iPhone the native accessory sits above the tabs and moves inline when they minimize; iPad keeps it at the bottom, visionOS uses a bottom window ornament, and macOS places it below the top toolbar. The iOS accessory follows Apple's [Music accessory pattern](https://developer.apple.com/videos/play/wwdc2025/323/); Mac uses an in-window adaptation.
 
 In **Browse**, choose **Open the reading room** for a complete offline fixture, or open `https://www.manhuagui.com/` to browse the bundled live rule. Chapter availability depends on the source website. The app does not bypass site access restrictions.
 
@@ -35,7 +37,7 @@ swift run --package-path Packages/MangaCore manga-probe --rendered https://www.m
 
 See [the rule format](docs/RULES.md) for XPath/JSON selectors, regex captures, named variables, and simple URL templates. All site-specific parsing, including rendered chapter metadata and image URL construction, belongs in JSON. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
 
-Swipe horizontally to turn pages; the next and previous pages share the image prefetch cache. Tap/click the manga to hide or restore all controls, including the floating page counter. The compact title shows the chapter name. Pinch zooms in paged mode; arrow keys turn pages, Space toggles controls, and Escape restores them. On Mac, drag with the mouse or scroll with a trackpad to change pages.
+Swipe horizontally to turn pages; the next and previous pages share the image prefetch cache. Tap/click the manga to hide or restore all reader controls, including the floating page counter. The compact title shows the chapter name. Pinch zooms in paged mode; arrow keys turn pages and Space toggles controls. On Mac, drag with the mouse or scroll with a trackpad to change pages.
 
 Reader options include paged/vertical modes, reading direction, conservative margin trimming, spread detection, and facing pages in wide windows. You can keep, split, or pair the current original page manually. Position is saved against original pages, including fractional scroll progress, and restored when switching modes.
 

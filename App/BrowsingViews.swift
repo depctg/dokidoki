@@ -6,7 +6,6 @@ struct RootView: View {
     @State private var urlText = ""
     @FocusState private var urlFocused: Bool
     @State private var columns: NavigationSplitViewVisibility = .automatic
-    @State private var previousColumns: NavigationSplitViewVisibility = .automatic
     var body: some View {
         Group {
             #if os(macOS)
@@ -22,6 +21,12 @@ struct RootView: View {
                 navigation(for: model.section)
                     .id(model.section)
             }
+            .safeAreaInset(edge: .top) {
+                if let reader = model.reader, !model.readerExpanded {
+                    ReaderResumeBar(reader: reader, model: model)
+                        .frame(maxWidth: 600).glassEffect(.regular, in: .capsule).padding(8)
+                }
+            }
             #else
             TabView(selection: $model.section) {
                 ForEach(AppSection.allCases) { section in
@@ -31,23 +36,37 @@ struct RootView: View {
                 }
             }
             .tabViewStyle(.tabBarOnly)
+            #if os(iOS)
+            .tabBarMinimizeBehavior(.onScrollDown)
+            .modifier(ReaderTabAccessory(model: model))
+            #else
+            .ornament(visibility: model.reader != nil && !model.readerExpanded ? .visible : .hidden,
+                      attachmentAnchor: .scene(.bottom)) {
+                if let reader = model.reader {
+                    ReaderResumeBar(reader: reader, model: model)
+                        .frame(width: 440).glassBackgroundEffect(in: Capsule())
+                }
+            }
+            #endif
             #endif
         }
-        .alert("MangaViewer", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+        .overlay {
+            if model.openingChapter && !model.readerExpanded { ProgressView("Opening chapter…").padding(20).background(.regularMaterial, in: .rect(cornerRadius: 16)) }
+        }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $model.readerExpanded) {
+            ReaderPresentation(model: model).presentationBackground(.clear)
+        }
+        #else
+        .sheet(isPresented: $model.readerExpanded) {
+            ReaderPresentation(model: model).frame(minWidth: 600, idealWidth: 1000, minHeight: 600, idealHeight: 800)
+        }
+        #endif
+        .alert("MangaViewer", isPresented: Binding(get: { model.error != nil && !model.readerExpanded }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
         .onChange(of: model.openURLRequest) { _, _ in urlFocused = true }
-        .onChange(of: model.readerImmersive) { _, immersive in
-            if immersive { previousColumns = columns; columns = .detailOnly }
-            else { columns = previousColumns }
-        }
-        .onChange(of: model.path) { _, _ in model.readerImmersive = false }
-        .onChange(of: model.section) { _, _ in model.readerImmersive = false }
-        #if os(macOS)
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .windowToolbar)
-        #else
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar)
-        #endif
+        .onChange(of: model.readerExpanded) { _, expanded in if expanded { urlFocused = false } }
     }
     private func navigation(for section: AppSection) -> some View {
         NavigationStack(path: Binding(get: { model.paths[section, default: []] }, set: { model.paths[section] = $0 })) {
@@ -58,11 +77,13 @@ struct RootView: View {
                 case .settings: SettingsView(model: model)
                 }
             }
-            .navigationDestination(for: ObjectKey.self) { ObjectScreen(key: $0, model: model) }
+            .navigationDestination(for: ObjectKey.self) { key in
+                ObjectScreen(key: key, model: model) { chapter in
+                    if model.paths[section]?.last == key { model.paths[section]?.removeLast() }
+                    model.presentChapter(chapter)
+                }
+            }
         }
-        #if !os(macOS)
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .tabBar)
-        #endif
     }
     private var browse: some View {
         ScrollView {
@@ -73,8 +94,8 @@ struct RootView: View {
                 HStack {
                     TextField("Website URL", text: $urlText).textFieldStyle(.roundedBorder)
                         .focused($urlFocused)
-                        .onSubmit { Task { await model.open(urlText) } }
-                    Button("Open", systemImage: "arrow.right") { Task { await model.open(urlText) } }.buttonStyle(.borderedProminent)
+                        .onSubmit { urlFocused = false; Task { await model.open(urlText) } }
+                    Button("Open", systemImage: "arrow.right") { urlFocused = false; Task { await model.open(urlText) } }.buttonStyle(.borderedProminent)
                 }
                 Button { Task { await model.open(DemoContent.directoryURL.absoluteString) } } label: {
                     Label("Open the reading room", systemImage: "sparkles").padding(.vertical, 8)
@@ -93,6 +114,7 @@ struct RootView: View {
 struct ObjectScreen: View {
     let key: ObjectKey
     let model: AppModel
+    let openChapter: (ChapterObject) -> Void
     @State private var object: ContentObject?
     @State private var error: String?
     @State private var loading = false
@@ -103,7 +125,7 @@ struct ObjectScreen: View {
                 switch object {
                 case .directory(let directory): DirectoryView(directory: directory, model: model)
                 case .manga(let manga): MangaView(manga: manga, model: model)
-                case .chapter(let chapter): ReaderView(chapter: chapter, model: model)
+                case .chapter: ProgressView("Opening reader…")
                 case .page(let page): PageImageView(page: page, model: model)
                 }
             } else if loading { ProgressView("Opening content…").frame(maxWidth: .infinity, maxHeight: .infinity) }
@@ -124,7 +146,12 @@ struct ObjectScreen: View {
     private func load(_ hint: CacheHint) async {
         guard let repository = model.repository else { return }
         loading = true; error = nil; defer { loading = false }
-        do { let result = try await repository.resolve(key, hint: hint); try Task.checkCancellation(); object = result; revision = UUID() }
+        do {
+            let result = try await repository.resolve(key, hint: hint)
+            try Task.checkCancellation()
+            object = result; revision = UUID()
+            if case .chapter(let chapter) = result { openChapter(chapter) }
+        }
         catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
 }
@@ -173,13 +200,13 @@ struct MangaView: View {
                     }
                 }.padding(.vertical, 12)
                 if let position = model.recent.first(where: { $0.mangaKey == manga.key }) {
-                    NavigationLink(value: position.chapterKey) { Label("Resume reading", systemImage: "play.fill") }
+                    Button("Resume reading", systemImage: "play.fill") { model.openChapter(position.chapterKey) }
                 } else if let first = manga.chapterRefs.first {
-                    NavigationLink(value: first.key) { Label("Start reading", systemImage: "play.fill") }
+                    Button("Start reading", systemImage: "play.fill") { model.openChapter(first.key) }
                 }
             }
             Section("\(manga.chapterRefs.count) chapters") {
-                ForEach(manga.chapterRefs) { chapter in NavigationLink(chapter.title, value: chapter.key) }
+                ForEach(manga.chapterRefs) { chapter in Button(chapter.title) { model.openChapter(chapter.key) } }
                 if manga.chapterRefs.isEmpty { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
             }
         }.navigationTitle(manga.title)
@@ -197,7 +224,9 @@ struct LibraryView: View {
             Section("Saved manga") { ForEach(model.saved) { NavigationLink($0.title, value: $0.key) } }
             Section("Recent reading") {
                 ForEach(model.recent, id: \.mangaKey) { position in
-                    NavigationLink(value: position.chapterKey) { VStack(alignment: .leading) { Text(position.title); Text(position.updatedAt, style: .relative).font(.caption).foregroundStyle(.secondary) } }
+                    Button { model.openChapter(position.chapterKey) } label: {
+                        VStack(alignment: .leading) { Text(position.title); Text(position.updatedAt, style: .relative).font(.caption).foregroundStyle(.secondary) }
+                    }.tint(.primary)
                 }
             }
         }.navigationTitle("My Library")

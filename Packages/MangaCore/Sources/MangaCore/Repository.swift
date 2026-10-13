@@ -6,7 +6,12 @@ public actor ObjectRepository {
     public let store: ObjectStore
     private var registry: RuleRegistry
     private let fetcher: any SourceFetcher
-    private var inFlight: [ObjectKey: Task<ContentObject, Error>] = [:]
+    private struct Request {
+        let id = UUID()
+        let task: Task<ContentObject, Error>
+        var consumers: Set<UUID> = []
+    }
+    private var inFlight: [ObjectKey: Request] = [:]
     private var generation = 0
 
     public init(store: ObjectStore, rules: [SiteRule], fetcher: any SourceFetcher = DefaultSourceFetcher()) throws {
@@ -30,9 +35,10 @@ public actor ObjectRepository {
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != id })
         try store.removeRule(id); invalidate(); registry = next
     }
-    private func invalidate() { generation += 1; inFlight.values.forEach { $0.cancel() }; inFlight.removeAll() }
+    private func invalidate() { generation += 1; inFlight.values.forEach { $0.task.cancel() }; inFlight.removeAll() }
     public func clearContent() throws { invalidate(); try store.clearContent() }
     public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
+        try Task.checkCancellation()
         let rule = try rule(for: key)
         let cached = try store.snapshot(key)
         if let cached, cached.ruleVersion == rule.version,
@@ -45,7 +51,7 @@ public actor ObjectRepository {
             _ = try await resolve(owner, hint: .forceRefresh)
             guard let child = try store.snapshot(key) else { throw ReaderError.cacheMiss }; return child.object
         }
-        if let task = inFlight[key] { return try await task.value }
+        if let request = inFlight[key] { return try await consume(request, key: key) }
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
         guard canonical == key else { return try await resolve(canonical, hint: hint) }
         let currentGeneration = generation
@@ -58,8 +64,28 @@ public actor ObjectRepository {
             try self.store.upsert(objects, version: rule.version, ttl: kind == .directory ? 900 : 86_400)
             guard let object = objects.first else { throw ReaderError.extraction("No content was found.") }; return object
         }
-        inFlight[key] = task
-        defer { if generation == currentGeneration { inFlight[key] = nil } }
-        return try await task.value
+        let request = Request(task: task)
+        inFlight[key] = request
+        return try await consume(request, key: key)
+    }
+    private func consume(_ request: Request, key: ObjectKey) async throws -> ContentObject {
+        let consumer = UUID()
+        inFlight[key]?.consumers.insert(consumer)
+        return try await withTaskCancellationHandler {
+            defer { release(key, requestID: request.id, consumer: consumer) }
+            let object = try await request.task.value
+            try Task.checkCancellation()
+            return object
+        } onCancel: {
+            Task { await self.release(key, requestID: request.id, consumer: consumer) }
+        }
+    }
+    private func release(_ key: ObjectKey, requestID: UUID, consumer: UUID) {
+        guard var request = inFlight[key], request.id == requestID else { return }
+        request.consumers.remove(consumer)
+        if request.consumers.isEmpty {
+            // Keep shared resolutions alive only while at least one caller still needs them.
+            request.task.cancel(); inFlight[key] = nil
+        } else { inFlight[key] = request }
     }
 }

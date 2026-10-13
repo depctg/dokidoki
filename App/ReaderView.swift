@@ -2,12 +2,13 @@ import SwiftUI
 import MangaCore
 
 struct ReaderView: View {
-    let chapter: ChapterObject
+    let reader: ReaderModel
     let model: AppModel
-    @State private var reader: ReaderModel
+    private var chapter: ChapterObject { reader.chapter }
     @State private var zoom: CGFloat = 1
     @State private var zoomStart: CGFloat = 1
     @State private var pagedID: String?
+    @State private var pagerReady = false
     @State private var scrollPosition = ScrollPosition(idType: String.self)
     @State private var frames: [String: CGRect] = [:]
     @State private var scrollOffset = 0.0
@@ -18,10 +19,6 @@ struct ReaderView: View {
     @FocusState private var focused: Bool
     @Environment(\.scenePhase) private var scenePhase
 
-    init(chapter: ChapterObject, model: AppModel) {
-        self.chapter = chapter; self.model = model
-        _reader = State(initialValue: ReaderModel(chapter: chapter, app: model))
-    }
     private var rtl: Bool { model.preferences.direction == .rightToLeft }
     var body: some View {
         GeometryReader { geometry in
@@ -61,28 +58,37 @@ struct ReaderView: View {
         .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar, .tabBar)
         #endif
         .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Collapse reader", systemImage: model.preferences.mode == .paged ? "chevron.down" : "chevron.left") { model.collapseReader() }
+                    .accessibilityIdentifier("reader.collapse")
+            }
             ToolbarItem(placement: .principal) {
                 Text(chapter.title).font(.headline).lineLimit(1)
                     .allowsHitTesting(false).accessibilityAddTraits(.isHeader)
                     .accessibilityIdentifier("reader.chapterTitle")
             }
             ToolbarItem { options }
+            ToolbarItem {
+                Button("Refresh", systemImage: "arrow.clockwise") { model.openChapter(chapter.key, hint: .forceRefresh) }
+                    .disabled(model.openingChapter)
+            }
+            ToolbarItem { Link(destination: chapter.sourceURL) { Label("Source website", systemImage: "safari") } }
         }
         .onKeyPress(.leftArrow) { turn(rtl ? 1 : -1); return .handled }
         .onKeyPress(.rightArrow) { turn(rtl ? -1 : 1); return .handled }
         .onKeyPress(.space) { toggleChrome(); return .handled }
-        .onKeyPress(.escape) { model.readerImmersive = false; return .handled }
+        .onKeyPress(.escape) { model.collapseReader(); return .handled }
         .onChange(of: model.preferences) { old, new in
             reader.save(); zoom = 1; zoomStart = 1
             // A remounted pager needs a fresh scroll request, even for the same source page.
-            if old.mode != new.mode { pagedID = nil }
+            if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
             reader.replan()
         }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save() } }
         .onDisappear { reader.stop(); model.readerImmersive = false }
-        .task { await reader.load(); focused = true }
-        .task(id: "\(reader.revision)-\(restoreRequest)") { await restorePosition() }
+        .task { await reader.activate(); focused = true }
+        .task(id: "\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
     }
     private var options: some View {
         @Bindable var app = model
@@ -97,7 +103,7 @@ struct ReaderView: View {
                 ForEach(SpreadOverride.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }.disabled(reader.source == nil)
             Button("Hide controls", systemImage: "arrow.up.left.and.arrow.down.right") { toggleChrome() }
-            if let next = reader.nextChapter { NavigationLink("Next chapter", value: next.key) }
+            if let next = reader.nextChapter { Button("Next chapter") { model.openChapter(next.key) } }
         } label: { Label("Reader options", systemImage: "slider.horizontal.3") }
     }
     private func toggleChrome() {
@@ -125,6 +131,9 @@ struct ReaderView: View {
             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
             .scrollDisabled(zoom > 1)
             .opacity(zoom > 1 ? 0 : 1)
+            .onScrollGeometryChange(for: Bool.self) { $0.contentSize.width > 0 && $0.containerSize.width > 0 } action: { _, ready in
+                pagerReady = ready
+            }
             .onChange(of: pagedID) { _, id in
                 guard userScrolling, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
                 reader.record(index: index, within: 0, preserveSource: false)
@@ -177,7 +186,8 @@ struct ReaderView: View {
         .coordinateSpace(name: "readerViewport")
         .scrollPosition($scrollPosition)
         .onPreferenceChange(ReaderFrames.self) { frames = $0; recordScroll() }
-        .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y } action: { _, offset in scrollOffset = offset; recordScroll() }
+        // ScrollPosition's y coordinate starts after the top inset, unlike contentOffset.
+        .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in scrollOffset = offset; recordScroll() }
         .onScrollPhaseChange { _, phase in
             userScrolling = phase == .interacting || phase == .decelerating
             reader.setInteracting(userScrolling)
@@ -197,6 +207,7 @@ struct ReaderView: View {
         guard let plan = reader.current else { return }
         guard !userScrolling else { pendingRestore = true; return }
         if model.preferences.mode == .paged {
+            guard pagerReady else { return }
             pagedID = plan.id
             return
         }

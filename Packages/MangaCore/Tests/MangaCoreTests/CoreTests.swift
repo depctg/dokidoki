@@ -93,6 +93,48 @@ struct CoreTests {
         try store.upsert([.chapter(replacement)], version: 1, ttl: 3600)
         #expect(try store.snapshot(chapter.pageRefs[0]) == nil)
     }
+
+    @Test func abandonedResolutionCancelsTransportAndCanRetry() async throws {
+        let rules = try DemoContent.bundledRules()
+        let store = try ObjectStore()
+        let fetcher = SlowFetcher()
+        let repository = try ObjectRepository(store: store, rules: rules, fetcher: fetcher)
+        let key = try await repository.key(for: DemoContent.directoryURL)
+        let request = Task { try await repository.resolve(key) }
+        while await fetcher.count == 0 { await Task.yield() }
+        request.cancel()
+        await #expect(throws: CancellationError.self) { try await request.value }
+        #expect(await fetcher.cancellations == 1)
+        #expect(try store.snapshot(key) == nil)
+        _ = try await repository.resolve(key)
+        #expect(await fetcher.count == 2)
+    }
+
+    @Test func cancellationPreservesOtherResolutionConsumers() async throws {
+        let rules = try DemoContent.bundledRules()
+        let fetcher = SlowFetcher()
+        let repository = try ObjectRepository(store: ObjectStore(), rules: rules, fetcher: fetcher)
+        let key = try await repository.key(for: DemoContent.directoryURL)
+        let first = Task { try await repository.resolve(key) }
+        let second = Task { try await repository.resolve(key) }
+        // Leave both callers waiting on the delayed transport before cancelling one.
+        try await Task.sleep(for: .milliseconds(50))
+        first.cancel()
+        _ = try await second.value
+        await #expect(throws: CancellationError.self) { try await first.value }
+        #expect(await fetcher.count == 1)
+        #expect(await fetcher.cancellations == 0)
+    }
+}
+private actor SlowFetcher: SourceFetcher {
+    var count = 0
+    var cancellations = 0
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind) async throws -> SourceResponse {
+        count += 1
+        do { try await Task.sleep(for: .milliseconds(250)) }
+        catch { cancellations += 1; throw error }
+        return try DemoContent.response(for: url)!
+    }
 }
 private actor CountingFetcher: SourceFetcher {
     var count = 0

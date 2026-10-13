@@ -18,7 +18,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var store: ObjectStore?
     let images = ImageLoader()
     var rules: [SiteRule] = [] { didSet { ruleRevision += 1 } }
-    var ruleRevision = 0
+    var ruleRevision = 0 { didSet { invalidateReader() } }
     var paths: [AppSection: [ObjectKey]] = [:]
     var path: [ObjectKey] {
         get { paths[section, default: []] }
@@ -36,6 +36,10 @@ enum AppSection: String, CaseIterable, Identifiable {
     var section: AppSection = .library
     var openURLRequest = 0
     var readerImmersive = false
+    var reader: ReaderModel?
+    var readerExpanded = false
+    var openingChapter = false
+    private var chapterRequest: Task<Void, Never>?
     private var started = false
 
     func start() async {
@@ -62,8 +66,55 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
     func open(_ text: String) async {
         guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = "Enter a supported HTTP or HTTPS URL."; return }
-        do { let key = try await repository.key(for: url); section = .browse; path = [key] }
+        do {
+            let key = try await repository.key(for: url)
+            if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
+            else { section = .browse; path = [key] }
+        }
         catch { self.error = error.localizedDescription }
+    }
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true) {
+        chapterRequest?.cancel()
+        if reader?.chapter.key == key, hint != .forceRefresh {
+            openingChapter = false
+            if expand { resumeReader() }
+            return
+        }
+        openingChapter = true
+        chapterRequest = Task {
+            defer { if !Task.isCancelled { openingChapter = false } }
+            do {
+                guard let repository, case .chapter(let chapter) = try await repository.resolve(key, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
+                try Task.checkCancellation()
+                presentChapter(chapter, expand: expand)
+            } catch is CancellationError {} catch {
+                if !Task.isCancelled { self.error = error.localizedDescription }
+            }
+        }
+    }
+    func presentChapter(_ chapter: ChapterObject, expand: Bool = true) {
+        chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
+        reader?.stop()
+        reader = ReaderModel(chapter: chapter, app: self)
+        readerImmersive = false
+        readerExpanded = expand
+    }
+    func resumeReader() {
+        guard reader != nil else { return }
+        chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
+        readerImmersive = false; readerExpanded = true
+    }
+    func collapseReader() {
+        chapterRequest?.cancel(); openingChapter = false
+        reader?.stop(); readerExpanded = false; readerImmersive = false
+    }
+    private func invalidateReader() {
+        chapterRequest?.cancel(); openingChapter = false
+        guard let reader else { return }
+        let key = reader.chapter.key
+        reader.stop(); self.reader = nil
+        guard rules.contains(where: { $0.id == key.ruleID }) else { readerExpanded = false; return }
+        openChapter(key, hint: .forceRefresh, expand: readerExpanded)
     }
     func reloadLibrary() {
         do { saved = try store?.savedManga() ?? []; recent = try store?.positions() ?? [] }

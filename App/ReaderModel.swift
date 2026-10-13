@@ -1,9 +1,10 @@
 import SwiftUI
 import MangaCore
 
-@MainActor @Observable final class ReaderModel {
+@MainActor @Observable final class ReaderModel: Identifiable {
+    let id = UUID()
     let chapter: ChapterObject
-    let app: AppModel
+    unowned let app: AppModel
     var pages: [PageObject] = []
     var plans: [DisplayPage] = []
     var analysis: [ObjectKey: ImageAnalysis] = [:]
@@ -17,6 +18,7 @@ import MangaCore
     var size: CGSize = .zero
     private var interacting = false
     private var pendingReplan = false
+    private var active = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
     private var planning: Task<Void, Never>?
@@ -24,6 +26,11 @@ import MangaCore
     private var rule: SiteRule?
 
     init(chapter: ChapterObject, app: AppModel) { self.chapter = chapter; self.app = app }
+    func activate() async {
+        active = true
+        if pages.isEmpty { await load() }
+        else { replan() }
+    }
     func load() async {
         guard let repository = app.repository else { return }
         planning?.cancel(); prefetch?.cancel()
@@ -47,6 +54,7 @@ import MangaCore
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
     func replan() {
+        guard active else { return }
         guard !interacting else { pendingReplan = true; return }
         planning?.cancel()
         let context = ReaderContext(size: size, preferences: app.preferences, analysis: analysis, overrides: overrides)
@@ -101,7 +109,11 @@ import MangaCore
         do { try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key, sourcePageKey: source, fractionalOffset: fraction, title: chapter.title)) }
         catch { app.error = error.localizedDescription }
     }
-    func stop() { save(); planning?.cancel(); prefetch?.cancel(); app.reloadLibrary() }
+    func stop() {
+        guard active else { return }
+        save(); active = false; interacting = false; pendingReplan = false
+        planning?.cancel(); prefetch?.cancel(); app.reloadLibrary()
+    }
     func height(_ plan: DisplayPage, width: Double) -> Double {
         let aspect = plan.regions.reduce(0.0) { total, region in
             let ratio = analysis[region.sourcePage]?.aspectRatio ?? 0.727
@@ -111,7 +123,7 @@ import MangaCore
     }
     private func schedulePrefetch() {
         prefetch?.cancel()
-        guard let rule, !plans.isEmpty else { return }
+        guard active, let rule, !plans.isEmpty else { return }
         let neighborIndices = [index + 1, index - 1].filter { plans.indices.contains($0) }
         var keys: [ObjectKey] = []
         for i in neighborIndices {

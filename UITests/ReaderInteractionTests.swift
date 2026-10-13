@@ -1,15 +1,15 @@
 import XCTest
 
 @MainActor final class ReaderInteractionTests: XCTestCase {
-    func testLibraryLandingAndTabHistory() {
+    func testLibraryLandingAndGlobalReader() {
         let app = XCUIApplication()
         app.launch()
-        let tabs = app.tabBars.firstMatch
-        XCTAssertTrue(tabs.waitForExistence(timeout: 20))
-        XCTAssertTrue(tabs.buttons["My Library"].isSelected)
+        let libraryTab = app.buttons.matching(identifier: "My Library").firstMatch
+        XCTAssertTrue(libraryTab.waitForExistence(timeout: 20))
+        XCTAssertTrue(app.buttons.matching(identifier: "My Library").firstMatch.isSelected)
         XCTAssertTrue(app.navigationBars["My Library"].exists)
 
-        tabs.buttons["Browse"].tap()
+        app.buttons.matching(identifier: "Browse").firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 5))
         let url = app.textFields["Website URL"]
         url.tap()
@@ -18,21 +18,52 @@ import XCTest
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
         let position = counter.label
+        XCTAssertFalse(libraryTab.isHittable)
+        app.buttons["reader.collapse"].tap()
+        let resume = app.buttons["reader.resume"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        XCTAssertEqual(resume.value as? String, position)
+        let collapsed = XCTAttachment(screenshot: app.screenshot())
+        collapsed.name = "Global reader resume accessory"
+        collapsed.lifetime = .keepAlways
+        add(collapsed)
 
-        tabs.buttons["Settings"].tap()
+        app.buttons.matching(identifier: "Settings").firstMatch.tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
-        tabs.buttons["My Library"].tap()
+        XCTAssertTrue(resume.isHittable)
+        app.buttons.matching(identifier: "My Library").firstMatch.tap()
         XCTAssertTrue(app.navigationBars["My Library"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["1 · Arrival"].exists)
-        tabs.buttons["Browse"].tap()
+        resume.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
         XCTAssertTrue(wait { counter.label == position })
         XCTAssertEqual(app.staticTexts["reader.chapterTitle"].label, "1 · Arrival")
+        app.buttons["reader.collapse"].tap()
+        XCTAssertTrue(app.buttons.matching(identifier: "My Library").firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(app.buttons.matching(identifier: "My Library").firstMatch.isSelected)
+
+        // Opening a different chapter replaces the one global session, without a second mini reader.
+        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        app.buttons["Open the reading room"].tap()
+        let manga = app.buttons["The Observatory"]
+        XCTAssertTrue(manga.waitForExistence(timeout: 10))
+        manga.tap()
+        let chapter = app.buttons["2 · Starlight"]
+        XCTAssertTrue(chapter.waitForExistence(timeout: 10))
+        chapter.tap()
+        XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
+        app.buttons["reader.collapse"].tap()
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons.matching(identifier: "reader.resume").count, 1)
+        XCTAssertEqual(resume.label, "Resume 2 · Starlight")
+        app.buttons.matching(identifier: "My Library").firstMatch.tap()
+        resume.tap()
+        XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
 
         app.terminate()
         app.launch()
         XCTAssertTrue(app.navigationBars["My Library"].waitForExistence(timeout: 20))
-        XCTAssertTrue(tabs.buttons["My Library"].isSelected)
+        XCTAssertTrue(app.buttons.matching(identifier: "My Library").firstMatch.isSelected)
     }
 
     func testSwipeImmersionAndResume() {
@@ -63,10 +94,32 @@ import XCTest
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
         let advanced = counter.label
 
+        // Paged mode collapses from a top pull, then resumes the actual same source image.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.13))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+        let resume = app.buttons["reader.resume"]
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        XCTAssertEqual(resume.value as? String, advanced)
+        resume.tap()
+        XCTAssertTrue(counter.waitForExistence(timeout: 8))
+        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+
         // Check actual content, since a stale counter alone would hide lost restoration.
         select("Scroll", in: "Mode", app: app)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
         XCTAssertEqual(counter.label, advanced)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+        let scrolledPage = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch
+        let verticalPosition = scrolledPage.frame.minY
+        // Vertical reading uses a physical left-edge back swipe, never a vertical page drag.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.5)))
+        XCTAssertTrue(resume.waitForExistence(timeout: 8))
+        resume.tap()
+        XCTAssertTrue(counter.waitForExistence(timeout: 8))
+        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+        XCTAssertTrue(wait { abs(scrolledPage.frame.minY - verticalPosition) < 3 }, "Before: \(verticalPosition), resumed: \(scrolledPage.frame.minY)")
         select("Paged", in: "Mode", app: app)
         let restored = wait { self.visiblePage(in: app) == "Comic page 2" }
         if !restored {
@@ -81,12 +134,12 @@ import XCTest
         let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
         XCTAssertTrue(wait { !counter.exists && !app.buttons["Reader options"].isHittable })
-        XCTAssertFalse(app.tabBars.firstMatch.isHittable)
+        XCTAssertFalse(app.buttons.matching(identifier: "My Library").firstMatch.isHittable)
         center.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 5))
         XCTAssertTrue(wait { counter.label == advanced })
         XCTAssertTrue(app.buttons["Reader options"].isHittable)
-        XCTAssertTrue(app.tabBars.buttons["Browse"].isHittable)
+        XCTAssertFalse(app.buttons.matching(identifier: "My Library").firstMatch.isHittable)
 
         // The compact title does not expand when touched.
         let title = app.staticTexts["reader.chapterTitle"]
@@ -111,7 +164,7 @@ import XCTest
     private func visiblePage(in app: XCUIApplication) -> String? {
         let point = CGPoint(x: app.frame.midX, y: app.frame.minY + app.frame.height * 0.35)
         return app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex
-            .first { $0.isHittable && $0.frame.contains(point) }?.label
+            .first { $0.frame.contains(point) && $0.isHittable }?.label
     }
     private func disable(_ label: String, app: XCUIApplication) {
         app.buttons["Reader options"].tap()
