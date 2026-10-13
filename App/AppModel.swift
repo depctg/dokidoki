@@ -37,6 +37,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     }
     var section: AppSection = .library
     var openURLRequest = 0
+    var chapterToReveal: ObjectKey?
     var readerImmersive = false
     var reader: ReaderModel?
     var readerExpanded = false
@@ -75,7 +76,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
         catch { self.error = error.localizedDescription }
     }
-    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true) {
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false) {
         chapterRequest?.cancel()
         if reader?.chapter.key == key, hint != .forceRefresh {
             openingChapter = false
@@ -88,17 +89,17 @@ enum AppSection: String, CaseIterable, Identifiable {
             do {
                 guard let repository, case .chapter(let chapter) = try await repository.resolve(key, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
                 try Task.checkCancellation()
-                presentChapter(chapter, expand: expand)
+                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion)
             } catch is CancellationError {} catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
-    func presentChapter(_ chapter: ChapterObject, expand: Bool = true) {
+    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false) {
         chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
         reader?.stop()
         reader = ReaderModel(chapter: chapter, app: self)
-        readerImmersive = false
+        if !preserveImmersion { readerImmersive = false }
         readerExpanded = expand
     }
     func resumeReader() {
@@ -109,6 +110,14 @@ enum AppSection: String, CaseIterable, Identifiable {
     func collapseReader() {
         chapterRequest?.cancel(); openingChapter = false
         reader?.stop(); readerExpanded = false; readerImmersive = false
+    }
+    func showReaderManga() {
+        guard let reader, let manga = reader.chapter.mangaRef else { return }
+        collapseReader()
+        chapterToReveal = reader.chapter.key
+        section = .browse
+        if let index = paths[.browse]?.firstIndex(of: manga) { paths[.browse] = Array(paths[.browse, default: []].prefix(index + 1)) }
+        else { paths[.browse] = [manga] }
     }
     private func invalidateReader() {
         chapterRequest?.cancel(); openingChapter = false

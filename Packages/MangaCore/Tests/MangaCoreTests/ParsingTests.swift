@@ -3,6 +3,30 @@ import Testing
 @testable import MangaCore
 
 struct ParsingTests {
+    @Test func chapterReadingOrderComesFromJSONRules() throws {
+        let rule = try DemoContent.bundledRules().first { $0.id == "manhuagui" }!
+        let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.manhuagui.com/comic/123/")!)
+        let html = "<h1>Series</h1><div class='chapter-list'><a href='/comic/123/2.html'>Second</a><a href='/comic/123/1.html'>First</a></div>"
+        let objects = try RuleExtractor().extract(data: Data(html.utf8), responseURL: key.identityURL, key: key, kind: .manga, rule: rule)
+        guard case .manga(let manga) = objects[0] else { Issue.record("Missing manga"); return }
+        #expect(manga.chapterRefs.map(\.title) == ["First", "Second"])
+        #expect(manga.chapterRefs.map { $0.key.identityURL.lastPathComponent } == ["1.html", "2.html"])
+
+        // The same data-only option works on JSON lists; omission keeps source order.
+        for reverse in [false, true] {
+            var json = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]
+            var extractors = json["extractors"] as! [String: Any]
+            var links: [String: Any] = ["path": "chapters.*"]
+            if reverse { links["reverse"] = true }
+            extractors["manga"] = ["format": "json", "fields": ["title": ["path": "title"], "chapterLinks": links]]
+            json["extractors"] = extractors
+            let changed = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+            let input = Data(#"{"title":"Series","chapters":[{"url":"/comic/123/2.html","title":"Second"},{"url":"/comic/123/1.html","title":"First"}]}"#.utf8)
+            let result = try RuleExtractor().extract(data: input, responseURL: key.identityURL, key: key, kind: .manga, rule: changed)
+            guard case .manga(let manga) = result[0] else { Issue.record("Missing manga"); return }
+            #expect(manga.chapterRefs.map(\.title) == (reverse ? ["First", "Second"] : ["Second", "First"]))
+        }
+    }
     @Test func renderedJSONUsesRuleVariablesTemplatesAndQueries() throws {
         let rule = try DemoContent.bundledRules().first { $0.id == "manhuagui" }!
         let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.manhuagui.com/comic/123/456.html")!)

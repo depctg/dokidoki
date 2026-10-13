@@ -11,8 +11,12 @@ import MangaCore
     var overrides: [ObjectKey: SpreadOverride] = [:]
     var source: ObjectKey?
     var fraction = 0.0
+    var previousChapter: ContentReference?
     var nextChapter: ContentReference?
-    private var mangaTitle: String?
+    var mangaTitle: String?
+    var mangaCover: PageObject?
+    var nextPreview: PageObject?
+    var nextPreviewError: String?
     var error: String?
     var loading = true
     var revision = 0
@@ -20,17 +24,23 @@ import MangaCore
     private var interacting = false
     private var pendingReplan = false
     private var active = false
+    private var metadataLoaded = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
+    var nextChapterToPrefetch: ObjectKey? { !plans.isEmpty && index >= plans.count - 2 ? nextChapter?.key : nil }
     private var planning: Task<Void, Never>?
     private var prefetch: Task<Void, Never>?
     private var rule: SiteRule?
 
-    init(chapter: ChapterObject, app: AppModel) { self.chapter = chapter; self.app = app }
+    init(chapter: ChapterObject, app: AppModel) {
+        self.chapter = chapter; self.app = app
+        mangaTitle = app.saved.first { $0.key == chapter.mangaRef }?.title
+            ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle
+    }
     func activate() async {
         active = true
         if pages.isEmpty { await load() }
-        else { replan() }
+        else { replan(); await loadMangaMetadata() }
     }
     func load() async {
         guard let repository = app.repository else { return }
@@ -48,12 +58,41 @@ import MangaCore
             fraction = position?.fractionalOffset ?? 0
             replan()
             loading = false
-            if let key = chapter.mangaRef, let object = try? await repository.resolve(key), case .manga(let manga) = object {
-                mangaTitle = manga.title
-                if let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }), manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
-                if active, !Task.isCancelled { save() }
-            }
+            await loadMangaMetadata()
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
+    }
+    func loadMangaMetadata() async {
+        guard !metadataLoaded, let key = chapter.mangaRef, let repository = app.repository else { return }
+        do {
+            guard case .manga(let manga) = try await repository.resolve(key) else { return }
+            try Task.checkCancellation()
+            mangaTitle = manga.title
+            if let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }) {
+                if i > 0 { previousChapter = manga.chapterRefs[i - 1] }
+                if manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
+            }
+            if let cover = manga.coverPageRef, case .page(let page) = try? await repository.resolve(cover) { mangaCover = page }
+            try Task.checkCancellation()
+            metadataLoaded = true
+            if active { save() }
+        } catch { /* Pages remain usable; activation retries metadata after cancellation/failure. */ }
+    }
+    /// Only the adjacent chapter metadata and its first image; the view owns cancellation.
+    func preloadNextChapter() async {
+        guard let key = nextChapterToPrefetch, nextPreview == nil, let repository = app.repository else { return }
+        nextPreviewError = nil
+        do {
+            guard case .chapter(let next) = try await repository.resolve(key), let first = next.pageRefs.first,
+                  case .page(let page) = try await repository.resolve(first) else { nextPreviewError = "Preview unavailable"; return }
+            let rule = try await repository.rule(for: page.key)
+            _ = try await app.images.image(for: page, rule: rule)
+            try Task.checkCancellation()
+            nextPreview = page
+        } catch is CancellationError {} catch { if !Task.isCancelled { nextPreviewError = "Preview unavailable" } }
+    }
+    func openAdjacent(_ reference: ContentReference?) {
+        guard let reference else { return }
+        app.openChapter(reference.key, preserveImmersion: true)
     }
     func replan() {
         guard active else { return }

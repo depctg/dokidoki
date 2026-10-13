@@ -57,15 +57,18 @@ struct ReaderResumeBar: View {
     var body: some View {
         Button { model.resumeReader() } label: {
             HStack(spacing: 12) {
-                if let page = reader.pages.first(where: { $0.key == reader.source }) {
+                if let page = reader.mangaCover {
                     PageImageView(page: page, model: model)
                         .frame(width: 36, height: 36).clipShape(.rect(cornerRadius: 6))
                         .accessibilityHidden(true)
                 } else { Image(systemName: "book.pages").font(.title2) }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(reader.chapter.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                    Text(placement == .inline ? [reader.mangaTitle, reader.chapter.title].compactMap { $0 }.joined(separator: " · ") : reader.mangaTitle ?? reader.chapter.title)
+                        .font(.subheadline.weight(.semibold)).lineLimit(1)
                     if placement != .inline {
-                        Text(reader.plans.isEmpty ? "Resume reading" : "Page \(reader.index + 1) of \(reader.plans.count)")
+                        Text([reader.mangaTitle == nil ? nil : reader.chapter.title,
+                              reader.plans.isEmpty ? "Resume reading" : "Page \(reader.index + 1) of \(reader.plans.count)"].compactMap { $0 }.joined(separator: " · "))
+                            .lineLimit(1)
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                 }
@@ -76,9 +79,10 @@ struct ReaderResumeBar: View {
             .frame(maxWidth: .infinity).contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("Resume \(reader.chapter.title)")
+        .accessibilityLabel("Resume \([reader.mangaTitle, reader.chapter.title].compactMap { $0 }.joined(separator: ", "))")
         .accessibilityValue(reader.plans.isEmpty ? "" : "Page \(reader.index + 1) of \(reader.plans.count)")
         .accessibilityIdentifier("reader.resume")
+        .task { await reader.loadMangaMetadata() }
     }
 }
 

@@ -9,6 +9,7 @@ public struct Field: Codable, Sendable {
     public var queryPath: String? = nil
     public var regex: String? = nil
     public var group: Int? = nil
+    public var reverse: Bool? = nil
 }
 /// Data-only parameters for the generic WebKit observer, never executable script.
 public struct RenderingRule: Codable, Sendable {
@@ -128,7 +129,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables"]) else { throw ReaderError.invalidRule("Unsupported extractor options.") }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)
             for field in fields {
-                guard Set(field.keys).isSubset(of: ["path", "read", "fallback", "urlTemplate", "queryPath", "regex", "group"]) else { throw ReaderError.invalidRule("Unsupported field options.") }
+                guard Set(field.keys).isSubset(of: ["path", "read", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]) else { throw ReaderError.invalidRule("Unsupported field options.") }
             }
             if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "readyImageXPath"]) { throw ReaderError.invalidRule("Unsupported rendering options; scripts are not allowed.") }
         }

@@ -61,7 +61,7 @@ public struct RuleExtractor: Sendable {
         }
         var variables: [String: String] = [:]
         func extract(_ field: Field) throws -> [(String, String)] {
-            let entries: [(String, String)]
+            var entries: [(String, String)]
             if let html { entries = try html.values(field) }
             else {
                 entries = nodes(at: field.path).compactMap { node in
@@ -70,6 +70,7 @@ public struct RuleExtractor: Sendable {
                     return nil
                 }
             }
+            if field.reverse == true { entries.reverse() }
             let regex = try field.regex.map { try NSRegularExpression(pattern: $0) }
             return try entries.compactMap { entry in
                 var value = entry.0

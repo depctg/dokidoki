@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 3,
+  "version": 4,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -68,7 +68,8 @@
         },
         "chapterLinks": {
           "path": "//div[contains(@class,\"chapter-list\")]//a",
-          "read": "attr:href"
+          "read": "attr:href",
+          "reverse": true
         }
       }
     },

@@ -8,6 +8,7 @@ Each extractor has `format` and `fields`:
 
 - `html` / `renderedHTML`: XPath `path`; `read` is `text` (default) or `attr:name`, with optional `fallback` reader.
 - `json` / `renderedJSON`: dotted `path`, numeric array indices, and `*` for ordered array traversal. Values are strings/numbers or `{ "url": "…", "title": "…" }` link objects.
+- Optional field `reverse: true` reverses selected entries before transformations; omitted/false preserves source order. Use it when a site's chapter list is newest first so `chapterLinks` follows reading order. The reversal decision belongs in JSON.
 - Optional `regex` selects the first match from each extracted value. `group` selects a capture (default 1, or 0 when there are no captures). No match omits that value.
 - Optional extractor `variables` maps names to the same selector/regex fields. Each takes its first value. Variables are independent: no nesting, dependencies, URL templates, or expressions.
 - Optional field `urlTemplate` substitutes `{value}` (the selected/regex-filtered value), `{vars.name}`, and `{dotted.json.path}` scalar values. Missing placeholders fail extraction. There are no functions, operators, loops, or evaluation of code.

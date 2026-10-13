@@ -47,12 +47,15 @@ import XCTest
 
         app.buttons["2 · Starlight"].tap()
         XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
-        app.buttons["reader.collapse"].tap()
-        app.navigationBars.buttons.matching(identifier: "My Library").firstMatch.tap()
+        app.buttons["Back to manga"].tap()
+        XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
+        XCTAssertEqual(app.buttons["2 · Starlight"].value as? String, "Current chapter")
+        XCTAssertTrue(app.buttons["2 · Starlight"].isHittable)
         app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertTrue(resume.isHittable)
         XCTAssertEqual(app.buttons.matching(identifier: "reader.resume").count, 1)
-        XCTAssertEqual(resume.label, "Resume 2 · Starlight")
+        XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
 
         // Each removal action affects its own list; the saved row still opens the latest chapter.
         recentTab.tap()
@@ -62,6 +65,7 @@ import XCTest
         XCTAssertTrue(wait { !row.exists })
         XCTAssertTrue(resume.exists)
         libraryTab.tap()
+        app.navigationBars.buttons.matching(identifier: "My Library").firstMatch.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
         XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
@@ -81,7 +85,10 @@ import XCTest
         app.launch()
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
-        select("Paged", in: "Mode", app: app)
+        app.buttons["Reader options"].tap()
+        XCTAssertFalse(app.keyboards.firstMatch.exists)
+        app.buttons["Paged"].tap()
+        dismissOptions(in: app)
         select("Right to left", in: "Direction", app: app)
         disable("Detect spreads", app: app)
         disable("Facing pages in wide windows", app: app)
@@ -112,8 +119,9 @@ import XCTest
         // Check actual content, since a stale counter alone would hide lost restoration.
         select("Scroll", in: "Mode", app: app)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+        checkImmersion(in: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
         let scrolledPage = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch
         let verticalPosition = scrolledPage.frame.minY
         // Vertical reading uses a physical left-edge back swipe, never a vertical page drag.
@@ -127,13 +135,7 @@ import XCTest
         select("Paged", in: "Mode", app: app)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
 
-        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        center.tap()
-        XCTAssertTrue(wait { !counter.exists && !title.exists && !app.buttons["Reader options"].isHittable })
-        XCTAssertFalse(app.buttons.matching(identifier: "My Library").firstMatch.isHittable)
-        center.tap()
-        XCTAssertTrue(counter.waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Reader options"].isHittable)
+        checkImmersion(in: app)
 
         // The compact title does not expand when touched.
         let height = title.frame.height
@@ -145,6 +147,50 @@ import XCTest
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
         XCTAssertEqual(counter.label, advanced)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+
+        // Exercise the release threshold in both directions, including an immersive transition.
+        for direction in ["Right to left", "Left to right"] {
+            let leftward = direction == "Left to right"
+            if leftward { select(direction, in: "Direction", app: app) }
+            let from = leftward ? end : start, to = leftward ? start : end
+            for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { from.press(forDuration: 0.05, thenDragTo: to) }
+            XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
+            from.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.7 : 0.35, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            XCTAssertEqual(title.label, "1 · Arrival")
+            XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" })
+            let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            if leftward { center.tap() }
+            from.press(forDuration: 0.05, thenDragTo: to, withVelocity: .slow, thenHoldForDuration: 0.3)
+            XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" })
+            XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 1" })
+            if leftward {
+                XCTAssertFalse(title.exists, "Continuing a chapter keeps immersive mode")
+                center.tap()
+            }
+            XCTAssertTrue(wait { app.buttons["Previous chapter"].isEnabled })
+            XCTAssertFalse(app.buttons["Next chapter"].isEnabled)
+            app.buttons["Previous chapter"].tap()
+            XCTAssertTrue(wait { title.label == "1 · Arrival" })
+        }
+        select("Scroll", in: "Mode", app: app)
+        for _ in 0..<8 where title.label == "1 · Arrival" {
+            app.swipeUp()
+        }
+        XCTAssertTrue(wait { title.label == "2 · Starlight" })
+    }
+    private func checkImmersion(in app: XCUIApplication) {
+        let image = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch
+        let frame = image.frame
+        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        center.tap()
+        XCTAssertTrue(wait { !app.staticTexts["reader.chapterTitle"].exists && !app.buttons["Reader options"].isHittable })
+        let counter = app.staticTexts["reader.pageCounter"]
+        XCTAssertTrue(counter.exists)
+        XCTAssertEqual(counter.value as? String, "1 · Arrival")
+        XCTAssertEqual(image.frame, frame, "Hiding chrome must not move or resize the manga")
+        center.tap()
+        XCTAssertTrue(app.buttons["Reader options"].waitForExistence(timeout: 5))
+        XCTAssertEqual(image.frame, frame, "Restoring chrome must not move or resize the manga")
     }
     private func select(_ value: String, in picker: String, app: XCUIApplication) {
         app.buttons["Reader options"].tap()
@@ -152,18 +198,23 @@ import XCTest
         let option = app.buttons[value]
         XCTAssertTrue(option.waitForExistence(timeout: 5))
         option.tap()
+        dismissOptions(in: app)
+    }
+    private func dismissOptions(in app: XCUIApplication) {
+        if app.buttons["Image adjustments"].exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
     }
     private func visiblePage(in app: XCUIApplication) -> String? {
         let point = CGPoint(x: app.frame.midX, y: app.frame.minY + app.frame.height * 0.35)
         return app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex
-            .first { $0.frame.contains(point) && $0.isHittable }?.label
+            .first { $0.frame.contains(point) }?.label
     }
     private func disable(_ label: String, app: XCUIApplication) {
         app.buttons["Reader options"].tap()
+        app.buttons["Image adjustments"].tap()
         let toggle = app.buttons[label]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         if toggle.isSelected || ["1", "on"].contains(toggle.value as? String ?? "") { toggle.tap() }
-        else { app.buttons["Paged"].tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
     }
     private func wait(_ condition: @escaping () -> Bool) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)
