@@ -47,12 +47,13 @@ Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on dis
 
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 
-Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. To run the native reader interaction test, choose an installed iOS simulator and use Product → Test, or:
+Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/navigation/actions, and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, reader preferences, and reading history. Run Product → Test, or:
 
 ```sh
 xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
   -destination 'platform=iOS Simulator,id=<SIMULATOR-UDID>' \
-  -derivedDataPath build CODE_SIGNING_ALLOWED=NO test
+  -derivedDataPath build -parallel-testing-enabled NO \
+  -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
 ```
 
 Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
