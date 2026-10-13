@@ -13,16 +13,29 @@ public struct ReadingPosition: Codable, Sendable {
     public let fractionalOffset: Double
     public let title: String
     public let updatedAt: Date
-    public init(mangaKey: ObjectKey, chapterKey: ObjectKey, sourcePageKey: ObjectKey, fractionalOffset: Double = 0, title: String) {
+    public let mangaTitle: String?
+    public let pageNumber: Int?
+    public let totalPages: Int?
+    public init(mangaKey: ObjectKey, chapterKey: ObjectKey, sourcePageKey: ObjectKey, fractionalOffset: Double = 0, title: String,
+                mangaTitle: String? = nil, pageNumber: Int? = nil, totalPages: Int? = nil, updatedAt: Date = Date()) {
         self.mangaKey = mangaKey; self.chapterKey = chapterKey; self.sourcePageKey = sourcePageKey
-        self.fractionalOffset = min(1, max(0, fractionalOffset.isFinite ? fractionalOffset : 0)); self.title = title; updatedAt = Date()
+        self.fractionalOffset = min(1, max(0, fractionalOffset.isFinite ? fractionalOffset : 0)); self.title = title; self.updatedAt = updatedAt
+        self.mangaTitle = mangaTitle; self.pageNumber = pageNumber; self.totalPages = totalPages
     }
 }
 public struct SavedManga: Codable, Sendable, Identifiable {
     public let key: ObjectKey
     public let title: String
+    public var isStarred: Bool
     public var id: ObjectKey { key }
-    public init(key: ObjectKey, title: String) { self.key = key; self.title = title }
+    public init(key: ObjectKey, title: String, isStarred: Bool = false) { self.key = key; self.title = title; self.isStarred = isStarred }
+    private enum CodingKeys: String, CodingKey { case key, title, isStarred }
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        key = try values.decode(ObjectKey.self, forKey: .key)
+        title = try values.decode(String.self, forKey: .title)
+        isStarred = try values.decodeIfPresent(Bool.self, forKey: .isStarred) ?? false
+    }
 }
 
 /// GRDB serializes access. Parent/child snapshots are always written in one transaction.
@@ -46,6 +59,9 @@ public final class ObjectStore: Sendable {
                 let object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
                 try db.execute(sql: "UPDATE objects SET ruleID = ? WHERE key = ?", arguments: [object.key.ruleID, row["key"] as String])
             }
+        }
+        migration.registerMigration("v3RecentVisibility") { db in
+            try db.execute(sql: "ALTER TABLE readingState ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         }
         try migration.migrate(db)
     }
@@ -81,10 +97,14 @@ public final class ObjectStore: Sendable {
     }
     public func clearContent() throws { try db.write { try $0.execute(sql: "DELETE FROM objects") } }
     public func savePosition(_ position: ReadingPosition) throws {
-        try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO readingState VALUES (?, ?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970]) }
+        try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO readingState (mangaKey, payload, updatedAt, hidden) VALUES (?, ?, ?, 0)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970]) }
     }
-    public func positions() throws -> [ReadingPosition] {
-        try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM readingState ORDER BY updatedAt DESC").map { try JSONDecoder().decode(ReadingPosition.self, from: $0) } }
+    public func positions(includeHidden: Bool = true) throws -> [ReadingPosition] {
+        try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM readingState" + (includeHidden ? "" : " WHERE hidden = 0") + " ORDER BY updatedAt DESC").map { try JSONDecoder().decode(ReadingPosition.self, from: $0) } }
+    }
+    /// Removing a history row keeps its resume position; reading again makes it recent again.
+    public func hideRecent(_ key: ObjectKey) throws {
+        try db.write { try $0.execute(sql: "UPDATE readingState SET hidden = 1 WHERE mangaKey = ?", arguments: [key.id]) }
     }
     public func savedManga() throws -> [SavedManga] {
         try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM savedManga ORDER BY key").map { try JSONDecoder().decode(SavedManga.self, from: $0) } }

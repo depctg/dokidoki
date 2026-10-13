@@ -22,7 +22,9 @@ xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
 open build/Build/Products/Debug/MangaViewer.app
 ```
 
-The app opens in **My Library**, with saved titles and recent reading. On iPhone, iPad, and visionOS, native floating tabs switch between **My Library**, **Browse**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own browsing history. macOS uses a sidebar.
+The app opens in **My Library**, with your saved manga. On iPhone, iPad, and visionOS, native floating tabs switch between **My Library**, **Browse**, **Recent**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own browsing history. macOS uses a sidebar.
+
+Library and Recent rows show the cover, manga title, chapter, original page/total pages, and last-read age in hours or days. Tap a row to resume; an unread saved title starts at its first chapter. Swipe left on iPhone/iPad for **Star/Unstar**, **Remove**, and **Manga details**; the same actions are available in the context menu and accessibility actions. Stars put favorites first in Library; starring a Recent item also saves it. Removing from Library unsaves the title. Removing from Recent hides the history entry until you read it again. Both preserve the reading position. Older entries show cached page counts when available; missing covers use a placeholder.
 
 One reader is shared by the whole app in a single main window. Opening another chapter replaces the active chapter. Collapse it to a small glass **Resume** bar, available across the main views; tapping the bar returns to the same page. In paged mode, pull down from the top; in scroll mode, swipe inward from the physical left edge. The collapse button and Escape also return to the main views. On iPhone the native accessory sits above the tabs and moves inline when they minimize; iPad keeps it at the bottom, visionOS uses a bottom window ornament, and macOS places it below the top toolbar. The iOS accessory follows Apple's [Music accessory pattern](https://developer.apple.com/videos/play/wwdc2025/323/); Mac uses an in-window adaptation.
 

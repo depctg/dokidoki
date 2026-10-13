@@ -12,6 +12,7 @@ import MangaCore
     var source: ObjectKey?
     var fraction = 0.0
     var nextChapter: ContentReference?
+    private var mangaTitle: String?
     var error: String?
     var loading = true
     var revision = 0
@@ -47,9 +48,10 @@ import MangaCore
             fraction = position?.fractionalOffset ?? 0
             replan()
             loading = false
-            if let key = chapter.mangaRef, let object = try? await repository.resolve(key), case .manga(let manga) = object,
-               let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }) {
-                if manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
+            if let key = chapter.mangaRef, let object = try? await repository.resolve(key), case .manga(let manga) = object {
+                mangaTitle = manga.title
+                if let i = manga.chapterRefs.firstIndex(where: { $0.key == chapter.key }), manga.chapterRefs.indices.contains(i + 1) { nextChapter = manga.chapterRefs[i + 1] }
+                if active, !Task.isCancelled { save() }
             }
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
@@ -106,7 +108,11 @@ import MangaCore
     }
     func save() {
         guard let source else { return }
-        do { try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key, sourcePageKey: source, fractionalOffset: fraction, title: chapter.title)) }
+        do {
+            try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
+                sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,
+                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count))
+        }
         catch { app.error = error.localizedDescription }
     }
     func stop() {

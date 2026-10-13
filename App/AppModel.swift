@@ -2,12 +2,13 @@ import SwiftUI
 import MangaCore
 
 enum AppSection: String, CaseIterable, Identifiable {
-    case library = "My Library", browse = "Browse", settings = "Settings"
+    case library = "My Library", browse = "Browse", recent = "Recent", settings = "Settings"
     var id: Self { self }
     var symbol: String {
         switch self {
         case .library: "books.vertical"
         case .browse: "safari"
+        case .recent: "clock"
         case .settings: "gear"
         }
     }
@@ -27,6 +28,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var error: String?
     var saved: [SavedManga] = []
     var recent: [ReadingPosition] = []
+    var readingPositions: [ReadingPosition] = []
     var preferences = ReaderPreferences() {
         didSet {
             do { try store?.setPreference("reader", value: preferences) }
@@ -117,8 +119,40 @@ enum AppSection: String, CaseIterable, Identifiable {
         openChapter(key, hint: .forceRefresh, expand: readerExpanded)
     }
     func reloadLibrary() {
-        do { saved = try store?.savedManga() ?? []; recent = try store?.positions() ?? [] }
+        do {
+            saved = try store?.savedManga() ?? []
+            readingPositions = try store?.positions() ?? []
+            recent = try store?.positions(includeHidden: false) ?? []
+        }
         catch { self.error = error.localizedDescription }
+    }
+    func resumeManga(_ key: ObjectKey) {
+        if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey); return }
+        chapterRequest?.cancel(); openingChapter = true
+        chapterRequest = Task {
+            defer { if !Task.isCancelled { openingChapter = false } }
+            do {
+                guard let repository, case .manga(let manga) = try await repository.resolve(key, hint: .preferCache),
+                      let first = manga.chapterRefs.first else { throw ReaderError.extraction("This manga has no chapters yet.") }
+                try Task.checkCancellation()
+                openChapter(first.key)
+            } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        }
+    }
+    func toggleStar(_ key: ObjectKey, title: String) {
+        do {
+            var manga = saved.first(where: { $0.key == key }) ?? SavedManga(key: key, title: title)
+            manga.isStarred.toggle()
+            try store?.setSaved(manga, saved: true)
+            reloadLibrary()
+        } catch { self.error = error.localizedDescription }
+    }
+    func removeLibraryItem(_ key: ObjectKey, from section: AppSection) {
+        do {
+            if section == .recent { try store?.hideRecent(key) }
+            else if let manga = saved.first(where: { $0.key == key }) { try store?.setSaved(manga, saved: false) }
+            reloadLibrary()
+        } catch { self.error = error.localizedDescription }
     }
     func toggleSaved(_ manga: MangaObject) {
         do {

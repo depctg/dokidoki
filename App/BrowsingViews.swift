@@ -72,7 +72,7 @@ struct RootView: View {
         NavigationStack(path: Binding(get: { model.paths[section, default: []] }, set: { model.paths[section] = $0 })) {
             Group {
                 switch section {
-                case .library: LibraryView(model: model)
+                case .library, .recent: LibraryView(model: model, section: section)
                 case .browse: browse
                 case .settings: SettingsView(model: model)
                 }
@@ -199,7 +199,7 @@ struct MangaView: View {
                         if let summary = manga.summary { Text(summary).font(.callout).lineLimit(8) }
                     }
                 }.padding(.vertical, 12)
-                if let position = model.recent.first(where: { $0.mangaKey == manga.key }) {
+                if let position = model.readingPositions.first(where: { $0.mangaKey == manga.key }) {
                     Button("Resume reading", systemImage: "play.fill") { model.openChapter(position.chapterKey) }
                 } else if let first = manga.chapterRefs.first {
                     Button("Start reading", systemImage: "play.fill") { model.openChapter(first.key) }
@@ -214,23 +214,5 @@ struct MangaView: View {
         .task(id: manga.coverPageRef) {
             if let key = manga.coverPageRef, let object = try? await model.repository?.resolve(key), case .page(let page) = object { cover = page }
         }
-    }
-}
-
-struct LibraryView: View {
-    let model: AppModel
-    var body: some View {
-        List {
-            Section("Saved manga") { ForEach(model.saved) { NavigationLink($0.title, value: $0.key) } }
-            Section("Recent reading") {
-                ForEach(model.recent, id: \.mangaKey) { position in
-                    Button { model.openChapter(position.chapterKey) } label: {
-                        VStack(alignment: .leading) { Text(position.title); Text(position.updatedAt, style: .relative).font(.caption).foregroundStyle(.secondary) }
-                    }.tint(.primary)
-                }
-            }
-        }.navigationTitle("My Library")
-            .overlay { if model.saved.isEmpty && model.recent.isEmpty { ContentUnavailableView("Make room for a story", systemImage: "books.vertical", description: Text("Saved titles and your reading history appear here.")) } }
-            .onAppear { model.reloadLibrary() }
     }
 }
