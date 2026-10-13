@@ -1,5 +1,11 @@
 # Development state
 
+## Cover cache persistence — 2026-10-13
+
+- Cover descriptors previously inherited the introducing directory's 15-minute TTL, and byte keys included parsing-rule version. Core now assigns per-object freshness (covers 30 days, manga/chapter 7 days, lists 15 minutes), retains unchanged image bytes across recipe revisions, and migrates the current recipe's legacy files. Host validation and rule/allowed-hosts/URL/referer isolation remain enforced. Library uses known-metadata previews instead of requiring complete chapter extraction for its rows.
+- Increased image disk budget to 512 MiB and protected cover decoded budget to 32 MiB (112 MiB total). No startup cache clearing was found; local decode can still briefly show a placeholder, and OS-purgeable caches are not permanent downloads.
+- All 75 core tests in 19 suites pass (`/tmp/mangaviewer-cache-core.log`); the added redirect-policy regression passes separately (`/tmp/mangaviewer-cache-policy-test.log`). Tests reopen SQLite and recreate image loader/sender, verify legacy migration, reuse across recipe revisions, explicit refresh/clear, referer isolation and tightened hosts. iOS Simulator build passes. Clean-session review closed after adding allowed-hosts to byte identity so old redirected bytes cannot bypass a tightened policy. Next milestone replaces fractional chapter sections with a native item index without splitting groups; final cross-platform/UI checks will cover both changes.
+
 ## Manga/library UI and chapter lists — completed 2026-10-13
 
 - All eight refinements are implemented: native inlineLarge root titles; shared Star on manga; adaptive cover/metadata with full-width description; every named chapter list with independent source/reverse display sorting; details-first Library/Recent rows with separate Resume; Library swipe only Remove; durable chapter status; plain-text directory/search overpull footer; configurable default-on jump to last-read chapter. This supersedes the historical list-paging deferral below.

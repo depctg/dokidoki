@@ -122,7 +122,8 @@ private struct LibraryRow: View {
                    case .page(let page) = try model.store?.snapshot(pageKey)?.object { cover = page }
                 return
             }
-            guard case .manga(let loaded) = try await key.load(using: repository, hint: .preferCache) else { return }
+            let reference = ContentReference(key: key, title: title)
+            guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
             try Task.checkCancellation(); manga = loaded
             if let page = try await loaded.coverPage(using: repository, hint: .preferCache) {
                 try Task.checkCancellation(); cover = page

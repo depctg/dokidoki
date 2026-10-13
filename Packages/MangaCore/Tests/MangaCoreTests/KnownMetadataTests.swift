@@ -13,6 +13,30 @@ struct KnownMetadataTests {
     private let url = DemoContent.directoryURL
     private var key: ObjectKey { ObjectKey(ruleID: "demo", identityURL: url) }
 
+    @Test func coversKeepTheirOwnFreshnessAcrossDatabaseReopen() async throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let path = folder.appendingPathComponent("cache.sqlite").path
+        let rules = try DemoContent.bundledRules(), fetcher = MetadataFixtureFetcher()
+        let store = try ObjectStore(path: path)
+        let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
+        guard case .directory(let list) = try await key.load(using: repository) else { throw ReaderError.invalidResponse }
+        let ref = try #require(list.mangaRefs.first)
+        guard case .manga(let manga) = try await ref.preview(using: repository) else { throw ReaderError.invalidResponse }
+        let coverKey = try #require(manga.coverPageRef)
+        let cover = try #require(try store.snapshot(coverKey))
+        #expect(cover.expiresAt.timeIntervalSinceNow > 29 * 86_400)
+        let mangaSnapshot = try #require(try store.snapshot(manga.key))
+        #expect(mangaSnapshot.expiresAt.timeIntervalSinceNow > 6 * 86_400)
+        // Expire the originating directory; its known cover must not load the manga document.
+        try store.upsert([.directory(list)], version: cover.ruleVersion, ttl: -1)
+        let reopened = try ObjectRepository(store: ObjectStore(path: path), rules: rules, sender: RequestSender(fetcher: fetcher))
+        guard case .manga(let preview) = try await ref.preview(using: reopened) else { throw ReaderError.invalidResponse }
+        #expect(try await preview.coverPage(using: reopened)?.key == coverKey)
+        #expect(await fetcher.kinds == [.directory])
+    }
+
     @Test func relativeMetadataStaysWithEachLinkAndUsesTheSameMangaMapping() throws {
         let fields: [String: Any] = ["title": ["path": "//h1"], "mangaLinks": ["path": "//article/a", "read": "attr:href", "fields": [
             "title": ["path": "../h2"], "coverImage": ["path": "../img", "read": "attr:data-src", "fallback": "attr:src"],

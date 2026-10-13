@@ -78,7 +78,7 @@ public actor ObjectRepository {
                 try Task.checkCancellation()
                 guard epoch == generation else { throw CancellationError() }
                 let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: owner, kind: .chapter, rule: rule)
-                try store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(.chapter), replacingChildren: false)
+                try store.upsert(objects, version: rule.version, replacingChildren: false)
             } else { _ = try await resolve(owner, hint: .forceRefresh) }
             guard let child = try store.snapshot(key), child.ruleVersion == rule.version else { throw ReaderError.cacheMiss }; return child.object
         }
@@ -92,7 +92,7 @@ public actor ObjectRepository {
             let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule, sessionURL: sessionURL)
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
-            try self.store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(kind))
+            try self.store.upsert(objects, version: rule.version)
             guard let object = try self.store.snapshot(key)?.object else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
         }
         let request = Request(task: task)
@@ -173,7 +173,7 @@ public actor ObjectRepository {
                     guard case .directory(let result) = objects.first else { throw ReaderError.invalidResponse }
                     try Task.checkCancellation()
                     guard epoch == self.generation else { throw CancellationError() }
-                    try self.store.upsert(Array(objects.dropFirst()), version: rule.version, ttl: CachePolicy.lifetime(.directory), replacingChildren: false)
+                    try self.store.upsert(Array(objects.dropFirst()), version: rule.version, replacingChildren: false)
                     batch = result
                 }
                 try Task.checkCancellation()
@@ -186,7 +186,7 @@ public actor ObjectRepository {
                 stalled = current.mangaRefs.count == previousCount ? stalled + 1 : 0
                 guard stalled < 3 else { throw ReaderError.invalidResponse }
                 let rule = try self.rule(for: key)
-                try self.store.upsert([.directory(current)], version: rule.version, ttl: CachePolicy.lifetime(.directory))
+                try self.store.upsert([.directory(current)], version: rule.version)
             }
             return .directory(current)
         }

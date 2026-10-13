@@ -83,7 +83,9 @@ public final class ObjectStore: Sendable {
             return ObjectSnapshot(object: object, ruleVersion: row["ruleVersion"], expiresAt: Date(timeIntervalSince1970: row["expiresAt"]))
         }
     }
-    public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval, replacingChildren: Bool = true) throws {
+    /// Default freshness belongs to each object, not the document that introduced it.
+    /// An explicit TTL remains useful for imports and deliberately stale snapshots.
+    public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval? = nil, replacingChildren: Bool = true) throws {
         try db.write { db in
             let partialKeys = Set(objects.filter { !$0.isComplete }.map(\.key))
             if replacingChildren, let root = objects.first, root.kind != .page, !partialKeys.contains(root.key) {
@@ -111,7 +113,9 @@ public final class ObjectStore: Sendable {
                 }
                 if case .page(let page) = object, let owner = page.ownerRef, preserved.contains(owner) { continue }
                 let owner: String? = if case .page(let page) = object { page.ownerRef?.id } else { nil }
-                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(ttl).timeIntervalSince1970, owner, object.key.ruleID])
+                let isCover = if case .page(let page) = object { page.role == .cover } else { false }
+                let lifetime = ttl ?? CachePolicy.lifetime(object.kind, cover: isCover)
+                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(lifetime).timeIntervalSince1970, owner, object.key.ruleID])
             }
         }
     }

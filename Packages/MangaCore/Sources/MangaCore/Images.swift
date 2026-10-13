@@ -11,11 +11,11 @@ public actor ImageLoader {
     private let directory: URL
     private let diskLimit: Int
     private var generation = 0
-    public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int = 256 * 1024 * 1024) {
+    public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int = 512 * 1024 * 1024) {
         self.sender = sender; self.diskLimit = max(0, diskLimit)
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MangaViewer/Images", isDirectory: true)
         memory.totalCostLimit = 80 * 1024 * 1024; memory.countLimit = 24
-        covers.totalCostLimit = 16 * 1024 * 1024; covers.countLimit = 256
+        covers.totalCostLimit = 32 * 1024 * 1024; covers.countLimit = 256
         do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { ErrorDiagnostics.record(error, operation: .imageCache) }
     }
@@ -23,11 +23,21 @@ public actor ImageLoader {
         try Task.checkCancellation()
         guard let imageURL = page.imageURL, rule.permits(imageURL) else { throw ReaderError.blockedHost }
         let maxPixel = min(page.role == .cover ? 768 : 4096, max(64, maxPixel))
-        let digest = SHA256.hash(data: Data("\(rule.id)|\(rule.version)|\(imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")".utf8)).map { String(format: "%02x", $0) }.joined()
+        // Parsing revisions invalidate metadata, not unchanged image bytes. Host policy is
+        // still checked above on every access; hosts also isolate redirect policy.
+        let resource = "\(imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")"
+        let hosts = rule.allowedHosts.map { $0.lowercased() }.sorted().joined(separator: ",")
+        let digest = digest("\(rule.id)|\(hosts)|\(resource)")
         let memoryKey = "\(digest)-\(maxPixel)" as NSString
         let file = directory.appendingPathComponent((page.role == .cover ? "cover-" : "") + digest).appendingPathExtension("cache")
+        let legacy = directory.appendingPathComponent((page.role == .cover ? "cover-" : "") + self.digest("\(rule.id)|\(rule.version)|\(resource)")).appendingPathExtension("cache")
         let memory = page.role == .cover ? covers : memory
-        if refresh { memory.removeObject(forKey: memoryKey); remove(file); await sender.discardResource(page, rule: rule) }
+        if refresh { memory.removeObject(forKey: memoryKey); remove(file); remove(legacy); await sender.discardResource(page, rule: rule) }
+        else if !FileManager.default.fileExists(atPath: file.path), FileManager.default.fileExists(atPath: legacy.path) {
+            // Keep the currently installed recipe's on-disk images across this upgrade.
+            do { try FileManager.default.moveItem(at: legacy, to: file) }
+            catch { ErrorDiagnostics.record(error, operation: .imageCache) }
+        }
         if let image = memory.object(forKey: memoryKey) {
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
             return image
@@ -67,6 +77,9 @@ public actor ImageLoader {
         for file in entries() { remove(file.url) }
     }
     public func diskUsage() -> Int { entries().reduce(0) { $0 + $1.size } }
+    private func digest(_ identity: String) -> String {
+        SHA256.hash(data: Data(identity.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
     private func entries() -> [(url: URL, size: Int, date: Date)] {
         let urls = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.fileSizeKey, .contentModificationDateKey], options: .skipsHiddenFiles)) ?? []
         return urls.filter { $0.pathExtension == "cache" }.map { url in
