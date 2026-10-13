@@ -1,5 +1,11 @@
 # Development state
 
+## Physical iPhone preview — signing blocked 2026-10-13
+
+- Zhiyuan iPhone (iPhone 14 Pro, iOS 27.0.1) is paired, connected and has Developer Mode enabled. The device has no installed `com.mangaviewer.reader` app yet.
+- Current application revision `10e3475` builds successfully for physical iOS hardware with signing disabled (`/tmp/mangaviewer-zhiyuan-iphone-unsigned.log`); bundle is `build/Build/Products/Debug-iphoneos/MangaViewer.app`. This unsigned bundle cannot be installed on the phone.
+- Automatic signing with the existing Personal Team fails because Xcode rejects its saved Apple Account login; no valid local signing identity/provisioning profile is available. User has been asked to reauthenticate in Xcode Settings → Accounts. Resume by rebuilding for the connected device with `-allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=<existing-team-id>`, then use `devicectl device install app` and `device process launch`. Keep machine/account-specific signing values out of the shared project; preserve device data. No app code or project signing settings changed.
+
 ## Shared UI and test cleanup — completed 2026-10-13
 
 - Replaced separate reader/directory scroll handlers with ScrollOverpull: native geometry and phases produce signed distance/viewport fraction, and only finger release invokes the caller. Reader keeps 25% continuation and both mounted previews; directory keeps 72-point overpull/footer/accessibility actions. No added gesture or source rule.
