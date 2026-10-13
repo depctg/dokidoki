@@ -10,9 +10,11 @@ struct BrowseTests {
         let store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule])
         let site = try SiteObject(rule: rule)
-        let reference = try #require(site.directoryRefs.first)
         #expect(site.id == rule.id && site.name == rule.name && site.version == rule.version)
-        #expect(site.supportsSearch && reference.title == list.title)
+        #expect(site.supportsSearch && site.browseRefs.first?.title == list.title)
+        let previews = try await site.load(using: repository)
+        let preview = try #require(previews.first)
+        let reference = ContentReference(key: preview.key, title: preview.title)
         guard case .directory(let directory) = try await reference.load(using: repository) else { Issue.record("Missing list"); return }
         #expect(directory.mangaRefs.count == 2)
         #expect(directory.title == reference.title)
@@ -28,7 +30,7 @@ struct BrowseTests {
         var legacy = base; legacy.removeValue(forKey: "browse"); legacy.removeValue(forKey: "searchURLTemplate")
         #expect(try SiteRule.decode(JSONSerialization.data(withJSONObject: legacy)).browse == nil)
         let legacySite = try SiteObject(rule: SiteRule.decode(JSONSerialization.data(withJSONObject: legacy)))
-        #expect(legacySite.directoryRefs.isEmpty && !legacySite.supportsSearch)
+        #expect(legacySite.browseRefs.isEmpty && !legacySite.supportsSearch)
         #expect(try legacySite.search("title") == nil)
         for invalid: [[String: String]] in [
             [["title": "Denied", "url": "https://outside.example/catalog"]],
@@ -52,7 +54,7 @@ struct BrowseTests {
         json["matchers"] = matchers
         let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
         let site = try SiteObject(rule: rule)
-        #expect(site.directoryRefs.first?.key.identityURL == DemoContent.directoryURL)
+        #expect(site.browseRefs.first?.key.identityURL == DemoContent.directoryURL)
         #expect(throws: ReaderError.self) { try site.search("blocked") }
         json["id"] = "other-rule"
         let other = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
@@ -66,7 +68,7 @@ struct BrowseTests {
                 "next": ["path": "//a[@rel='next']", "read": "attr:href"]]]
         ], uniquingKeysWith: { _, new in new })
         let pagingRule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
-        let key = try #require(try SiteObject(rule: pagingRule).directoryRefs.first?.key)
+        let key = try #require(try SiteObject(rule: pagingRule).browseRefs.first?.key)
         func parse(_ next: String) throws -> DirectoryObject {
             let html = "<h1>Source title</h1><a rel='next' href='\(next)'>Next</a>"
             let objects = try RuleExtractor().extract(data: Data(html.utf8), responseURL: key.identityURL, key: key, kind: .directory, rule: pagingRule)

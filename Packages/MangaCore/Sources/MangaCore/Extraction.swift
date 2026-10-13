@@ -127,9 +127,9 @@ public struct RuleExtractor: Sendable {
             }
         }
         for (name, field) in spec.variables ?? [:] { variables[name] = try extract(field).first?.value }
-        func values(_ name: String) throws -> [(String, String)] {
-            guard let field = spec.fields[name] else { return [] }
-            return try extract(field).map { ($0.value, $0.title) }
+        func values(_ name: String, fields: [String: Field]? = nil, relativeTo selection: Selection? = nil) throws -> [(String, String)] {
+            guard let field = (fields ?? spec.fields)[name] else { return [] }
+            return try extract(field, relativeTo: selection).map { ($0.value, $0.title) }
         }
         func first(_ name: String) throws -> String? { try values(name).first?.0 }
         func counter(_ name: String, minimum: Int = 0) throws -> Int? {
@@ -144,46 +144,61 @@ public struct RuleExtractor: Sendable {
                 return !text.isEmpty && seen.insert(text).inserted ? text : nil
             }
         }
-        let metadataNames = ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
-        func knownMetadata(_ fields: [String: Field], relativeTo selection: Selection? = nil) throws -> [String: [String]] {
-            var result: [String: [String]] = [:]
-            for name in metadataNames {
-                if let field = fields[name] { result[name] = cleaned(try extract(field, relativeTo: selection).map(\.value)) }
-            }
-            if result["title"]?.isEmpty != false, let selection { result["title"] = cleaned([selection.title]) }
-            return result
-        }
         func url(_ string: String) throws -> URL {
             guard let url = URL(string: string, relativeTo: responseURL)?.absoluteURL, rule.permits(url) else { throw ReaderError.blockedHost }
             return try RuleRegistry.normalize(url)
         }
-        // Full documents and relationship previews use the same metadata-to-object construction.
-        func manga(_ childKey: ObjectKey, sourceURL: URL, known: [String: [String]], chapters: [ContentReference]?) throws -> [ContentObject] {
-            let cover = try known["coverImage"]?.first.map { value in
-                PageObject(key: .page(owner: childKey, index: -1), ownerRef: childKey, role: .cover, sourceIndex: nil,
-                    imageURL: try url(value), refererURL: responseURL, sessionURL: sessionURL ?? key.identityURL)
-            }
-            let object = MangaObject(key: childKey, sourceURL: sourceURL,
-                title: known["title"]?.first ?? String(localized: "Untitled", bundle: .module),
-                author: known["author"]?.first, summary: known["summary"]?.first, coverPageRef: cover?.key, chapterRefs: chapters,
-                rating: known["rating"]?.first, status: known["status"]?.first, tags: known["tags"].flatMap { $0.isEmpty ? nil : $0 })
-            return [.manga(object)] + (cover.map { [.page($0)] } ?? [])
-        }
         var children: [ContentObject] = []
-        func refs(_ name: String, expected: ContentKind) throws -> [ContentReference] {
-            guard let field = spec.fields[name] else { return [] }
-            let registry = try RuleRegistry(rules: [rule]); var seen: Set<ObjectKey> = []
-            return try extract(field).compactMap { selection in
+        // Documents and links use one typed constructor. Missing relationships stay unknown.
+        func create(_ kind: ContentKind, key childKey: ObjectKey, fields: [String: Field], relativeTo selection: Selection? = nil) throws -> [ContentObject] {
+            func metadata(_ name: String) throws -> [String] { cleaned(try values(name, fields: fields, relativeTo: selection).map(\.0)) }
+            func text(_ name: String) throws -> String? { try metadata(name).first }
+            let title = try text("title") ?? selection.map { $0.title.isEmpty ? childKey.identityURL.lastPathComponent : $0.title }
+                ?? String(localized: "Untitled", bundle: .module)
+            let sourceURL = selection == nil ? responseURL : childKey.identityURL
+            switch kind {
+            case .manga:
+                let cover = try text("coverImage").map { value in
+                    PageObject(key: .page(owner: childKey, index: -1), ownerRef: childKey, role: .cover, sourceIndex: nil,
+                        imageURL: try url(value), refererURL: responseURL, sessionURL: sessionURL ?? key.identityURL)
+                }
+                let tags = try metadata("tags")
+                let object = MangaObject(key: childKey, sourceURL: sourceURL, title: title,
+                    author: try text("author"), summary: try text("summary"), coverPageRef: cover?.key,
+                    chapterRefs: selection == nil ? try refs("chapterLinks", expected: .chapter) : nil,
+                    rating: try text("rating"), status: try text("status"), tags: tags.isEmpty ? nil : tags)
+                return [.manga(object)] + (cover.map { [.page($0)] } ?? [])
+            case .directory:
+                let items = try fields["mangaLinks"].map { _ in try refs("mangaLinks", expected: .manga, fields: fields, relativeTo: selection) }
+                if selection != nil {
+                    return [.directory(DirectoryObject(key: childKey, sourceURL: sourceURL, title: title, mangaRefs: items, isPreview: true))]
+                }
+                let title = rule.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == childKey.identityURL })?.title ?? title
+                let total = try counter("totalCount")
+                let end: Bool? = if let strategy = spec.session, strategy.mode != .load {
+                    try (total.map { (items?.count ?? 0) >= $0 } ?? false) || (strategy.endXPath.map { try html?.contains($0) ?? false } ?? false)
+                } else { nil }
+                let by = try refs("sortByLinks", expected: .directory), order = try refs("sortOrderLinks", expected: .directory)
+                return [.directory(DirectoryObject(key: childKey, sourceURL: sourceURL, title: title,
+                    mangaRefs: items, nextURL: try nextPageURL(), endReached: end, totalCount: total,
+                    sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
+                    selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
+                    selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]
+            default: throw ReaderError.invalidResponse
+            }
+        }
+        let registry = try RuleRegistry(rules: [rule])
+        func refs(_ name: String, expected: ContentKind, fields: [String: Field]? = nil, relativeTo parent: Selection? = nil) throws -> [ContentReference] {
+            guard let field = (fields ?? spec.fields)[name] else { return [] }
+            var seen: Set<ObjectKey> = []
+            return try extract(field, relativeTo: parent).compactMap { selection in
                 let destination = try url(selection.value)
                 // Selectors may include other site links; retain only references of the requested kind.
                 guard let (_, kind, childKey) = try? registry.match(destination), kind == expected, seen.insert(childKey).inserted else { return nil }
                 var label = selection.title.isEmpty ? destination.lastPathComponent : selection.title
-                if name == "mangaLinks" {
-                    var known = try knownMetadata(field.fields ?? [:], relativeTo: selection)
-                    if known["title"]?.isEmpty != false { known["title"] = [label] }
-                    let objects = try manga(childKey, sourceURL: destination, known: known, chapters: nil)
-                    children += objects
-                    label = objects[0].title
+                if name == "mangaLinks" || name == "directoryLinks" {
+                    let objects = try create(kind, key: childKey, fields: field.fields ?? [:], relativeTo: selection)
+                    children += objects; label = objects[0].title
                 }
                 return ContentReference(key: childKey, title: label)
             }
@@ -206,22 +221,12 @@ public struct RuleExtractor: Sendable {
         }
         let title = try first("title") ?? String(localized: "Untitled", bundle: .module)
         switch kind {
-        case .directory:
-            let title = rule.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == key.identityURL })?.title ?? title
-            let items = try refs("mangaLinks", expected: .manga)
-            let total = try counter("totalCount")
-            let end: Bool? = if let strategy = spec.session, strategy.mode != .load {
-                try (total.map { items.count >= $0 } ?? false) || (strategy.endXPath.map { try html?.contains($0) ?? false } ?? false)
-            } else { nil }
-            let by = try refs("sortByLinks", expected: .directory)
-            let order = try refs("sortOrderLinks", expected: .directory)
-            return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title,
-                mangaRefs: items, nextURL: try nextPageURL(), endReached: end, totalCount: total,
-                sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
-                selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
-                selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))] + children
-        case .manga:
-            return try manga(key, sourceURL: responseURL, known: knownMetadata(spec.fields), chapters: refs("chapterLinks", expected: .chapter))
+        case .site:
+            let directories = try refs("directoryLinks", expected: .directory)
+            return [.site(SitePageObject(key: key, sourceURL: responseURL, title: title, directoryRefs: directories))] + children
+        case .directory, .manga:
+            let objects = try create(kind, key: key, fields: spec.fields)
+            return objects + children
         case .chapter:
             let offset = (try counter("pageNumber", minimum: 1) ?? 1) - 1
             let pages = try values("pageImages").enumerated().map { position, entry in

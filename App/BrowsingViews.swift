@@ -109,6 +109,11 @@ struct ObjectScreen: View {
         Group {
             if let object {
                 switch object {
+                case .site(let page):
+                    ScrollView {
+                        BrowseLists(model: model) { repository, hint in try await page.lists(using: repository, hint: hint) }
+                            .padding(.vertical, 16)
+                    }.navigationTitle(page.title)
                 case .directory(let directory):
                     DirectoryView(directory: directory, model: model, isSearchResult: isSearchResult, changeSort: changeDirectory)
                 case .manga(let manga): MangaView(manga: manga, model: model)

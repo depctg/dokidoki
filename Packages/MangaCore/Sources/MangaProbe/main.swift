@@ -58,6 +58,18 @@ import AppKit
         }
         let object = try await key.load(using: repository)
         print("\(object.kind.rawValue): \(object.title)")
+        if case .site(let page) = object {
+            let directories = try await page.lists(using: repository)
+            print("\(directories.count) directories from one source page")
+            for directory in directories {
+                print("\(directory.title): \(directory.mangaRefs.count) known items; preview: \(directory.isPreview == true) → \(directory.key.identityURL.absoluteString)")
+                if arguments.contains("--previews"), let ref = directory.mangaRefs.first,
+                   case .manga(let manga) = try await ref.preview(using: repository), let cover = try await manga.coverPage(using: repository) {
+                    let image = try await cover.image(using: repository)
+                    print("Preview cover decoded: \(image.width) × \(image.height); chapters unknown: \(manga.chapters == nil)")
+                }
+            }
+        }
         if case .directory(let directory) = object {
             print("\(directory.mangaRefs.count) manga references")
             for (label, options, selected) in [("Sort by", directory.sortBy, directory.selectedSortBy), ("Order", directory.sortOrder, directory.selectedSortOrder)] {
@@ -69,7 +81,9 @@ import AppKit
             if arguments.contains("--previews") {
                 let start = ContinuousClock.now
                 var previews: [MangaObject] = []
-                for ref in directory.mangaRefs.prefix(8) { previews.append(try await ref.mangaPreview(using: repository)) }
+                for ref in directory.mangaRefs.prefix(8) {
+                    if case .manga(let manga) = try await ref.preview(using: repository) { previews.append(manga) }
+                }
                 print("Previews: \(previews.count); known covers: \(previews.filter { $0.coverPageRef != nil }.count); detail documents still unknown: \(previews.filter { $0.chapters == nil }.count); elapsed: \(start.duration(to: .now))")
                 if let first = previews.first, let cover = try await first.coverPage(using: repository) {
                     let image = try await cover.image(using: repository)

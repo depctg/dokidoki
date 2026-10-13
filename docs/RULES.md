@@ -18,6 +18,7 @@ URLs resolve against the final response URL and must still pass the exact-host p
 
 | Kind | Required fields | Optional fields |
 | --- | --- | --- |
+| site | title, directoryLinks | none |
 | directory | title, mangaLinks | next, totalCount, sortByLinks, sortOrderLinks, selectedSortBy, selectedSortOrder |
 | manga | title, chapterLinks | author, summary, coverImage, rating, status, tags |
 | chapter | title, pageImages | mangaLink, totalCount, pageNumber |
@@ -27,7 +28,7 @@ Manga `rating` and `status` use the first nonblank selected value; `tags` uses a
 
 ### Known metadata on linked objects
 
-`mangaLinks.fields` optionally maps `title`, `coverImage`, `author`, `summary`, `rating`, `status`, and `tags` through the same Field language as a full manga document. Evaluate each field relative to its selected link node (XPath `.`/`..`/`.//`) or selected JSON object; JSON template/query paths in these nested fields are also relative to that object. Named variables remain extractor-scoped. One level only: no nested relationships, scripts, or extra metadata names.
+`mangaLinks.fields` optionally maps `title`, `coverImage`, `author`, `summary`, `rating`, `status`, and `tags` through the same Field language as a full manga document. Evaluate each field relative to its selected link node (XPath `.`/`..`/`.//`) or selected JSON object; JSON template/query paths in these nested fields are also relative to that object. Named variables remain extractor-scoped. Only the typed SitePage → Directory → Manga relationship chain is supported; manga metadata is scalar. No arbitrary recursion, scripts, or extra metadata names.
 
 ```json
 "mangaLinks": {
@@ -43,11 +44,34 @@ Manga `rating` and `status` use the first nonblank selected value; `tags` uses a
 
 For JSON, select the whole item (`items.*`), read its URL/identifier with `read`, and use `fields.title: {"path":"name"}`, `fields.coverImage: {"path":"cover"}`, etc. Do not select just `items.*.url`: that loses the sibling metadata context. The existing link label (`title` attribute/text for HTML; `titlePath` or `title` for JSON) supplies known title when `fields.title` is absent or empty. Explicit known title also becomes the reference label. Full manga extraction and linked previews share the same metadata construction, trimming and tag deduplication. Missing optional values stay unknown; selections never zip unrelated arrays of links/covers.
 
-Core stores each linked manga and its known cover as separate keyed snapshots. The manga's chapters stay unknown until detail loading, distinct from a known empty list; existing serialized `chapterRefs` remain compatible. Browse calls `ContentReference.mangaPreview`, using cached known covers without fetching detail documents. Legacy links without a known cover fall back to a detail load. A normal reference load still resolves chapters. Same-version partial updates merge optional knowledge, and never downgrade a full manga or overwrite its cover/freshness. List seeds use the list's lifetime; a fetched complete manga uses the manga lifetime.
+Core stores each linked manga and its known cover as separate keyed snapshots. The manga's chapters stay unknown until detail loading, distinct from a known empty list; existing serialized `chapterRefs` remain compatible. Browse calls `ContentReference.preview`, using cached known covers without fetching detail documents. Legacy links without a known cover fall back to a detail load. A normal reference load still resolves chapters. Same-version partial updates merge optional knowledge, and never downgrade a full manga or overwrite its cover/freshness. List seeds use the list's lifetime; a fetched complete manga uses the manga lifetime.
 
 Covers carry the logical source session URL separately from their manga owner and final-response referer. The central sender checks that session's passive URL buffer before HTTP. This does not create browser requests or relax rule/host/referer isolation. Missing, not-yet-loaded, or cross-origin-inaccessible browser images use normal centralized HTTP; metadata reuse works even with background loading off.
 
-Optional `browse` declares the Site object’s ordered directories as `{ "title": "Recent updates", "url": "https://reader.example/recent" }` entries. Each URL must be an allowed directory URL matched by this rule. Titles must be nonempty; URLs must be unique after normalization; at most 24 directories are accepted. Core normalizes these URLs into SiteObject.directoryRefs; each target parses as a single DirectoryObject list. The declared title is also the directory title when that exact URL is parsed. Browse previews up to eight manga per shelf and opens the full directory when its heading is selected. Omission remains valid for older imported rules.
+Optional `browse` declares ordered source entries as `{ "title": "Home", "url": "https://reader.example/" }`. A source must match this rule's `site` or `directory` kind. URLs are unique after normalization, titles nonempty, and at most 24 sources are accepted. SiteObject.browseRefs are declarative entry points; `SiteObject.load` asks core to load them through the shared sender, preserve source/extracted order and deduplicate directory keys (first label wins). A legacy directory source supplies one full list; a site source is a cached SitePageObject supplying many directory references. Omitting browse still means no shelves. Independent source requests may run concurrently within the sender's existing limits. Failure/cancellation never exposes a partly assembled list collection; retry reuses completed cached sources.
+
+A `site` extractor requires `title` and `directoryLinks`. Reuse the same Field options and `fields` metadata mechanism:
+
+```json
+"directoryLinks": {
+  "path": "//section/h2/a",
+  "read": "attr:href",
+  "fields": {
+    "mangaLinks": {
+      "path": "../../..//a[@class='manga']",
+      "read": "attr:href",
+      "fields": {
+        "title": { "path": ".", "read": "attr:title", "fallback": "text" },
+        "coverImage": { "path": ".//img", "read": "attr:src" }
+      }
+    }
+  }
+}
+```
+
+`directoryLinks.fields` accepts only `title` and `mangaLinks`; the link label supplies a missing title. JSON follows the same graph using whole selected objects and relative dotted paths. Known metadata stays associated with each selected node. A missing `mangaLinks` field means unknown items; a declared selector returning no entries means known empty. Readiness must establish the page's actual lists before extraction; don't mistake an unfinished DOM for empty lists.
+
+Linked directory snapshots have `isPreview: true`: their items are a homepage excerpt, while sorting and continuation remain unknown (`hasMore == nil`). `ContentReference.preview` accepts these known items without loading the full directory; normal reference/range loads resolve the full list. Site loading returns directory snapshots labeled by their source section. Fresh home/list snapshots live for fifteen minutes and survive browser disposal. Same-version partial updates never downgrade a complete directory/manga/cover or renew its freshness. Site loading honors child expiry: newly seeded previews need no extra request, while stale full lists linked from a home page still refresh. Cached full objects and old rules/snapshots remain valid. Browse presents up to eight manga per shelf, and opening the heading loads the full directory's own URL and controls.
 
 Directory sorting is optional and uses the existing `Field` language. `sortByLinks` and `sortOrderLinks` select titled links to directory URLs; `selectedSortBy` and `selectedSortOrder` select the active links. HTML normally uses XPath plus `read: "attr:href"`; JSON can select `{ "url": "…", "title": "…" }` objects. Each axis is independent: missing or empty links produce no picker, and both missing means no sort control. The app keeps source order and does not invent local title sorting or reverse a single fetched page.
 

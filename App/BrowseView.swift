@@ -11,11 +11,7 @@ struct BrowseView: View {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     Text(site.name).font(.title2.bold()).padding(.horizontal, 20)
                         .accessibilityIdentifier("browse.siteTitle")
-                    if !site.directoryRefs.isEmpty {
-                        ForEach(site.directoryRefs) { reference in BrowseShelf(reference: reference, model: model) }
-                    } else {
-                        ContentUnavailableView("No browse lists", systemImage: "books.vertical", description: Text("This site rule has no browse lists. Search the site or open a supported URL."))
-                    }
+                    BrowseLists(model: model) { repository, hint in try await site.load(using: repository, hint: hint) }
                 }.padding(.vertical, 16).id("\(site.id)|\(site.version)")
             } else {
                 ContentUnavailableView("No sites installed", systemImage: "globe", description: Text("Import or restore a site rule in Settings."))
@@ -109,36 +105,20 @@ private struct OpenURLView: View {
     }
 }
 
-private struct BrowseShelf: View {
-    let reference: ContentReference
+/// View state is presentation only; the object/core layer assembles the site's lists.
+struct BrowseLists: View {
     let model: AppModel
-    @State private var directory: DirectoryObject?
+    let load: (ObjectRepository, CacheHint) async throws -> [DirectoryObject]
+    @State private var directories: [DirectoryObject]?
     @State private var error: String?
     @State private var attempt = 0
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: AppRoute.object(reference.key)) {
-                HStack(spacing: 6) {
-                    Text(reference.title).font(.title2.bold())
-                    Image(systemName: "chevron.right").font(.headline).foregroundStyle(.secondary)
-                }.foregroundStyle(.primary)
-            }.buttonStyle(.plain).padding(.horizontal, 20)
-                .accessibilityIdentifier("browse.list.\(reference.key.identityURL.absoluteString)")
-            if let directory {
-                if directory.mangaRefs.isEmpty {
-                    Text("No titles in this list.").foregroundStyle(.secondary).padding(.horizontal, 20)
+        LazyVStack(alignment: .leading, spacing: 28) {
+            if let directories {
+                if directories.isEmpty {
+                    ContentUnavailableView("No browse lists", systemImage: "books.vertical", description: Text("This site rule has no browse lists. Search the site or open a supported URL."))
                 } else {
-                    ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 16) {
-                            ForEach(Array(directory.mangaRefs.prefix(8))) { reference in
-                                NavigationLink(value: AppRoute.object(reference.key)) {
-                                    MangaPreview(reference: reference, model: model, shelf: true)
-                                }.buttonStyle(.plain).accessibilityIdentifier("manga.item.\(reference.key.id)")
-                            }
-                        }.scrollTargetLayout()
-                    }
-                    .contentMargins(.horizontal, 20, for: .scrollContent)
-                    .scrollIndicators(.hidden).scrollTargetBehavior(.viewAligned)
+                    ForEach(directories) { BrowseShelf(directory: $0, model: model) }
                 }
             } else if let error {
                 VStack(alignment: .leading, spacing: 8) {
@@ -147,12 +127,44 @@ private struct BrowseShelf: View {
                 }.padding(.horizontal, 20)
             } else { ProgressView("Loading titles…").padding(20) }
         }
-        .task(id: "\(reference.key.id)|\(attempt)|\(model.loadingRevision)") {
-            directory = nil; error = nil
+        .task(id: "\(attempt)|\(model.loadingRevision)") {
+            directories = nil; error = nil
             do {
-                guard let repository = model.repository, case .directory(let loaded) = try await reference.load(using: repository, hint: attempt > 0 ? .forceRefresh : .refreshIfStale) else { return }
-                try Task.checkCancellation(); directory = loaded
+                guard let repository = model.repository else { return }
+                let loaded = try await load(repository, attempt > 0 ? .forceRefresh : .refreshIfStale)
+                try Task.checkCancellation(); directories = loaded
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
+        }
+    }
+}
+
+private struct BrowseShelf: View {
+    let directory: DirectoryObject
+    let model: AppModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NavigationLink(value: AppRoute.object(directory.key)) {
+                HStack(spacing: 6) {
+                    Text(directory.title).font(.title2.bold())
+                    Image(systemName: "chevron.right").font(.headline).foregroundStyle(.secondary)
+                }.foregroundStyle(.primary)
+            }.buttonStyle(.plain).padding(.horizontal, 20)
+                .accessibilityIdentifier("browse.list.\(directory.key.identityURL.absoluteString)")
+            if directory.mangaRefs.isEmpty {
+                Text("No titles in this list.").foregroundStyle(.secondary).padding(.horizontal, 20)
+            } else {
+                ScrollView(.horizontal) {
+                    LazyHStack(alignment: .top, spacing: 16) {
+                        ForEach(Array(directory.mangaRefs.prefix(8))) { reference in
+                            NavigationLink(value: AppRoute.object(reference.key)) {
+                                MangaPreview(reference: reference, model: model, shelf: true)
+                            }.buttonStyle(.plain).accessibilityIdentifier("manga.item.\(reference.key.id)")
+                        }
+                    }.scrollTargetLayout()
+                }
+                .contentMargins(.horizontal, 20, for: .scrollContent)
+                .scrollIndicators(.hidden).scrollTargetBehavior(.viewAligned)
+            }
         }
     }
 }
@@ -182,7 +194,7 @@ struct MangaPreview: View {
             manga = nil; cover = nil
             do {
                 guard let repository = model.repository else { return }
-                let loaded = try await reference.mangaPreview(using: repository)
+                guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
                 try Task.checkCancellation(); manga = loaded
                 let page = try await loaded.coverPage(using: repository, hint: .preferCache)
                 try Task.checkCancellation(); cover = page

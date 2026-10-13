@@ -2,11 +2,16 @@
   "schemaVersion": 1,
   "id": "demo",
   "name": "Bundled reading room",
-  "version": 7,
+  "version": 8,
   "allowedHosts": [
     "demo.mangaviewer.local"
   ],
   "matchers": [
+    {
+      "kind": "site",
+      "pattern": "^https://demo\\.mangaviewer\\.local/home(\\?.*)?$",
+      "priority": 0
+    },
     {
       "kind": "directory",
       "pattern": "^https://demo\\.mangaviewer\\.local/catalog(\\?.*)?$",
@@ -118,12 +123,48 @@
           "path": "pages.*"
         }
       }
+    },
+    "site": {
+      "format": "html",
+      "fields": {
+        "title": {
+          "path": "//h1"
+        },
+        "directoryLinks": {
+          "path": "//section/h2/a",
+          "read": "attr:href",
+          "fields": {
+            "mangaLinks": {
+              "path": "../../..//a[@class=\"manga\"]",
+              "read": "attr:href",
+              "fields": {
+                "coverImage": {
+                  "path": ".",
+                  "read": "attr:data-cover"
+                },
+                "rating": {
+                  "path": ".",
+                  "read": "attr:data-rating"
+                },
+                "status": {
+                  "path": ".",
+                  "read": "attr:data-status"
+                },
+                "tags": {
+                  "path": ".",
+                  "read": "attr:data-tag"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "browse": [
     {
       "title": "Reading room",
-      "url": "https://demo.mangaviewer.local/catalog"
+      "url": "https://demo.mangaviewer.local/home"
     }
   ],
   "searchURLTemplate": "https://demo.mangaviewer.local/catalog?q={query}"

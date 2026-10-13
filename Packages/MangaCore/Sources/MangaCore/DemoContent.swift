@@ -16,6 +16,7 @@ public enum DemoContent {
         guard url.host == directoryURL.host else { return nil }
         let name: String; let ext: String
         switch url.path {
+        case "/home": name = "home"; ext = "html"
         case "/catalog":
             // Offline fixture responses, not website parsing or client-side sorting.
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []

@@ -58,12 +58,12 @@ public actor ObjectRepository {
         await sender.invalidateResources()
     }
     public func clearContent() async throws { await invalidate(); try store.clearContent() }
-    public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, sessionURL: URL? = nil) async throws -> ContentObject {
+    public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, sessionURL: URL? = nil, preview: Bool = false) async throws -> ContentObject {
         try Task.checkCancellation()
         if hint == .forceRefresh, let old = directoryFlights.removeValue(forKey: key) { old.task.cancel(); old.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }
         let rule = try rule(for: key)
         let cached = try store.snapshot(key)
-        if let cached, cached.ruleVersion == rule.version, Self.isComplete(cached.object),
+        if let cached, cached.ruleVersion == rule.version, (cached.object.isComplete || (preview && cached.object.hasPreview)),
            hint == .offlineOnly || hint == .preferCache || (hint == .refreshIfStale && cached.expiresAt > Date()) { return cached.object }
         if hint == .offlineOnly { throw ReaderError.cacheMiss }
         if let owner = key.owner {
@@ -84,7 +84,7 @@ public actor ObjectRepository {
         }
         if let request = inFlight[key] { return try await consume(request, key: key) }
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
-        guard canonical == key else { return try await resolve(canonical, hint: hint) }
+        guard canonical == key else { return try await resolve(canonical, hint: hint, sessionURL: sessionURL, preview: preview) }
         let currentGeneration = generation, backgroundLoading = backgroundLoading
         let task = Task<ContentObject, Error> { [sender] in
             let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(refresh: hint == .forceRefresh, sessionURL: sessionURL)))
@@ -99,18 +99,43 @@ public actor ObjectRepository {
         inFlight[key] = request
         return try await consume(request, key: key)
     }
-    private static func isComplete(_ object: ContentObject) -> Bool {
-        if case .manga(let manga) = object { return manga.chapters != nil }
-        return true
-    }
-    /// Use already-known card metadata; legacy links without a cover fall back to detail loading.
-    func mangaPreview(_ key: ObjectKey) async throws -> MangaObject {
+    /// Site orchestration is core work: each source may return one list or a page of lists.
+    func directories(from sources: [ContentReference], hint: CacheHint) async throws -> [DirectoryObject] {
+        let epoch = generation
+        let batches = try await withThrowingTaskGroup(of: (Int, [ContentReference]).self) { group in
+            for (index, source) in sources.enumerated() {
+                group.addTask {
+                    switch try await self.resolve(source.key, hint: hint) {
+                    case .site(let page): return (index, page.directoryRefs)
+                    case .directory: return (index, [source])
+                    default: throw ReaderError.invalidResponse
+                    }
+                }
+            }
+            var result: [(Int, [ContentReference])] = []
+            for try await batch in group { result.append(batch) }
+            return result.sorted { $0.0 < $1.0 }.flatMap(\.1)
+        }
+        var seen: Set<ObjectKey> = []
+        let references = batches.filter { seen.insert($0.key).inserted }
+        // Freshly seeded excerpts need no second request. Linked full lists retain
+        // their own expiry, including when refreshing a source with only links.
+        let result = try await directoryPreviews(references, hint: hint == .forceRefresh ? .refreshIfStale : hint)
         try Task.checkCancellation()
-        let rule = try rule(for: key)
-        if let cached = try store.snapshot(key), cached.ruleVersion == rule.version,
-           case .manga(let manga) = cached.object, manga.coverPageRef != nil || manga.chapters != nil { return manga }
-        guard case .manga(let manga) = try await resolve(key, hint: .preferCache) else { throw ReaderError.invalidResponse }
-        return manga
+        guard generation == epoch else { throw CancellationError() }
+        return result
+    }
+    func directoryPreviews(_ references: [ContentReference], hint: CacheHint) async throws -> [DirectoryObject] {
+        let epoch = generation
+        var result: [DirectoryObject] = []
+        for reference in references {
+            guard case .directory(var directory) = try await resolve(reference.key, hint: hint, preview: true) else { throw ReaderError.invalidResponse }
+            // The source's section label describes this shelf, even when a full list is cached.
+            directory.title = reference.title; result.append(directory)
+        }
+        try Task.checkCancellation()
+        guard generation == epoch else { throw CancellationError() }
+        return result
     }
     func pageDescriptors(for chapter: ChapterObject) throws -> [PageObject] {
         let rule = try rule(for: chapter.key)

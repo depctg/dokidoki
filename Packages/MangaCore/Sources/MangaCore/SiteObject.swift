@@ -1,20 +1,27 @@
 import Foundation
 
-/// The rule-backed Browse root. It needs no fetched snapshot or invented homepage URL.
-/// Directories (including search results) are loaded through their ordinary object references.
+/// Declarative Browse/search entry points. Core loads and caches each declared source page.
 public struct SiteObject: Sendable, Identifiable {
     public let id: String
     public let name: String
     public let version: Int
-    public let directoryRefs: [ContentReference]
+    public let browseRefs: [ContentReference]
     public var supportsSearch: Bool { rule.searchURLTemplate != nil }
     private let rule: SiteRule
 
     public init(rule: SiteRule) throws {
         try rule.validate()
         self.rule = rule; id = rule.id; name = rule.name; version = rule.version
-        directoryRefs = try (rule.browse ?? []).map {
+        browseRefs = try (rule.browse ?? []).map {
             ContentReference(key: ObjectKey(ruleID: rule.id, identityURL: try RuleRegistry.normalize($0.url)), title: $0.title)
+        }
+    }
+
+    public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> [DirectoryObject] {
+        do { return try await repository.directories(from: browseRefs, hint: hint) }
+        catch {
+            if case ReaderError.cacheMiss = error, hint == .offlineOnly { throw error }
+            ErrorDiagnostics.record(error, operation: .loadContent); throw error
         }
     }
 
@@ -35,5 +42,15 @@ extension DirectoryObject {
     /// Pagination belongs to this single list; views never construct its request URL/key.
     public var nextPage: ContentReference? {
         nextURL.map { ContentReference(key: ObjectKey(ruleID: key.ruleID, identityURL: $0), title: title) }
+    }
+}
+
+extension SitePageObject {
+    public func lists(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> [DirectoryObject] {
+        do { return try await repository.directoryPreviews(directoryRefs, hint: hint) }
+        catch {
+            if case ReaderError.cacheMiss = error, hint == .offlineOnly { throw error }
+            ErrorDiagnostics.record(error, operation: .loadContent, url: sourceURL); throw error
+        }
     }
 }

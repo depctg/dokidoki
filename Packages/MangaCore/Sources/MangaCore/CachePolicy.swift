@@ -4,7 +4,7 @@ import Foundation
 enum CachePolicy {
     static func lifetime(_ kind: ContentKind, cover: Bool = false) -> TimeInterval {
         switch kind {
-        case .directory: 15 * 60
+        case .site, .directory: 15 * 60
         case .manga: 7 * 86_400
         case .chapter: 7 * 86_400
         case .page: (cover ? 30 : 7) * 86_400

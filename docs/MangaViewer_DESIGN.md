@@ -16,7 +16,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 ## 2. Design principles
 
 1. **URL-first, object-centric.** A supported external URL is mapped deterministically to a typed object. (through url matching and parsing rules). Objects link to other objects through stable references.
-2. **Site plus four fetched content types.** `Site -> Directory -> Manga -> Chapter -> Page`. A Site derives its directories/search from installed rule data; each Directory represents a single list. `Chapter` is first-class so it can be refreshed, cached, and navigated independently. each type could be created from a url.
+2. **Site with a cached object graph.** `Site -> Directory -> Manga -> Chapter -> Page`. A Site derives browse sources/search from installed rule data. Each fetched SitePage can create multiple Directory previews; each Directory represents a single list. `Chapter` is first-class so it can be refreshed, cached, and navigated independently. each type could be created from a url.
 3. **Identity is separate from transport.** A stable object key is not necessarily the URL used to download its bytes. This matters for CDN URLs, signed image links, and pages without individual HTML URLs.
 4. **Core before UI.** Models, rule matching, extraction, persistence, and reader image planning live in a standalone Swift package with no SwiftUI dependency.
 5. **Declarative site rules; compiled processors.** Shareable JSON configures known capabilities. It must not contain arbitrary executable Swift/JavaScript.
@@ -36,7 +36,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 
 ## 4. Core object model
 
-Core models are small `Sendable` value types; fetched snapshots are `Codable`. SiteObject is derived from validated rule data, so it needs no separate persisted snapshot or invented homepage URL. Prefer a typed enum to a complex base-class hierarchy.
+Core models are small `Sendable` value types; fetched snapshots are `Codable`. SiteObject is a declarative rule-backed entry point. SitePageObject caches each fetched home/source page with its directory references; the shared repository assembles their lists. No homepage URL is invented. Prefer a typed enum to a complex base-class hierarchy.
 
 ```swift
 struct ObjectKey: Hashable, Codable, Sendable {
@@ -45,6 +45,7 @@ struct ObjectKey: Hashable, Codable, Sendable {
 }
 
 enum ContentObject: Codable, Sendable {
+    case site(SitePageObject)
     case directory(DirectoryObject)
     case manga(MangaObject)
     case chapter(ChapterObject)
@@ -58,13 +59,14 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 
 | Object | Required role | Main fields |
 | --- | --- | --- |
-| `SiteObject` | Browse root for one installed rule | `id`, `name`, `version`, normalized `directoryRefs`, `supportsSearch`, `search(query)` returning a directory reference |
-| `DirectoryObject` | A single listing of manga | `title`, optional known `items` (`mangaRefs` compatibility view), `hasMore`, optional total/end/`nextURL`, sort-by/order references and selected keys |
+| `SiteObject` | Browse root for one installed rule | `id`, `name`, `version`, normalized `browseRefs`, `load(using:)` returning directories, `supportsSearch`, `search(query)` returning a directory reference |
+| `SitePageObject` | One fetched site page | `key`, `sourceURL`, `title`, ordered `directoryRefs` |
+| `DirectoryObject` | A single listing of manga | `title`, optional known `items` (`mangaRefs` compatibility view), optional `isPreview`, `hasMore`, optional total/end/`nextURL`, sort-by/order references and selected keys |
 | `MangaObject` | A series and its chapters | `title`, optional author/summary/rating/status/tags, `coverPageRef`, optional known `chapters` (`chapterRefs` compatibility view) |
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
 | `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, optional resolved `imageURL`, optional `refererURL` and logical `sessionURL` provenance, dimensions/analysis |
 
-Use `ObjectKey` references, not embedded recursive object graphs. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object. DirectoryObject.load(_:using:) asks the shared core context for a zero-based range. Core loads enough source pages, deduplicates keys and keeps the first page identity/sorting; objects remain immutable snapshots with optional known items. JSON APIs may declare offset/limit/total paths plus a query parameter instead of a next-link selector. Matchers can select named extractors so one site can use HTML catalogs and JSON search without transport exceptions. The accessible Load more action accompanies native bottom-pull handling; that gesture’s verification/fix is deferred to the next version (DEV_STATE).
+Use `ObjectKey` references, not embedded recursive object graphs. One site source can create many directory/manga snapshots through bounded relative relationship fields. SiteObject.load delegates ordered, deduplicated source assembly to the repository; views own only presentation state. Homepage directory excerpts have unknown sorting/continuation until normal list loading; preview loads accept known items. Partial directory/manga updates cannot downgrade complete snapshots. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object. DirectoryObject.load(_:using:) asks the shared core context for a zero-based range. Core loads enough source pages, deduplicates keys and keeps the first page identity/sorting; objects remain immutable snapshots with optional known items. JSON APIs may declare offset/limit/total paths plus a query parameter instead of a next-link selector. Matchers can select named extractors so one site can use HTML catalogs and JSON search without transport exceptions. The accessible Load more action accompanies native bottom-pull handling; that gesture’s verification/fix is deferred to the next version (DEV_STATE).
 
 Manga rating and publication status are optional source text, and tags are an optional ordered string list. Rules capture their values using existing selectors/regex; the engine trims blanks and removes duplicate tags. Browse/list/Library/Recent rows and manga details display available values. Preserve the source's score scale and finished/ongoing wording without site-specific Swift mappings or guessed defaults. Linked manga creation accepts known title, cover URL and other metadata through `mangaLinks.fields`, using the same mapping as a full manga document. Core caches these partial snapshots with unknown chapters; preview requests with known covers skip detail loads. Normal manga loading resolves the chapter list. Missing fields remain compatible with older snapshots; same-version list refreshes never downgrade full manga snapshots or their cover/freshness. Cover resource provenance points to the discovering directory session separately from manga ownership, allowing passive resource reuse with unchanged host/referer policy.
 
@@ -108,7 +110,7 @@ External URL / ObjectKey
 
 ### Cache policy
 
-The **object/repository layer owns freshness**. Views can send `preferCache`, `refreshIfStale`, `forceRefresh`, or `offlineOnly` hints; they cannot directly manage HTTP or database lifetimes. Shared defaults are fifteen minutes for directories and seven days for manga/chapters. Stale cached objects may remain visible while a refresh runs.
+The **object/repository layer owns freshness**. Views can send `preferCache`, `refreshIfStale`, `forceRefresh`, or `offlineOnly` hints; they cannot directly manage HTTP or database lifetimes. Shared defaults are fifteen minutes for site pages/directories and seven days for manga/chapters. Stale cached objects may remain visible while a refresh runs.
 
 Cover and chapter images share core image policy/storage: 96 MiB decoded memory (16 MiB reserved for 768px covers), 256 MiB disk, with covers retained ahead of content. Passive session buffers retain already-acquired responses (four logical contexts, 24 MiB each), isolated by full rule, owner URL and referer. They may reuse accessible pixels from images already loaded by WebKit; no extra browser fetch fills a miss. Public WebKit APIs cannot expose every cross-origin resource, so unavailable bytes fall back to central HTTP. Cache/rule/policy invalidation discards old generations. `PageObject.image(using:)` determines its resource identity/request; the repository-owned image loader checks caches, asks the same sender for missing bytes, and decodes images. Never persist credentials or cookies in exported rules. Decode/display only visible images and a small neighbor window; cancel irrelevant prefetches when the user jumps chapters.
 
@@ -192,7 +194,7 @@ Use native Apple localization and system/per-app language selection. App text li
 
 Search uses a native editable results list. Search and object destinations share a typed native navigation path, so opening a result and returning retains the search. Directory objects optionally expose rule-extracted sort-by/order references and active keys; source links define the available choices and URLs. Selecting a sort loads that directory through the shared core pipeline. Omitted axes have no controls; do not impose a local sort or derive source URL parameters. Older snapshots remain decodable.
 
-Site rules may provide a minimal `browse` array of named directory URLs and a `searchURLTemplate` containing `{query}`. Keep this minimal JSON unchanged: core builds SiteObject from it, while the UI only sees object references. Directory extraction supplies its declared list title and validates pagination as another directory reference. No site scraper, extra schema layer, or separate site cache is needed. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
+Site rules may provide a minimal `browse` array of named site-page or directory source URLs and a `searchURLTemplate` containing `{query}`. Core builds SiteObject from this declaration and assembles ordered DirectoryObjects across those sources. A fetched SitePageObject caches directory references; nested known metadata creates list and manga previews without separate detail requests. Directory extraction supplies the full list title, sorting and pagination when opened. Source refresh preserves complete child snapshots and their independent expiry; link-only lists still refresh when stale. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
 
 **iPhone Duo:** closed display behaves like compact iPhone; unfolded display reflows into a wider layout with optional facing pages. Detect usable geometry, not a hard-coded device model or fold-state API. Preserve reading position through size changes.
 

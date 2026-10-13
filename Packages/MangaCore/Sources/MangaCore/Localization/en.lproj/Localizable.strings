@@ -1,6 +1,5 @@
 // Native package resources, used by both SwiftPM and Xcode. Preserve format placeholders.
 "Browse lists contain only a title and URL." = "Browse lists contain only a title and URL.";
-"Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists)." = "Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists).";
 "Capture groups require a regex." = "Capture groups require a regex.";
 "Capture must name a function using a simple dotted path." = "Capture must name a function using a simple dotted path.";
 "Changed rules must increase their version." = "Changed rules must increase their version.";
@@ -65,4 +64,5 @@
 
 "Indexed session targets are only supported for chapter pages." = "Indexed session targets are only supported for chapter pages.";
 
-"Known metadata fields belong to manga links and cannot be nested further." = "Known metadata fields belong to manga links and cannot be nested further.";
+"Known metadata fields must match the linked object type." = "Known metadata fields must match the linked object type.";
+"Browse sources need unique, allowed site or directory URLs and nonempty titles (at most 24 sources)." = "Browse sources need unique, allowed site or directory URLs and nonempty titles (at most 24 sources).";

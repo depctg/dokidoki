@@ -65,7 +65,7 @@ struct KnownMetadataTests {
         let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         guard case .directory(let list) = try await key.load(using: repository) else { throw ReaderError.invalidResponse }
         for ref in list.mangaRefs {
-            let preview = try await ref.mangaPreview(using: repository)
+            guard case .manga(let preview) = try await ref.preview(using: repository) else { throw ReaderError.invalidResponse }
             #expect(preview.chapters == nil && preview.coverPageRef != nil)
             let cover = try #require(try await preview.coverPage(using: repository))
             #expect(cover.sessionURL == list.key.identityURL && cover.ownerRef == preview.key)
@@ -86,7 +86,8 @@ struct KnownMetadataTests {
         #expect(keptCover.refererURL == originalCover.refererURL && keptCover.sessionURL == originalCover.sessionURL)
         // A fresh repository/process sees the same complete snapshot, including old serialized chapterRefs.
         let reopened = try ObjectRepository(store: store, rules: rules)
-        #expect(try await ref.mangaPreview(using: reopened).chapters?.count == 2)
+        guard case .manga(let reopenedManga) = try await ref.preview(using: reopened) else { throw ReaderError.invalidResponse }
+        #expect(reopenedManga.chapters?.count == 2)
         let decoded = try JSONDecoder().decode(MangaObject.self, from: JSONEncoder().encode(full))
         #expect(decoded.chapters?.count == 2)
         // Partial updates merge optional knowledge, but a changed rule cannot inherit old metadata.

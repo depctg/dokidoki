@@ -44,7 +44,7 @@ struct ParsingTests {
         #expect(rule.extractors["chapter"]?.session?.mode == .scroll)
         for container in ["class='exemptComic-box'", "id='comic'"] {
             let listKey = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.mangacopy.com/comics")!)
-            let listHTML = "<title>List</title><div \(container)><a href='/comic/example'><img src='/cover'></a><a href='/comic/example'><p>Readable title</p></a></div>"
+            let listHTML = "<title>List</title><div \(container)><div class='col-auto exemptComic_Item'><a href='/comic/example'><img src='/cover'></a><a href='/comic/example'><p title='Readable title'>Readable title</p></a></div></div>"
             let list = try RuleExtractor().extract(data: Data(listHTML.utf8), responseURL: listKey.identityURL, key: listKey, kind: .directory, rule: rule)
             guard case .directory(let directory) = list[0] else { Issue.record("Missing directory"); return }
             #expect(directory.mangaRefs.map(\.title) == ["Readable title"])

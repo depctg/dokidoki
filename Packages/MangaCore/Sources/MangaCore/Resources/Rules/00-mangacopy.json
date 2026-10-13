@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 5,
+  "version": 6,
   "allowedHosts": [
     "s0.mangafunb.fun",
     "s3.mangafunb.fun",
@@ -14,6 +14,7 @@
     "sf.mangafunb.fun",
     "sg.mangafunb.fun",
     "sh.mangafunb.fun",
+    "si.mangafunb.fun",
     "sj.mangafunb.fun",
     "sk.mangafunb.fun",
     "sl.mangafunb.fun",
@@ -33,8 +34,13 @@
   ],
   "matchers": [
     {
+      "kind": "site",
+      "pattern": "^https://www\\.mangacopy\\.com/$",
+      "priority": 0
+    },
+    {
       "kind": "directory",
-      "pattern": "^https://www\\.mangacopy\\.com/(comics|search)(\\?.*)?$",
+      "pattern": "^https://www\\.mangacopy\\.com/(comics|search|recommend|newest)(\\?.*)?$",
       "priority": 0
     },
     {
@@ -58,7 +64,7 @@
     "directory": {
       "format": "renderedHTML",
       "rendering": {
-        "readyXPath": "//div[contains(@class,'exemptComic-box')]//a[contains(@href,'/comic/')] | //div[@id='comic']//a[contains(@href,'/comic/')] | //*[@id='comic']//li[@class='page-total' and normalize-space(.)='/0']",
+        "readyXPath": "//div[contains(concat(' ',normalize-space(@class),' '),' exemptComic_Item ')]//a[.//p[@title]] | //*[@id='comic']//li[@class='page-total' and normalize-space(.)='/0']",
         "contentMode": "desktop"
       },
       "fields": {
@@ -66,7 +72,7 @@
           "path": "//title"
         },
         "mangaLinks": {
-          "path": "//div[contains(@class,'exemptComic-box')]//a[contains(@href,'/comic/') and normalize-space(.)!=''] | //div[@id='comic']//a[contains(@href,'/comic/') and normalize-space(.)!='']",
+          "path": "//div[contains(concat(' ',normalize-space(@class),' '),' exemptComic_Item ')]//a[.//p[@title]]",
           "read": "attr:href",
           "fields": {
             "title": {
@@ -84,7 +90,7 @@
           }
         },
         "next": {
-          "path": "//li[@class='next']/a[starts-with(@href,'/comics?')]",
+          "path": "//li[@class='next']/a[starts-with(@href,'/comics?') or starts-with(@href,'/recommend?') or starts-with(@href,'/newest?')]",
           "read": "attr:href"
         },
         "sortByLinks": {
@@ -188,20 +194,46 @@
         "total": "results.total",
         "parameter": "offset"
       }
+    },
+    "site": {
+      "rendering": {
+        "contentMode": "desktop",
+        "readyXPath": "//main//a[@href='/recommend']"
+      },
+      "fields": {
+        "title": {
+          "path": "//title"
+        },
+        "directoryLinks": {
+          "path": "//div[contains(@class,'index-all-icon-right')]/a[@href='/recommend' or @href='/comics' or @href='/newest']",
+          "read": "attr:href",
+          "fields": {
+            "title": {
+              "path": "../../div/h4"
+            },
+            "mangaLinks": {
+              "path": "../../../div[contains(@class,'row')]//a[contains(@href,'/comic/') and .//p]",
+              "read": "attr:href",
+              "fields": {
+                "title": {
+                  "path": ".//p"
+                },
+                "coverImage": {
+                  "path": ".//img",
+                  "read": "attr:data-src",
+                  "fallback": "attr:src"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "browse": [
     {
-      "title": "最近更新",
-      "url": "https://www.mangacopy.com/comics"
-    },
-    {
-      "title": "熱門漫畫",
-      "url": "https://www.mangacopy.com/comics?ordering=-popular"
-    },
-    {
-      "title": "已完結",
-      "url": "https://www.mangacopy.com/comics?status=1"
+      "title": "首頁",
+      "url": "https://www.mangacopy.com/"
     }
   ],
   "searchURLTemplate": "https://www.mangacopy.com/api/kb/web/searchcl/comics?offset=0&platform=2&limit=12&q={query}&q_type="

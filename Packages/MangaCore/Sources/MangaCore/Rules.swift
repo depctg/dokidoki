@@ -73,7 +73,7 @@ public struct URLMatcher: Codable, Sendable {
     public var priority: Int = 0
     public var extractor: String? = nil
 }
-/// Minimal JSON declaration; SiteObject turns it into a normalized directory reference.
+/// Minimal JSON browse source; SiteObject normalizes its site-page or directory URL.
 public struct BrowseList: Codable, Sendable, Identifiable {
     public let title: String
     public let url: URL
@@ -116,6 +116,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                   (try? NSRegularExpression(pattern: matcher.pattern)) != nil,
                   let extraction = extractors[matcher.extractor ?? matcher.kind.rawValue] else { throw ReaderError.invalidRule(String(localized: "Invalid URL matcher or missing extractor.", bundle: .module)) }
             let required: [String] = switch matcher.kind {
+            case .site: ["title", "directoryLinks"]
             case .directory: ["title", "mangaLinks"]
             case .manga: ["title", "chapterLinks"]
             case .chapter: ["title", "pageImages"]
@@ -126,16 +127,23 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                 guard name.range(of: #"^[A-Za-z][A-Za-z0-9_]*$"#, options: .regularExpression) != nil,
                       field.urlTemplate == nil, field.queryPath == nil, field.fields == nil else { throw ReaderError.invalidRule(String(localized: "Variables have simple names and select values without URL templates.", bundle: .module)) }
             }
-            let metadataNames: Set<String> = ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
-            for (name, field) in extraction.fields where field.fields != nil {
-                guard name == "mangaLinks", matcher.kind == .directory,
-                      Set(field.fields!.keys).isSubset(of: metadataNames),
-                      field.fields!.values.allSatisfy({ $0.fields == nil }) else {
-                    throw ReaderError.invalidRule(String(localized: "Known metadata fields belong to manga links and cannot be nested further.", bundle: .module))
+            func knownFields(_ fields: [String: Field], kind: ContentKind) throws -> [Field] {
+                var result: [Field] = []
+                for (name, field) in fields {
+                    result.append(field)
+                    if let nested = field.fields {
+                        let child: ContentKind
+                        if kind == .site && name == "directoryLinks" { child = .directory }
+                        else if kind == .directory && name == "mangaLinks" { child = .manga }
+                        else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }
+                        let names: Set<String> = child == .directory ? ["title", "mangaLinks"] : ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
+                        guard Set(nested.keys).isSubset(of: names) else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }
+                        result += try knownFields(nested, kind: child)
+                    }
                 }
+                return result
             }
-            let fields = Array(extraction.fields.values) + Array((extraction.variables ?? [:]).values)
-                + extraction.fields.values.flatMap { Array(($0.fields ?? [:]).values) }
+            let fields = try knownFields(extraction.fields, kind: matcher.kind) + Array((extraction.variables ?? [:]).values)
             for field in fields {
                 guard !field.path.isEmpty, field.path.count <= 2048 else { throw ReaderError.invalidRule(String(localized: "Empty or oversized selector.", bundle: .module)) }
                 for read in [field.read, field.fallback].compactMap({ $0 }) {
@@ -195,19 +203,19 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             }
         }
         guard (processors ?? []).allSatisfy({ ["identity", "marginAlign", "spreadDetect", "layout"].contains($0) }) else { throw ReaderError.invalidRule(String(localized: "Unknown page processor.", bundle: .module)) }
-        func isDirectory(_ url: URL) -> Bool {
+        func matches(_ url: URL, kinds: Set<ContentKind>) -> Bool {
             guard permits(url), let normalized = try? RuleRegistry.normalize(url) else { return false }
             let matches = matchers.filter { normalized.absoluteString.range(of: $0.pattern, options: .regularExpression) != nil }
             let winners = matches.filter { $0.priority == matches.map(\.priority).max() }
-            return winners.count == 1 && winners[0].kind == .directory
+            return winners.count == 1 && kinds.contains(winners[0].kind)
         }
         let lists = browse ?? []
         guard lists.count <= 24, Set(try lists.map { try RuleRegistry.normalize($0.url) }).count == lists.count,
-              lists.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isDirectory($0.url) }) else {
-            throw ReaderError.invalidRule(String(localized: "Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists).", bundle: .module))
+              lists.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && matches($0.url, kinds: [.site, .directory]) }) else {
+            throw ReaderError.invalidRule(String(localized: "Browse sources need unique, allowed site or directory URLs and nonempty titles (at most 24 sources).", bundle: .module))
         }
         if let template = searchURLTemplate {
-            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), isDirectory(url) else { throw ReaderError.invalidRule(String(localized: "Search must use an allowed directory URL and {query}.", bundle: .module)) }
+            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), matches(url, kinds: [.directory]) else { throw ReaderError.invalidRule(String(localized: "Search must use an allowed directory URL and {query}.", bundle: .module)) }
         }
     }
     private static func validJSONPath(_ path: String) -> Bool {
@@ -230,13 +238,15 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             if let session = extractor["session"] as? [String: Any], !Set(session.keys).isSubset(of: ["mode", "actionXPath", "endXPath"]) { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             if let pagination = extractor["pagination"] as? [String: Any], !Set(pagination.keys).isSubset(of: ["offset", "limit", "total", "parameter"]) { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)
-            for field in fields {
-                let options: Set<String> = ["path", "read", "titlePath", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]
-                guard Set(field.keys).isSubset(of: options.union(["fields"])) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
-                for child in (field["fields"] as? [String: [String: Any]] ?? [:]).values {
-                    guard Set(child.keys).isSubset(of: options) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+            func checkOptions(_ fields: [[String: Any]], depth: Int = 0) throws {
+                guard depth <= 2 else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+                for field in fields {
+                    let options: Set<String> = ["path", "read", "titlePath", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse", "fields"]
+                    guard Set(field.keys).isSubset(of: options) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+                    if let children = field["fields"] as? [String: [String: Any]] { try checkOptions(Array(children.values), depth: depth + 1) }
                 }
             }
+            try checkOptions(fields)
             if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "captureResult", "readyImageXPath", "readyXPath", "loadAds"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
         }
         let rule = try JSONDecoder().decode(SiteRule.self, from: data); try rule.validate(); return rule

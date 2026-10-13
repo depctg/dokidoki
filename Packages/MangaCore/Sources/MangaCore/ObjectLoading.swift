@@ -13,9 +13,13 @@ extension ObjectKey {
     }
 }
 extension ContentReference {
-    public func mangaPreview(using repository: ObjectRepository) async throws -> MangaObject {
-        do { return try await repository.mangaPreview(key) }
-        catch { ErrorDiagnostics.record(error, operation: .loadContent, url: key.identityURL); throw error }
+    /// Accept known linked metadata; normal load still resolves the object's full details.
+    public func preview(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> ContentObject {
+        do { return try await repository.resolve(key, hint: hint, preview: true) }
+        catch {
+            if case ReaderError.cacheMiss = error, hint == .offlineOnly { throw error }
+            ErrorDiagnostics.record(error, operation: .loadContent, url: key.identityURL); throw error
+        }
     }
     public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
         try await key.load(using: repository, hint: hint)

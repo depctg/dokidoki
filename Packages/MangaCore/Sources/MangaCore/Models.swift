@@ -1,6 +1,6 @@
 import Foundation
 
-public enum ContentKind: String, Codable, Sendable, CaseIterable { case directory, manga, chapter, page }
+public enum ContentKind: String, Codable, Sendable, CaseIterable { case site, directory, manga, chapter, page }
 
 public struct ObjectKey: Hashable, Codable, Sendable, Identifiable {
     public let ruleID: String
@@ -28,25 +28,37 @@ public struct ContentReference: Codable, Sendable, Hashable, Identifiable {
     public var id: ObjectKey { key }
     public init(key: ObjectKey, title: String) { self.key = key; self.title = title }
 }
-public struct DirectoryObject: Codable, Sendable {
+/// One fetched site page can describe several linked lists, without owning browser state.
+public struct SitePageObject: Codable, Sendable {
     public let key: ObjectKey
     public let sourceURL: URL
     public let title: String
+    public let directoryRefs: [ContentReference]
+}
+public struct DirectoryObject: Codable, Sendable, Identifiable {
+    public var id: ObjectKey { key }
+    /// A home-page excerpt does not establish full-list sorting or continuation.
+    public let isPreview: Bool?
+
+    public let key: ObjectKey
+    public let sourceURL: URL
+    public var title: String
     public let items: [ContentReference]?
     public var mangaRefs: [ContentReference] { items ?? [] }
     public var hasMore: Bool? {
+        if isPreview == true { return nil }
         if let totalCount, let items, items.count >= totalCount { return false }
         return endReached.map { !$0 } ?? (items == nil ? nil : nextURL != nil)
     }
     public var endReached: Bool? = nil
     public var totalCount: Int? = nil
     private enum CodingKeys: String, CodingKey {
-        case key, sourceURL, title, nextURL, endReached, totalCount, sortBy, sortOrder, selectedSortBy, selectedSortOrder
+        case key, sourceURL, title, nextURL, endReached, totalCount, sortBy, sortOrder, selectedSortBy, selectedSortOrder, isPreview
         case items = "mangaRefs"
     }
     public init(key: ObjectKey, sourceURL: URL, title: String, mangaRefs: [ContentReference]? = nil, nextURL: URL? = nil, endReached: Bool? = nil, totalCount: Int? = nil,
-                sortBy: [ContentReference]? = nil, sortOrder: [ContentReference]? = nil, selectedSortBy: ObjectKey? = nil, selectedSortOrder: ObjectKey? = nil) {
-        self.key = key; self.sourceURL = sourceURL; self.title = title; items = mangaRefs; self.nextURL = nextURL; self.endReached = endReached; self.totalCount = totalCount
+                sortBy: [ContentReference]? = nil, sortOrder: [ContentReference]? = nil, selectedSortBy: ObjectKey? = nil, selectedSortOrder: ObjectKey? = nil, isPreview: Bool? = nil) {
+        self.isPreview = isPreview; self.key = key; self.sourceURL = sourceURL; self.title = title; items = mangaRefs; self.nextURL = nextURL; self.endReached = endReached; self.totalCount = totalCount
         self.sortBy = sortBy; self.sortOrder = sortOrder; self.selectedSortBy = selectedSortBy; self.selectedSortOrder = selectedSortOrder
     }
     public let nextURL: URL?
@@ -117,15 +129,29 @@ public struct PageObject: Codable, Sendable, Identifiable {
     }
 }
 public enum ContentObject: Codable, Sendable {
-    case directory(DirectoryObject), manga(MangaObject), chapter(ChapterObject), page(PageObject)
+    case site(SitePageObject), directory(DirectoryObject), manga(MangaObject), chapter(ChapterObject), page(PageObject)
     public var key: ObjectKey {
-        switch self { case .directory(let x): x.key; case .manga(let x): x.key; case .chapter(let x): x.key; case .page(let x): x.key }
+        switch self { case .site(let x): x.key; case .directory(let x): x.key; case .manga(let x): x.key; case .chapter(let x): x.key; case .page(let x): x.key }
     }
     public var kind: ContentKind {
-        switch self { case .directory: .directory; case .manga: .manga; case .chapter: .chapter; case .page: .page }
+        switch self { case .site: .site; case .directory: .directory; case .manga: .manga; case .chapter: .chapter; case .page: .page }
+    }
+    var isComplete: Bool {
+        switch self {
+        case .directory(let directory): directory.items != nil && directory.isPreview != true
+        case .manga(let manga): manga.chapters != nil
+        default: true
+        }
+    }
+    var hasPreview: Bool {
+        switch self {
+        case .directory(let directory): directory.items != nil
+        case .manga(let manga): manga.coverPageRef != nil || manga.chapters != nil
+        default: isComplete
+        }
     }
     public var title: String {
-        switch self { case .directory(let x): x.title; case .manga(let x): x.title; case .chapter(let x): x.title; case .page(let x): String(localized: "Page \((x.sourceIndex ?? 0) + 1)", bundle: .module) }
+        switch self { case .site(let x): x.title; case .directory(let x): x.title; case .manga(let x): x.title; case .chapter(let x): x.title; case .page(let x): String(localized: "Page \((x.sourceIndex ?? 0) + 1)", bundle: .module) }
     }
 }
 public enum ReaderError: LocalizedError, Sendable {

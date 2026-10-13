@@ -38,8 +38,13 @@ Pass known child metadata using mangaLinks.fields and the existing Field syntax:
 title, coverImage, author, summary, rating, status, tags. Select whole JSON items
 or HTML links and evaluate metadata relative to each selected item. Known title
 and cover URL use one creation process; title falls back to the normal link
-label. One level only. Do not fetch detail documents merely to rediscover list
-metadata; chapters remain unknown until requested. Check --previews and cover
+label. Manga metadata stays scalar. A site page can use directoryLinks.fields
+with title/mangaLinks to create directory previews and nested manga metadata.
+Only this typed two-link chain is supported; no arbitrary object recursion.
+Prefer observed homepage lists over redundant individual list requests. Browse
+entries may point to one or more matched site pages or legacy directories.
+Verify full-list URLs and keep homepage excerpts distinct from full lists. Do
+not fetch detail documents merely to rediscover list metadata; chapters remain unknown until requested. Check --previews and cover
 association when some rows lack images. Resource reuse stays in core.
 Background resources default on; object-kind rendering.loadAds=false opts out
 and the global Settings switch always wins. Never present or interact with ads.
@@ -56,8 +61,7 @@ and explicit unsupported cases. Validate with SiteRule.decode via manga-probe
 --rule; exercise list -> manga -> chapter -> decoded image, search including an
 empty result, actual next/sort links, JSON page two/end counters if declared,
 late chapter ranges (--range start:count), session reuse/disposal, and background
-on/off. Keep downloaded
-pages/images/signed URLs in temporary files, never in the app/package or git.
+on/off. Keep downloaded pages/images/signed URLs in temporary files, never in the app/package or git.
 Use only original synthetic fixture content in regression tests. Update
 docs/RULES.md and this guide/prompt whenever the language or authoring workflow
 changes; keep these two files outside all Swift targets/resources. Follow the

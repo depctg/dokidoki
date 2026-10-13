@@ -1,6 +1,5 @@
 // Native package resources, used by both SwiftPM and Xcode. Preserve format placeholders.
 "Browse lists contain only a title and URL." = "浏览列表只能包含标题和 URL。";
-"Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists)." = "浏览列表需要唯一且获准的目录 URL，以及非空标题（最多 24 个列表）。";
 "Capture groups require a regex." = "捕获组需要正则表达式。";
 "Capture must name a function using a simple dotted path." = "捕获函数必须使用简单的点分路径命名。";
 "Changed rules must increase their version." = "修改规则后必须提高版本号。";
@@ -65,4 +64,5 @@
 
 "Indexed session targets are only supported for chapter pages." = "索引会话目标仅支持章节页面。";
 
-"Known metadata fields belong to manga links and cannot be nested further." = "已知元数据字段仅适用于漫画链接，不能进一步嵌套。";
+"Known metadata fields must match the linked object type." = "已知元数据字段必须与关联对象类型匹配。";
+"Browse sources need unique, allowed site or directory URLs and nonempty titles (at most 24 sources)." = "浏览来源需要唯一且获准的网站或目录网址及非空标题（最多 24 个来源）。";
