@@ -9,16 +9,27 @@ struct BrowseTests {
         let list = try #require(rule.browse?.first)
         let store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule])
-        let key = ObjectKey(ruleID: rule.id, identityURL: list.url)
-        guard case .directory(let directory) = try await key.load(using: repository) else { Issue.record("Missing list"); return }
+        let site = try SiteObject(rule: rule)
+        let reference = try #require(site.directoryRefs.first)
+        #expect(site.id == rule.id && site.name == rule.name && site.version == rule.version)
+        #expect(site.supportsSearch && reference.title == list.title)
+        guard case .directory(let directory) = try await reference.load(using: repository) else { Issue.record("Missing list"); return }
         #expect(directory.mangaRefs.count == 2)
+        #expect(directory.title == reference.title)
         let query = "星 & title/?# +"
-        let url = try #require(rule.searchURL(query: query))
+        let search = try #require(try site.search(query))
+        let url = search.key.identityURL
         #expect(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems == [URLQueryItem(name: "q", value: query)])
+        guard case .directory(let results) = try await search.load(using: repository) else { Issue.record("Missing search list"); return }
+        #expect(results.key.ruleID == site.id && results.key != directory.key)
+        #expect(try site.search("  \n") == nil)
         #expect(try RuleRegistry(rules: [rule]).match(url).1 == .directory)
         #expect(try SiteRule.decode(rule.exported()).browse?.map(\.url) == [list.url])
         var legacy = base; legacy.removeValue(forKey: "browse"); legacy.removeValue(forKey: "searchURLTemplate")
         #expect(try SiteRule.decode(JSONSerialization.data(withJSONObject: legacy)).browse == nil)
+        let legacySite = try SiteObject(rule: SiteRule.decode(JSONSerialization.data(withJSONObject: legacy)))
+        #expect(legacySite.directoryRefs.isEmpty && !legacySite.supportsSearch)
+        #expect(try legacySite.search("title") == nil)
         for invalid: [[String: String]] in [
             [["title": "Denied", "url": "https://outside.example/catalog"]],
             [["title": "Wrong kind", "url": "https://demo.mangaviewer.local/chapter/arrival"]],
@@ -31,6 +42,42 @@ struct BrowseTests {
         }
         var invalidSearch = base; invalidSearch["searchURLTemplate"] = "https://demo.mangaviewer.local/chapter/{query}"
         #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: invalidSearch)) }
+    }
+
+    @Test func siteReferencesNormalizeAndSearchRevalidatesTheActualQuery() async throws {
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        json["browse"] = [["title": "One list", "url": "https://DEMO.mangaviewer.local:443/catalog#section"]]
+        var matchers = json["matchers"] as! [[String: Any]]
+        matchers.append(["kind": "chapter", "pattern": "^https://demo\\.mangaviewer\\.local/catalog\\?q=blocked$", "priority": 10])
+        json["matchers"] = matchers
+        let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+        let site = try SiteObject(rule: rule)
+        #expect(site.directoryRefs.first?.key.identityURL == DemoContent.directoryURL)
+        #expect(throws: ReaderError.self) { try site.search("blocked") }
+        json["id"] = "other-rule"
+        let other = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+        let repository = try ObjectRepository(store: ObjectStore(), rules: [rule, other])
+        let reference = try #require(try site.search("title"))
+        #expect(try await reference.load(using: repository).key.ruleID == site.id)
+
+        // Pagination is another directory reference, normalized and checked by the same parser.
+        json["extractors"] = (json["extractors"] as! [String: [String: Any]]).merging([
+            "directory": ["format": "html", "fields": ["title": ["path": "//h1"], "mangaLinks": ["path": "//a[@class='manga']", "read": "attr:href"],
+                "next": ["path": "//a[@rel='next']", "read": "attr:href"]]]
+        ], uniquingKeysWith: { _, new in new })
+        let pagingRule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+        let key = try #require(try SiteObject(rule: pagingRule).directoryRefs.first?.key)
+        func parse(_ next: String) throws -> DirectoryObject {
+            let html = "<h1>Source title</h1><a rel='next' href='\(next)'>Next</a>"
+            let objects = try RuleExtractor().extract(data: Data(html.utf8), responseURL: key.identityURL, key: key, kind: .directory, rule: pagingRule)
+            guard case .directory(let directory) = objects[0] else { throw ReaderError.invalidResponse }
+            return directory
+        }
+        let directory = try parse("/catalog?page=2#items")
+        #expect(directory.title == "One list")
+        #expect(directory.nextPage?.key == ObjectKey(ruleID: pagingRule.id, identityURL: URL(string: "https://demo.mangaviewer.local/catalog?page=2")!))
+        #expect(try parse("/chapter/arrival").nextPage == nil)
+        #expect(throws: ReaderError.self) { try parse("https://outside.example/catalog") }
     }
 
     @Test func directorySortLinksLoadSourceOrderAndPreserveLegacySnapshots() async throws {

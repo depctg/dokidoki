@@ -36,13 +36,16 @@ enum AppSection: String, CaseIterable, Identifiable {
     var store: ObjectStore?
     var rules: [SiteRule] = [] {
         didSet {
+            do { sites = try rules.map { try SiteObject(rule: $0) } }
+            catch { report(error, operation: .storage) }
             // Reordering is a browsing preference, not a recipe change or reader refresh.
             if Dictionary(uniqueKeysWithValues: oldValue.map { ($0.id, $0.version) }) != Dictionary(uniqueKeysWithValues: rules.map { ($0.id, $0.version) }) { ruleRevision += 1 }
             if !rules.contains(where: { $0.id == browseSiteID }) { browseSiteID = nil }
         }
     }
+    private(set) var sites: [SiteObject] = []
     var browseSiteID: String?
-    var browseSite: SiteRule? { rules.first(where: { $0.id == browseSiteID }) ?? rules.first }
+    var browseSite: SiteObject? { sites.first(where: { $0.id == browseSiteID }) ?? sites.first }
     var ruleRevision = 0 { didSet { invalidateReader() } }
     var paths: [AppSection: [AppRoute]] = [:]
     var searches: [String: SiteSearchState] = [:]
@@ -85,7 +88,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             }
             rules = try store.rules(); self.store = store
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
-            repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: RenderedSourceFetcher()))
+            repository = try ObjectRepository(store: store, rules: rules)
             reloadLibrary()
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {
                 await open(CommandLine.arguments[index + 1])
@@ -95,8 +98,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     func open(_ text: String) async {
         guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = String(localized: "Enter a supported HTTP or HTTPS URL."); return }
         do {
-            let key = try await repository.key(for: url)
-            if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
+            let (key, kind) = try await repository.match(url)
+            if kind == .chapter { openChapter(key) }
             else { browseSiteID = key.ruleID; section = .browse; path = [.object(key)] }
         }
         catch { report(error, operation: .openURL, url: url) }

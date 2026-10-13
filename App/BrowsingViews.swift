@@ -85,7 +85,7 @@ struct RootView: View {
                         }
                     })
                 case .search(let ruleID):
-                    if let site = model.rules.first(where: { $0.id == ruleID }) { SiteSearchView(site: site, model: model) }
+                    if let site = model.sites.first(where: { $0.id == ruleID }) { SiteSearchView(site: site, model: model) }
                     else { ContentUnavailableView("Site unavailable", systemImage: "globe") }
                 }
             }

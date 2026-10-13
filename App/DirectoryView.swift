@@ -12,8 +12,7 @@ struct DirectoryView: View {
     }
     private var title: String {
         if isSearchResult { return String(localized: "Search results") }
-        return model.rules.first(where: { $0.id == directory.key.ruleID })?.browse?
-            .first(where: { (try? RuleRegistry.normalize($0.url)) == directory.key.identityURL })?.title ?? directory.title
+        return directory.title
     }
     var body: some View {
         Group {
@@ -43,8 +42,8 @@ struct DirectoryView: View {
                 NavigationLink(value: AppRoute.object(ref.key)) { MangaPreview(reference: ref, model: model) }
                     .accessibilityIdentifier("manga.item.\(ref.key.id)")
             }
-            if let next = directory.nextURL {
-                NavigationLink("Next directory page", value: AppRoute.object(ObjectKey(ruleID: directory.key.ruleID, identityURL: next)))
+            if let next = directory.nextPage {
+                NavigationLink("Next directory page", value: AppRoute.object(next.key))
             }
         }
         .accessibilityIdentifier("directory.list")

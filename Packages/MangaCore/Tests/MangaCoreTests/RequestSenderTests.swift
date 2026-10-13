@@ -18,11 +18,12 @@ import os
     private func source(_ path: String, rule: SiteRule, host: String = "a.sender.test") -> ContentRequest {
         .source(ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://\(host)/\(path)")!), kind: .directory, rule: rule)
     }
-    private func sender(maxConcurrent: Int = 4) -> RequestSender {
+    private func sender(maxConcurrent: Int = 4, burst: Int = 8, hostBurst: Int = 4, window: Duration = .seconds(1)) -> RequestSender {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SenderFixture.self]
         let client = HTTPClient(configuration: config)
-        return RequestSender(fetcher: FixtureFetcher(client: client), client: client, maxConcurrent: maxConcurrent)
+        return RequestSender(fetcher: FixtureFetcher(client: client), client: client, maxConcurrent: maxConcurrent,
+                             burst: burst, hostBurst: hostBurst, burstWindow: window)
     }
     private func waitForStarts(_ count: Int) async throws {
         for _ in 0..<400 {
@@ -117,6 +118,51 @@ import os
         await #expect(throws: ReaderError.self) { try await sender.send(source("blocked", rule: rule, host: "unknown.test")) }
         #expect(SenderFixture.state.withLock { $0.paths.count } == 4)
     }
+
+    @Test func burstBudgetIsSharedByDocumentsImagesAndRenderedSessions() async throws {
+        SenderFixture.reset()
+        let sender = sender(burst: 3, hostBurst: 2, window: .milliseconds(400))
+        let plain = try rule(), rendered = try rule(rendered: true)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            for host in plain.allowedHosts {
+                for index in 0..<4 {
+                    let owner = ObjectKey(ruleID: plain.id, identityURL: URL(string: "https://\(host)/owner")!)
+                    let request: ContentRequest = index == 0
+                        ? .image(PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0,
+                                            imageURL: URL(string: "https://\(host)/image/0")!, refererURL: nil), rule: plain)
+                        : source("\(index == 1 ? "rendered" : "document")/\(index)", rule: index == 1 ? rendered : plain, host: host)
+                    group.addTask { _ = try await sender.send(request) }
+                }
+            }
+            try await group.waitForAll()
+        }
+        let starts = SenderFixture.state.withLock { $0.starts }
+        #expect(starts.count == 12)
+        // Measure actual transport starts, allowing only small URLSession scheduling jitter.
+        for index in 3..<starts.count { #expect(starts[index - 3].time.duration(to: starts[index].time) >= .milliseconds(375)) }
+        for host in plain.allowedHosts {
+            let times = starts.filter { $0.host == host }.map(\.time)
+            for index in 2..<times.count { #expect(times[index - 2].duration(to: times[index]) >= .milliseconds(375)) }
+        }
+    }
+
+    @Test func rateDelayedCancellationDoesNotSpendBudgetOrBlockAnotherHost() async throws {
+        SenderFixture.reset()
+        let sender = sender(burst: 3, hostBurst: 1, window: .milliseconds(600)), rule = try rule()
+        _ = try await sender.send(source("first", rule: rule))
+        let cancelled = Task { try await sender.send(source("cancelled", rule: rule)) }
+        try await Task.sleep(for: .milliseconds(30))
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) { try await cancelled.value }
+        async let delayed = sender.send(source("delayed", rule: rule))
+        async let other = sender.send(source("other", rule: rule, host: "b.sender.test"))
+        _ = try await (delayed, other)
+        let stats = SenderFixture.state.withLock { $0 }
+        #expect(stats.paths == ["/first", "/other", "/delayed"])
+        #expect(stats.starts[0].time.duration(to: stats.starts[1].time) < .milliseconds(500))
+        #expect(stats.starts[0].time.duration(to: stats.starts[2].time) >= .milliseconds(575))
+        #expect(stats.starts[0].time.duration(to: stats.starts[2].time) < .seconds(1))
+    }
 }
 
 private struct FixtureFetcher: SourceFetcher {
@@ -130,6 +176,7 @@ private struct FixtureFetcher: SourceFetcher {
 private final class SenderFixture: URLProtocol, @unchecked Sendable {
     struct Stats {
         var paths: [String] = []
+        var starts: [(host: String, time: ContinuousClock.Instant)] = []
         var active = 0, peak = 0, rendered = 0, renderedPeak = 0, cancellations = 0
         var hosts: [String: Int] = [:], hostPeaks: [String: Int] = [:]
     }
@@ -143,6 +190,7 @@ private final class SenderFixture: URLProtocol, @unchecked Sendable {
         Self.state.withLock { stats in
             stats.paths.append(url.path); stats.active += 1; stats.peak = max(stats.peak, stats.active)
             let host = url.host!.lowercased()
+            stats.starts.append((host, .now))
             stats.hosts[host, default: 0] += 1
             stats.hostPeaks[host] = max(stats.hostPeaks[host, default: 0], stats.hosts[host]!)
             if url.path.hasPrefix("/rendered/") { stats.rendered += 1; stats.renderedPeak = max(stats.renderedPeak, stats.rendered) }

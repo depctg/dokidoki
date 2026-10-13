@@ -133,10 +133,11 @@ public struct RuleExtractor: Sendable {
         let title = try first("title") ?? String(localized: "Untitled", bundle: .module)
         switch kind {
         case .directory:
+            let title = rule.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == key.identityURL })?.title ?? title
             let by = try refs("sortByLinks", expected: .directory)
             let order = try refs("sortOrderLinks", expected: .directory)
             return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title,
-                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try first("next").map(url),
+                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try refs("next", expected: .directory).first?.key.identityURL,
                 sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
                 selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
                 selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]

@@ -16,7 +16,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 ## 2. Design principles
 
 1. **URL-first, object-centric.** A supported external URL is mapped deterministically to a typed object. (through url matching and parsing rules). Objects link to other objects through stable references.
-2. **Four content types.** `Directory -> Manga -> Chapter -> Page`. `Chapter` is first-class so it can be refreshed, cached, and navigated independently. each type could be created from a url.
+2. **Site plus four fetched content types.** `Site -> Directory -> Manga -> Chapter -> Page`. A Site derives its directories/search from installed rule data; each Directory represents a single list. `Chapter` is first-class so it can be refreshed, cached, and navigated independently. each type could be created from a url.
 3. **Identity is separate from transport.** A stable object key is not necessarily the URL used to download its bytes. This matters for CDN URLs, signed image links, and pages without individual HTML URLs.
 4. **Core before UI.** Models, rule matching, extraction, persistence, and reader image planning live in a standalone Swift package with no SwiftUI dependency.
 5. **Declarative site rules; compiled processors.** Shareable JSON configures known capabilities. It must not contain arbitrary executable Swift/JavaScript.
@@ -36,7 +36,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 
 ## 4. Core object model
 
-All core types should be small `Codable`, `Sendable` value types. Prefer a typed enum to a complex base-class hierarchy.
+Core models are small `Sendable` value types; fetched snapshots are `Codable`. SiteObject is derived from validated rule data, so it needs no separate persisted snapshot or invented homepage URL. Prefer a typed enum to a complex base-class hierarchy.
 
 ```swift
 struct ObjectKey: Hashable, Codable, Sendable {
@@ -58,7 +58,8 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 
 | Object | Required role | Main fields |
 | --- | --- | --- |
-| `DirectoryObject` | A listing of manga | `title`, ordered `mangaRefs`, optional `nextURL`, sort-by/order references and selected keys |
+| `SiteObject` | Browse root for one installed rule | `id`, `name`, `version`, normalized `directoryRefs`, `supportsSearch`, `search(query)` returning a directory reference |
+| `DirectoryObject` | A single listing of manga | `title`, ordered `mangaRefs`, optional `nextURL`, sort-by/order references and selected keys |
 | `MangaObject` | A series and its chapters | `title`, optional author/summary/rating/status/tags, `coverPageRef`, ordered `chapterRefs` |
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
 | `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, `imageURL`, optional `refererURL`, dimensions/analysis |
@@ -94,8 +95,8 @@ External URL / ObjectKey
 **Responsibilities:**
 
 - `RuleRegistry`: installed rules; match by host, URL pattern, object type, and explicit priority. Return an `unsupportedURL` result if no rule matches. Ambiguous matches are errors, not arbitrary choices.
-- Core objects/references expose loading methods; callers supply a shared repository without persisting service references inside Codable values. Chapters load their pages/parent manga, manga load their covers, and pages determine their image requests. `MangaObject` decides adjacent chapters using its rule-supplied reference order.
-- `RequestSender` (`actor`): one admission queue for documents, images and rendered sessions, with native async result/error delivery. Share identical requests by URL, purpose, complete rule policy and image referer; each caller can cancel independently. Last-consumer cancellation removes queued work or cancels active transport, retaining capacity until that transport exits. FIFO among eligible requests allows four active total, two per initial host, and one rendered session. Browser-internal subresources remain WebKit-managed.
+- SiteObject creates normalized directory/search references and validates the actual encoded query against its own rule. Core objects/references expose loading methods; callers supply a shared repository without persisting service references inside Codable values. Chapters load their pages/parent manga, manga load their covers, and pages determine their image requests. `MangaObject` decides adjacent chapters using its rule-supplied reference order.
+- `RequestSender` (`actor`): one admission queue for documents, images and rendered sessions, with native async result/error delivery. Share identical requests by URL, purpose, complete rule policy and image referer; each caller can cancel independently. Last-consumer cancellation removes queued work or cancels active transport, retaining capacity until that transport exits. FIFO among eligible requests allows four active total, two per initial host, and one rendered session. A rolling one-second start budget allows eight total and four per initial host, regardless of how quickly requests finish. Rate-delayed work occupies no active slot and uses one cancellable native [ContinuousClock deadline](https://developer.apple.com/documentation/swift/task/sleep(until:tolerance:clock:)); other eligible hosts proceed. Deduplicated waiters and canceled queued requests spend no extra budget. Admitted attempts count even if they fail or are canceled. Browser-internal subresources remain WebKit-managed.
 - `SourceFetcher`: HTTP(S) transport, redirects, timeouts and limited request headers; rendered sources use the generic WebKit adapter. Admission belongs to the shared sender. No UI dependency.
 - `RuleExtractor`: XPath-select HTML or traverse JSON; resolve relative links against the response URL; preserve item order; create child `PageObject`s while parsing a chapter.
 - `ObjectRepository` (`actor`): shared context for object loading, cache decisions, deduplicated complete object resolutions, atomic storage of parent/child snapshots, and ownership of the shared sender/image cache.
@@ -227,7 +228,7 @@ Use native Apple localization and system/per-app language selection. App text li
 
 Search uses a native editable results list. Search and object destinations share a typed native navigation path, so opening a result and returning retains the search. Directory objects optionally expose rule-extracted sort-by/order references and active keys; source links define the available choices and URLs. Selecting a sort loads that directory through the shared core pipeline. Omitted axes have no controls; do not impose a local sort or derive source URL parameters. Older snapshots remain decodable.
 
-Site rules may provide a minimal `browse` array of named directory URLs and a `searchURLTemplate` containing `{query}`. Keep URLs and extraction in JSON. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
+Site rules may provide a minimal `browse` array of named directory URLs and a `searchURLTemplate` containing `{query}`. Keep this minimal JSON unchanged: core builds SiteObject from it, while the UI only sees object references. Directory extraction supplies its declared list title and validates pagination as another directory reference. No site scraper, extra schema layer, or separate site cache is needed. Browse previews at most eight items per shelf and lazily asks core objects for metadata/covers through the shared sender. Native Settings list reordering persists locally and defines the default site; it does not alter matcher priority, cache validity or the global reader. Hide allowed hosts in normal rule rows while retaining transport policy and the import preview.
 
 **iPhone Duo:** closed display behaves like compact iPhone; unfolded display reflows into a wider layout with optional facing pages. Detect usable geometry, not a hard-coded device model or fold-state API. Preserve reading position through size changes.
 

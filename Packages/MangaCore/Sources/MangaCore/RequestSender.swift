@@ -35,15 +35,23 @@ public actor RequestSender {
     private let client: HTTPClient
     private let maxConcurrent: Int
     private let perHost: Int
+    private let burst: Int
+    private let hostBurst: Int
+    private let burstWindow: Duration
+    private var starts: [(host: String, time: ContinuousClock.Instant)] = []
+    private var wakeup: Task<Void, Never>?
     private var flights: [Key: Flight] = [:]
     private var queue: [Key] = []
     private var active = 0
     private var activeHosts: [String: Int] = [:]
     private var activeRendered = 0
 
-    public init(fetcher: any SourceFetcher = DefaultSourceFetcher(), client: HTTPClient = HTTPClient(), maxConcurrent: Int = 4, perHost: Int = 2) {
+    public init(fetcher: any SourceFetcher = DefaultSourceFetcher(), client: HTTPClient = HTTPClient(), maxConcurrent: Int = 4, perHost: Int = 2,
+                burst: Int = 8, hostBurst: Int = 4, burstWindow: Duration = .seconds(1)) {
         self.fetcher = fetcher; self.client = client
         self.maxConcurrent = max(1, maxConcurrent); self.perHost = max(1, perHost)
+        self.burst = max(1, burst); self.hostBurst = max(1, hostBurst)
+        self.burstWindow = max(.milliseconds(1), burstWindow)
     }
     public func send(_ request: ContentRequest) async throws -> SourceResponse {
         try Task.checkCancellation()
@@ -74,15 +82,28 @@ public actor RequestSender {
         return response
     }
     private func startReadyRequests() {
+        wakeup?.cancel(); wakeup = nil
+        let now = ContinuousClock.now
+        starts.removeAll { $0.time + burstWindow <= now }
+        var nextStart: ContinuousClock.Instant?
         while active < maxConcurrent {
             // FIFO among requests whose host/session has capacity; a busy host cannot block others.
+            nextStart = nil
             guard let index = queue.firstIndex(where: { key in
                 guard let flight = flights[key] else { return false }
-                return activeHosts[key.url.host?.lowercased() ?? "", default: 0] < perHost && (!flight.request.rendered || activeRendered == 0)
-            }) else { return }
+                let host = key.url.host?.lowercased() ?? ""
+                guard activeHosts[host, default: 0] < perHost, !flight.request.rendered || activeRendered == 0 else { return false }
+                let hostStarts = starts.filter { $0.host == host }
+                var deadline = now
+                if starts.count >= burst { deadline = max(deadline, starts[starts.count - burst].time + burstWindow) }
+                if hostStarts.count >= hostBurst { deadline = max(deadline, hostStarts[hostStarts.count - hostBurst].time + burstWindow) }
+                if deadline > now { nextStart = min(nextStart ?? deadline, deadline); return false }
+                return true
+            }) else { break }
             let key = queue.remove(at: index)
             guard var flight = flights[key] else { continue }
             let id = flight.id, request = flight.request
+            starts.append((key.url.host?.lowercased() ?? "", ContinuousClock.now))
             active += 1; activeHosts[key.url.host?.lowercased() ?? "", default: 0] += 1
             if request.rendered { activeRendered += 1 }
             flight.task = Task {
@@ -102,6 +123,14 @@ public actor RequestSender {
                 finish(key, id: id, rendered: request.rendered, result: result)
             }
             flights[key] = flight
+        }
+        // One cancellable native deadline, only when rate (not active capacity) blocks work.
+        if active < maxConcurrent, let nextStart {
+            wakeup = Task { [weak self] in
+                do { try await Task.sleep(until: nextStart, clock: .continuous) } catch { return }
+                guard !Task.isCancelled else { return }
+                await self?.startReadyRequests()
+            }
         }
     }
     private func cancel(_ key: Key, consumer: UUID) {

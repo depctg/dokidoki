@@ -5,7 +5,7 @@ public enum CacheHint: Sendable { case preferCache, refreshIfStale, forceRefresh
 public actor ObjectRepository {
     public let store: ObjectStore
     private var registry: RuleRegistry
-    public nonisolated let sender: RequestSender
+    private let sender: RequestSender
     nonisolated let images: ImageLoader
     private struct Request {
         let id = UUID()
@@ -15,7 +15,7 @@ public actor ObjectRepository {
     private var inFlight: [ObjectKey: Request] = [:]
     private var generation = 0
 
-    public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender = RequestSender()) throws {
+    public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender = RequestSender(fetcher: RenderedSourceFetcher())) throws {
         self.store = store; registry = try RuleRegistry(rules: rules); self.sender = sender
         images = ImageLoader(sender: sender)
     }
@@ -25,7 +25,11 @@ public actor ObjectRepository {
     public func rule(for key: ObjectKey) throws -> SiteRule {
         guard let rule = registry.rules.first(where: { $0.id == key.ruleID }) else { throw ReaderError.missingRule }; return rule
     }
-    public func key(for url: URL) throws -> ObjectKey { try registry.match(url).2 }
+    public func match(_ url: URL) throws -> (key: ObjectKey, kind: ContentKind) {
+        let (_, kind, key) = try registry.match(url)
+        return (key, kind)
+    }
+    public func key(for url: URL) throws -> ObjectKey { try match(url).key }
     public func install(_ rule: SiteRule) throws {
         try rule.validate()
         if let existing = registry.rules.first(where: { $0.id == rule.id }) {

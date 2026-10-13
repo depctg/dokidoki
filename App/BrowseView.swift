@@ -11,8 +11,8 @@ struct BrowseView: View {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     Text(site.name).font(.title2.bold()).padding(.horizontal, 20)
                         .accessibilityIdentifier("browse.siteTitle")
-                    if let lists = site.browse, !lists.isEmpty {
-                        ForEach(lists) { list in BrowseShelf(list: list, ruleID: site.id, model: model) }
+                    if !site.directoryRefs.isEmpty {
+                        ForEach(site.directoryRefs) { reference in BrowseShelf(reference: reference, model: model) }
                     } else {
                         ContentUnavailableView("No browse lists", systemImage: "books.vertical", description: Text("This site rule has no browse lists. Search the site or open a supported URL."))
                     }
@@ -27,13 +27,13 @@ struct BrowseView: View {
                 Button("Search site", systemImage: "magnifyingglass") {
                     if let site = model.browseSite { model.paths[.browse, default: []].append(.search(site.id)) }
                 }
-                    .disabled(model.browseSite?.searchURLTemplate == nil)
+                    .disabled(model.browseSite?.supportsSearch != true)
                 Menu {
                     Picker("Site", selection: Binding(get: { model.browseSite?.id ?? "" }, set: { model.browseSiteID = $0 })) {
-                        ForEach(model.rules) { Text($0.name).tag($0.id) }
+                        ForEach(model.sites) { Text($0.name).tag($0.id) }
                     }
                 } label: { Label("Switch site", systemImage: "globe") }
-                .disabled(model.rules.isEmpty)
+                .disabled(model.sites.isEmpty)
                 Button("Open URL", systemImage: "link") { openingURL = true }
             }
         }
@@ -46,7 +46,7 @@ struct BrowseView: View {
 }
 
 struct SiteSearchView: View {
-    let site: SiteRule
+    let site: SiteObject
     let model: AppModel
     @State private var searchPresented = false
     private var resultKey: ObjectKey? { model.searches[site.id]?.resultKey }
@@ -67,10 +67,11 @@ struct SiteSearchView: View {
         .searchable(text: query, isPresented: $searchPresented, prompt: "Search titles")
         .onAppear { if resultKey == nil { searchPresented = true } }
         .onSubmit(of: .search) {
-            let text = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !text.isEmpty, let url = site.searchURL(query: text), let canonical = try? RuleRegistry.normalize(url) else { return }
-            model.searches[site.id, default: SiteSearchState()].resultKey = ObjectKey(ruleID: site.id, identityURL: canonical)
-            searchPresented = false
+            do {
+                guard let reference = try site.search(query.wrappedValue) else { return }
+                model.searches[site.id, default: SiteSearchState()].resultKey = reference.key
+                searchPresented = false
+            } catch { model.report(error, operation: .openURL) }
         }
     }
 }
@@ -109,22 +110,20 @@ private struct OpenURLView: View {
 }
 
 private struct BrowseShelf: View {
-    let list: BrowseList
-    let ruleID: String
+    let reference: ContentReference
     let model: AppModel
     @State private var directory: DirectoryObject?
     @State private var error: String?
     @State private var attempt = 0
-    private var key: ObjectKey { ObjectKey(ruleID: ruleID, identityURL: list.url) }
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            NavigationLink(value: AppRoute.object(key)) {
+            NavigationLink(value: AppRoute.object(reference.key)) {
                 HStack(spacing: 6) {
-                    Text(list.title).font(.title2.bold())
+                    Text(reference.title).font(.title2.bold())
                     Image(systemName: "chevron.right").font(.headline).foregroundStyle(.secondary)
                 }.foregroundStyle(.primary)
             }.buttonStyle(.plain).padding(.horizontal, 20)
-                .accessibilityIdentifier("browse.list.\(list.url.absoluteString)")
+                .accessibilityIdentifier("browse.list.\(reference.key.identityURL.absoluteString)")
             if let directory {
                 if directory.mangaRefs.isEmpty {
                     Text("No titles in this list.").foregroundStyle(.secondary).padding(.horizontal, 20)
@@ -148,12 +147,12 @@ private struct BrowseShelf: View {
                 }.padding(.horizontal, 20)
             } else { ProgressView("Loading titles…").padding(20) }
         }
-        .task(id: "\(attempt)|\(model.ruleRevision)") {
-            error = nil
+        .task(id: "\(reference.key.id)|\(attempt)|\(model.ruleRevision)") {
+            directory = nil; error = nil
             do {
-                guard let repository = model.repository, case .directory(let loaded) = try await key.load(using: repository, hint: attempt > 0 ? .forceRefresh : .refreshIfStale) else { return }
+                guard let repository = model.repository, case .directory(let loaded) = try await reference.load(using: repository, hint: attempt > 0 ? .forceRefresh : .refreshIfStale) else { return }
                 try Task.checkCancellation(); directory = loaded
-            } catch is CancellationError {} catch { self.error = error.localizedDescription }
+            } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
 }

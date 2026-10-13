@@ -39,7 +39,7 @@ swift run --package-path Packages/MangaCore manga-probe
 swift run --package-path Packages/MangaCore manga-probe --rendered https://www.manhuagui.com/comic/32602/441493.html
 ```
 
-Browse opens the first site in Settings order. Its rule supplies named shelves, displayed as horizontal cover rows; tap a heading for the full list or a cover for manga details. Search opens a native results list with an editable search field and uses the selected site's JSON search URL. The globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
+Browse opens the first site in Settings order. Core models it as a `SiteObject` containing named directory references and search. Each directory is one manga list, previewed as a horizontal cover row; tap a heading for the full list or a cover for manga details. Search opens a native results list with an editable search field and asks that Site object for a rule-defined search directory. The globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
 
 Directory and search lists show a native Sort menu only when their JSON extraction defines sort-by or order links. Selecting an option loads the website's sorted list; there is no hardcoded local title sort. Either axis may be absent. Manhuagui exposes its existing catalog/search choices, while its update list retains source order.
 
@@ -59,7 +59,7 @@ With **Detect spreads** enabled, core compares adjacent left/right page cuts, re
 
 Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.
 
-Loading belongs to core objects and references: chapters load their pages, manga load their covers, and pages load their images. They share one repository and request sender. The sender queues document/image requests and rendered sessions, allowing four active requests total, two per initial host, and one rendered session. Identical requests share a result; canceling one caller preserves work needed by others. Results and errors return through native Swift async calls. WebKit manages subresources within its active session.
+Loading belongs to core objects and references: chapters load their pages, manga load their covers, and pages load their images. They share one repository and request sender. The sender queues document/image requests and rendered sessions, allowing four active requests total, two per initial host, and one rendered session. A rolling one-second budget also limits starts to eight total and four per initial host, including fast completions and retries. Queued work waits without occupying an active slot. Identical requests share a result; canceling one caller preserves work needed by others. Results and errors return through native Swift async calls. WebKit manages subresources within its active session.
 
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 

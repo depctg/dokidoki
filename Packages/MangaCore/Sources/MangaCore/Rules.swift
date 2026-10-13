@@ -34,7 +34,7 @@ public struct URLMatcher: Codable, Sendable {
     public let pattern: String
     public var priority: Int = 0
 }
-/// A named directory shown as a shelf on the site's Browse page.
+/// Minimal JSON declaration; SiteObject turns it into a normalized directory reference.
 public struct BrowseList: Codable, Sendable, Identifiable {
     public let title: String
     public let url: URL
@@ -131,11 +131,6 @@ public struct SiteRule: Codable, Sendable, Identifiable {
         if let template = searchURLTemplate {
             guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), isDirectory(url) else { throw ReaderError.invalidRule(String(localized: "Search must use an allowed directory URL and {query}.", bundle: .module)) }
         }
-    }
-    public func searchURL(query: String) -> URL? {
-        var allowed = CharacterSet.alphanumerics; allowed.insert(charactersIn: "-._~")
-        guard let template = searchURLTemplate, let escaped = query.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
-        return URL(string: template.replacingOccurrences(of: "{query}", with: escaped))
     }
     public static func decode(_ data: Data) throws -> SiteRule {
         guard data.count <= 128 * 1024 else { throw ReaderError.tooLarge }
