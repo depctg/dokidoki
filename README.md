@@ -41,4 +41,4 @@ In **Settings**, import/export JSON rules, share small rules as QR images, manag
 
 Run all automated checks with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
 
-Manhuagui's live directory, manga, and rendered chapter extraction have been exercised. Initial image probes returned HTTP 404; the user subsequently reported the image issue resolved. The bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.
+Manhuagui's live browsing and chapter images have been verified on iPhone and iPad simulators. The embedded WebKit adapter requests the desktop reader on every platform. Individual chapters/CDNs may still return source errors; the bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.

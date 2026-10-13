@@ -68,7 +68,7 @@ Read AGENTS.md and design. Implementation is complete; iOS 27 simulators are now
 
 - Continue interactive checks for scroll/resize position preservation, zoom/pan, keyboard controls, and visionOS interaction. Initial compact/expanded iOS screenshots have now been inspected; the full gesture walkthrough is still pending.
 - On macOS, manually exercise sandboxed JSON import/export and QR sharing. Native QR decoding and file entitlement generation passed automated checks; system panels were not driven end to end.
-- The user subsequently reported the Manhuagui image issue resolved. The earlier HTTP 404 probes remain historical observations, not a claim about current site availability; no fix was committed during the interrupted investigation.
+- The earlier Manhuagui HTTP 404 probes remain historical observations, not a claim about every chapter. Live images for `/comic/39443/801582.html` now render on both iPhone and iPad (see iOS correction below).
 - macOS Screen Recording permission remains unavailable. Simulator screenshots can be captured directly with `simctl io`, without desktop capture.
 
 ## iOS simulator follow-up — 2026-10-12
@@ -79,4 +79,11 @@ Read AGENTS.md and design. Implementation is complete; iOS 27 simulators are now
 - Both were launched with `--open-url https://demo.mangaviewer.local/chapter/arrival` and left running for the user. Simulator captures confirmed the expanded reader's fixture artwork; the compact app had already navigated to a live Manhuagui chapter list. Temporary captures are under `/tmp/mangaviewer-ios-*-ready.png`, not committed artwork.
 - Xcode 27 uses `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` for simulator UI. Select these devices in Device Hub or as Xcode run destinations. Launching the installed app by CLI: `xcrun simctl launch <UDID> com.mangaviewer.reader`.
 - Installed Xcode 27.0 has no iPhone Duo profile. Apple's [Duo preparation guide](https://developer.apple.com/iphone-duo/prepare/) specifies Xcode 27.1 for the Duo simulator. The two devices above exercise compact/expanded layouts, not fold transitions; actual Duo verification requires that update.
+
+## iOS Manhuagui chapter correction — 2026-10-12
+
+- Reproduced the user's `Frame load interrupted` (`WebKitErrorDomain` 102) on the compact simulator. Manga metadata/chapter lists loaded; rendered chapter navigation failed before extraction. An ordinary request with an iPhone user agent returned HTTP 301 to `http://m.manhuagui.com/`, outside the desktop rule's exact allowed hosts. The delegate's subsequent WebKit cancellation hid the primary host-policy error.
+- The compiled Manhuagui adapter now requests desktop content using native `WKWebpagePreferences`, aligning iOS with the reader DOM already used on macOS. Host permissions and transport restrictions remain intact. Denied subframe/popup navigation does not poison the main load; an explicit main-frame policy error survives subsequent cancellation callbacks.
+- Rebuilt and reinstalled on both existing simulators without clearing their data. `/comic/39443/801582.html` resolved nine pages and displayed its first live image in both iPhone and iPad captures. The desktop probe also decoded that image at 1100 × 1563. Temporary evidence: `/tmp/mangaviewer-iphone-live-fixed.png` and `/tmp/mangaviewer-ios-live-fixed.png`; third-party artwork is not committed.
+- Verification: 15 core tests pass; iOS Simulator, macOS arm64, and visionOS Simulator builds pass. Clean-session correction review reported no material findings and confirmed host restrictions remain enforced.
 

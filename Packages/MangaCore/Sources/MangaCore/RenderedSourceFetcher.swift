@@ -20,8 +20,12 @@ public struct RenderedSourceFetcher: SourceFetcher {
     static func read(_ url: URL, rule: SiteRule) async throws -> SourceResponse {
         guard rule.permits(url) else { throw ReaderError.blockedHost }
         let session = WebPageSession(rule: rule)
+        let isManhuagui = url.host == "www.manhuagui.com"
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
+        // This adapter observes the desktop reader. Mobile requests redirect to a different
+        // site/DOM, outside this rule's hosts. Ask WebKit for desktop content on every platform.
+        if isManhuagui { configuration.defaultWebpagePreferences.preferredContentMode = .desktop }
         let controller = configuration.userContentController
         var filters: [[String: Any]] = [["trigger": ["url-filter": ".*"], "action": ["type": "block"]]]
         for host in rule.allowedHosts {
@@ -32,7 +36,6 @@ public struct RenderedSourceFetcher: SourceFetcher {
         let filterJSON = String(decoding: try JSONSerialization.data(withJSONObject: filters), as: UTF8.self)
         let list = try await WKContentRuleListStore.default().compileContentRuleList(forIdentifier: "reader-" + UUID().uuidString, encodedContentRuleList: filterJSON)
         if let list { controller.add(list) }
-        let isManhuagui = url.host == "www.manhuagui.com"
         if isManhuagui { controller.addUserScript(WKUserScript(source: captureScript, injectionTime: .atDocumentStart, forMainFrameOnly: true)) }
         let view = WKWebView(frame: CGRect(x: 0, y: 0, width: 1024, height: 768), configuration: configuration)
         view.navigationDelegate = session
@@ -59,11 +62,15 @@ public struct RenderedSourceFetcher: SourceFetcher {
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
-        guard let url = navigationAction.request.url, rule.permits(url) else { failure = ReaderError.blockedHost; return .cancel }
+        guard let url = navigationAction.request.url, rule.permits(url) else {
+            if navigationAction.targetFrame?.isMainFrame == true { failure = ReaderError.blockedHost }
+            return .cancel
+        }
         return .allow
     }
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failure = error }
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failure = error }
+    // Preserve an explicit host-policy error when WebKit subsequently reports cancellation.
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) { failure = failure ?? error }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) { failure = failure ?? error }
 
     // Preserve the site's implementation and observe its argument. No unpacker, cookie manipulation,
     // or calls into gated reader functions. Readback requires its normal #mangaFile DOM element.

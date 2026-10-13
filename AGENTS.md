@@ -11,6 +11,7 @@ Implement milestones sequentially, with a clean-session review subagent after ea
 - Verify risky seams with fixture tests, run actual platform builds, and record unavailable simulator/device checks honestly.
 - User requested https://www.manhuagui.com/ for live testing; deterministic bundled fixtures remain the offline baseline.
 - The Manhuagui WebKit adapter must observe normal site behavior. Require a site-created reader image before extracting page references; never manipulate access gates or cookies. Keep imported rules data-only.
+- Request Manhuagui's desktop reader with `WKWebpagePreferences.preferredContentMode = .desktop` on every platform. Its iPhone response redirects to a separate mobile host/DOM. Do not widen the host allowlist to mask a content-mode mismatch, and preserve explicit policy failures over WebKit cancellation errors.
 - SwiftUI image task identity must include resource URL, not just object key; clear stale image state before loading. Refresh must invalidate view data even when the chapter key is unchanged.
 - Lazy reader rows must release offscreen bitmap state; an NSCache limit alone does not bound retained SwiftUI state. Keep prefetch to a small cancelable neighbor window. Never restore scroll position during an active gesture.
 - Rule changes must reload open content and cancel old image/prefetch work. Removing a rule purges its cached snapshots transactionally while preserving saved titles and reading state.
