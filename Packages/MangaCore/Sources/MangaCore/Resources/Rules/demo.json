@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "demo",
   "name": "Bundled reading room",
-  "version": 4,
+  "version": 5,
   "allowedHosts": [
     "demo.mangaviewer.local"
   ],

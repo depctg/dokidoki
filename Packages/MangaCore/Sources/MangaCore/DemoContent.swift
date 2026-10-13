@@ -26,6 +26,7 @@ public enum DemoContent {
         case "/series/aster": name = "aster"; ext = "html"
         case "/chapter/arrival": name = "arrival"; ext = "json"
         case "/chapter/starlight": name = "starlight"; ext = "json"
+        case "/chapter/rejoined": name = "rejoined"; ext = "json"
         case let path where path.hasPrefix("/images/"): name = url.deletingPathExtension().lastPathComponent; ext = "png"
         default: throw ReaderError.unsupportedURL
         }

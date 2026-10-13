@@ -32,12 +32,16 @@ public struct ImageAnalysis: Codable, Sendable {
     public let height: Int
     public let contentBounds: CGRect
     public let centerGutter: Bool
+    /// RGB triplets sampled along the artwork boundary, after conservative white-border detection.
     public let leftEdge: [Double]
     public let rightEdge: [Double]
+    /// Measured horizontal bounds before the margin safety inset; old analysis has no seam evidence.
+    public var seamBounds: CGRect? = nil
     public var aspectRatio: Double { Double(width) / Double(max(1, height)) }
-    public init(width: Int, height: Int, contentBounds: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1), centerGutter: Bool = false, leftEdge: [Double] = [], rightEdge: [Double] = []) {
+    public init(width: Int, height: Int, contentBounds: CGRect = CGRect(x: 0, y: 0, width: 1, height: 1), centerGutter: Bool = false, leftEdge: [Double] = [], rightEdge: [Double] = [], seamBounds: CGRect? = nil) {
         self.width = width; self.height = height; self.contentBounds = contentBounds; self.centerGutter = centerGutter
         self.leftEdge = leftEdge; self.rightEdge = rightEdge
+        self.seamBounds = seamBounds
     }
 }
 public struct ReaderContext: Sendable {
@@ -105,7 +109,10 @@ private struct MarginProcessor: PageProcessor {
             page.regions = page.regions.map { region in
                 guard let analysis = context.analysis[region.sourcePage] else { return region }
                 var region = region; region.normalizedCrop = region.normalizedCrop.intersection(analysis.contentBounds); return region
-            }; return page
+            }
+            // Imported recipes may put marginAlign after spreadDetect; do not offset joined halves.
+            if page.intentionalSpread { page.regions = SplitPageJoin.alignVertically(page.regions) }
+            return page
         }
     }
 }
@@ -130,27 +137,16 @@ private struct SpreadProcessor: PageProcessor {
             }
             if index < pages.count, let next = pages[index].regions.first, pages[index].regions.count == 1,
                context.overrides[next.sourcePage, default: .automatic] == .automatic {
-                let match = context.preferences.detectSpreads && continuous(analysis, context.analysis[next.sourcePage], direction: context.preferences.direction)
+                let match = context.preferences.detectSpreads && SplitPageJoin.matches(analysis, context.analysis[next.sourcePage], direction: context.preferences.direction)
                 if override == .pairWithNext || match {
-                    let regions = context.preferences.direction == .rightToLeft ? [next, region] : [region, next]
+                    var regions = context.preferences.direction == .rightToLeft ? [next, region] : [region, next]
+                    if match { regions = SplitPageJoin.removingSeam(from: regions, analysis: context.analysis) }
                     result.append(DisplayPage(regions: regions, intentionalSpread: true)); index += 1; continue
                 }
             }
             result.append(DisplayPage(regions: page.regions, intentionalSpread: wide))
         }
         return result
-    }
-    private func continuous(_ first: ImageAnalysis?, _ second: ImageAnalysis?, direction: ReadingDirection) -> Bool {
-        guard let a = first, let b = second, a.aspectRatio < 0.9, b.aspectRatio < 0.9,
-              abs(Double(a.height) / Double(max(1, b.height)) - 1) < 0.08 else { return false }
-        let edgeA = direction == .rightToLeft ? a.leftEdge : a.rightEdge
-        let edgeB = direction == .rightToLeft ? b.rightEdge : b.leftEdge
-        guard edgeA.count >= 16, edgeA.count == edgeB.count else { return false }
-        let mean = edgeA.reduce(0, +) / Double(edgeA.count)
-        let variance = edgeA.reduce(0) { $0 + pow($1 - mean, 2) } / Double(edgeA.count)
-        let difference = zip(edgeA, edgeB).reduce(0) { $0 + abs($1.0 - $1.1) } / Double(edgeA.count)
-        // Flat white/black borders are not continuity evidence.
-        return variance > 0.035 && difference < 0.018
     }
 }
 private struct LayoutProcessor: PageProcessor {

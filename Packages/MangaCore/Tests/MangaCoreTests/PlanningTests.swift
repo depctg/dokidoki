@@ -29,10 +29,11 @@ struct PlanningTests {
         #expect(explicitPair[0].sourcePageKeys.count == 2)
     }
     @Test func adjacentEvidenceAndLayoutPreserveIntentionalPairs() async throws {
-        let edge = (0..<32).map { $0.isMultiple(of: 2) ? 0.15 : 0.85 }
+        let edge = (0..<64).flatMap { Array(repeating: $0.isMultiple(of: 2) ? 0.15 : 0.85, count: 3) }
+        let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
         var context = ReaderContext(size: CGSize(width: 1200, height: 800))
-        context.analysis[keys[0]] = ImageAnalysis(width: 700, height: 1000, leftEdge: edge, rightEdge: [])
-        context.analysis[keys[1]] = ImageAnalysis(width: 700, height: 1000, leftEdge: [], rightEdge: edge)
+        context.analysis[keys[0]] = ImageAnalysis(width: 700, height: 1000, leftEdge: edge, rightEdge: [], seamBounds: bounds)
+        context.analysis[keys[1]] = ImageAnalysis(width: 700, height: 1000, leftEdge: [], rightEdge: edge, seamBounds: bounds)
         let pages = await (try PagePipeline()).plan(keys, context: context)
         #expect(pages.count == 2)
         #expect(pages[0].intentionalSpread)
@@ -44,6 +45,18 @@ struct PlanningTests {
         #expect(await (try PagePipeline()).plan(keys, context: context).count == 4)
         context.overrides[keys[0]] = .pairWithNext
         #expect(await (try PagePipeline()).plan(keys, context: context).count == 3)
+
+        // Imported recipes can trim after joining; differing blank margins must not shift halves.
+        context.preferences.trimMargins = true
+        context.analysis[keys[0]] = ImageAnalysis(width: 700, height: 1000,
+            contentBounds: CGRect(x: 0, y: 0.05, width: 1, height: 0.95), leftEdge: edge, seamBounds: bounds)
+        context.analysis[keys[1]] = ImageAnalysis(width: 700, height: 1000, rightEdge: edge, seamBounds: bounds)
+        context.overrides = [:]
+        for ids in [["marginAlign", "spreadDetect"], ["spreadDetect", "marginAlign"]] {
+            let joined = await (try PagePipeline(ids: ids)).plan(Array(keys.prefix(2)), context: context)
+            #expect(joined.count == 1)
+            #expect(joined[0].regions.allSatisfy { $0.normalizedCrop.minY == 0 && $0.normalizedCrop.height == 1 })
+        }
     }
     @Test func sourceProgressSurvivesSplitAndPairChanges() async throws {
         let pipeline = try PagePipeline()

@@ -188,26 +188,21 @@ struct ChapterPreview {
         // Match the pager's neighbor window, prioritizing the next page over the previous page.
         let neighbors = keys.prefix(3).compactMap { key in pages.first { $0.key == key } }
         prefetch = Task {
-            var learned = false
+            var learned: [ObjectKey: ImageAnalysis] = [:]
             for page in neighbors {
                 guard !Task.isCancelled else { return }
                 do {
                     let image = try await page.image(using: repository)
                     try Task.checkCancellation()
-                    if analysis[page.key] == nil { analysis[page.key] = ImageProcessing.analyze(image); learned = true }
+                    if analysis[page.key] == nil { learned[page.key] = ImageProcessing.analyze(image) }
                 } catch is CancellationError { return } catch { /* Visible loading exposes errors and retry. */ }
             }
-            // Update plans once per neighbor window; never scan/decode the full chapter.
-            if !Task.isCancelled && learned { await applyPrefetchAnalysis() }
+            // Publish analysis and request its plan together. A superseding plan must not cancel
+            // this task after it published evidence but before that evidence reached the renderer.
+            if !Task.isCancelled && !learned.isEmpty {
+                analysis.merge(learned) { current, _ in current }
+                replan()
+            }
         }
-    }
-    private func applyPrefetchAnalysis() async {
-        let context = ReaderContext(size: size, preferences: app.preferences, analysis: analysis, overrides: overrides)
-        guard let pipeline = try? PagePipeline(ids: rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"]) else { return }
-        let newPlans = await pipeline.plan(pages.map(\.key), context: context)
-        guard !Task.isCancelled else { return }
-        guard !interacting else { pendingReplan = true; return }
-        if plans != newPlans { plans = newPlans }
-        revision += 1
     }
 }

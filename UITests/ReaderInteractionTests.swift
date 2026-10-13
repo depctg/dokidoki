@@ -140,8 +140,8 @@ import XCTest
         app.buttons["Paged"].tap()
         dismissOptions(in: app)
         select("Right to left", in: "Direction", app: app)
-        disable("Detect spreads", app: app)
-        disable("Facing pages in wide windows", app: app)
+        setAdjustment("Detect spreads", enabled: false, app: app)
+        setAdjustment("Facing pages in wide windows", enabled: false, app: app)
         let title = app.staticTexts["reader.chapterTitle"]
         XCTAssertEqual(title.label, "1 · Arrival")
 
@@ -268,6 +268,23 @@ import XCTest
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 1)
         XCTAssertEqual(title.label, "2 · Starlight")
         XCTAssertTrue(counter.label.hasPrefix("Page 4 "))
+
+        // The core's joined plan must reach the actual renderer in both modes, with an off switch.
+        select("Right to left", in: "Direction", app: app)
+        setAdjustment("Detect spreads", enabled: true, app: app)
+        app.buttons["reader.collapse"].tap()
+        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        app.buttons["Open URL"].tap()
+        let url = app.textFields["Website URL"]
+        XCTAssertTrue(url.waitForExistence(timeout: 5))
+        url.tap(); url.typeText("https://demo.mangaviewer.local/chapter/rejoined\n")
+        XCTAssertTrue(wait { title.label == "1 · Across the valley" })
+        let joined = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 1, 2")).firstMatch
+        XCTAssertTrue(wait { counter.label == "Page 1 of 1" && joined.exists })
+        select("Scroll", in: "Mode", app: app)
+        XCTAssertTrue(wait { counter.label == "Page 1 of 1" && joined.exists })
+        setAdjustment("Detect spreads", enabled: false, app: app)
+        XCTAssertTrue(wait { counter.label == "Page 1 of 2" && !joined.exists })
     }
     private func checkImmersion(in app: XCUIApplication) {
         let image = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch
@@ -299,12 +316,13 @@ import XCTest
         return app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex
             .first { $0.frame.contains(point) }?.label
     }
-    private func disable(_ label: String, app: XCUIApplication) {
+    private func setAdjustment(_ label: String, enabled: Bool, app: XCUIApplication) {
         app.buttons["Reader options"].tap()
         app.buttons["Image adjustments"].tap()
         let toggle = app.buttons[label]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
-        if toggle.isSelected || ["1", "on"].contains(toggle.value as? String ?? "") { toggle.tap() }
+        let selected = toggle.isSelected || ["1", "on"].contains(toggle.value as? String ?? "")
+        if selected != enabled { toggle.tap() }
         else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
     }
     private func wait(_ condition: @escaping () -> Bool) -> Bool {
