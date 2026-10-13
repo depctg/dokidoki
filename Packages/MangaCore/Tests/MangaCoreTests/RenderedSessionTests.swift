@@ -39,9 +39,10 @@ import AppKit
         let resolved = try await chapter.load(2..<4, using: repository)
         #expect(resolved.map(\.sourceIndex) == [2, 3])
         #expect(resolved.map { $0.imageURL?.lastPathComponent } == ["3.png", "4.png"])
-        let image = try await descriptors[3].image(using: repository)
-        #expect(image.width > 0 && image.height > 0)
+        let prepared = try await descriptors[3].prepare(using: repository)
         await sender.invalidateResources()
+        let image = try await descriptors[3].image(using: repository)
+        #expect(image.width == prepared.width && image.height == prepared.height)
         // Resolved page URLs survive browser disposal and process-style reopening.
         let reopened = try ObjectRepository(store: store, rules: [rule])
         for page in chapter.pageRefs {

@@ -55,7 +55,8 @@ struct ReaderView: View {
                 }.allowsHitTesting(false)
                     .clipped()
             }
-            .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan() }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan(restore: true) }
         }
         .background(Color(white: 0.08)).preferredColorScheme(.dark)
         .overlay(alignment: .bottomTrailing) {
@@ -128,7 +129,7 @@ struct ReaderView: View {
             reader.save(); zoom = 1; zoomStart = 1; chapterTransition = nil; chapterPull = 0
             // A remounted pager needs a fresh scroll request, even for the same source page.
             if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
-            reader.replan()
+            reader.replan(restore: true)
         }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; chapterPull = 0 } }
@@ -185,7 +186,7 @@ struct ReaderView: View {
             ScrollView(.horizontal) {
                 LazyHStack(spacing: 0) {
                     ForEach(reader.plans) { plan in
-                        DisplayImageView(plan: plan, pages: reader.pages, model: model, onImage: reader.learn)
+                        DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
                             .frame(width: size.width, height: size.height)
                             .contentShape(Rectangle()).onTapGesture { toggleChrome() }
                             .id(plan.id)
@@ -209,7 +210,7 @@ struct ReaderView: View {
             .modifier(chapterOverscroll)
             if zoom > 1, let plan = reader.current {
                 ScrollView([.horizontal, .vertical]) {
-                    DisplayImageView(plan: plan, pages: reader.pages, model: model, onImage: reader.learn)
+                    DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
                         .frame(width: size.width * zoom, height: size.height * zoom)
                         .contentShape(Rectangle()).onTapGesture { toggleChrome() }
                 }.scrollIndicators(.hidden)
@@ -240,15 +241,18 @@ struct ReaderView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(reader.plans) { plan in
-                    DisplayImageView(plan: plan, pages: reader.pages, model: model, onImage: reader.learn)
-                        .frame(height: reader.height(plan, width: max(1, size.width - 24)))
+                    DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
+                        .frame(width: max(1, size.width - 24), height: reader.height(plan, width: max(1, size.width - 24)))
+                        // The scroll target occupies the whole viewport; artwork insets
+                        // belong inside it so native ID restoration cannot pan sideways.
+                        .frame(width: size.width)
                         .contentShape(Rectangle()).onTapGesture { toggleChrome() }
                         .id(plan.id)
                         .background(GeometryReader { geometry in
                             Color.clear.preference(key: ReaderFrames.self, value: [plan.id: geometry.frame(in: .named("readerViewport"))])
                         })
                 }
-            }.padding(.horizontal, 12).scrollTargetLayout()
+            }.frame(width: size.width).scrollTargetLayout()
         }
         .accessibilityIdentifier("reader.viewport")
         .coordinateSpace(name: "readerViewport")
@@ -326,7 +330,7 @@ struct DisplayImageView: View {
     let plan: DisplayPage
     let pages: [PageObject]
     let model: AppModel
-    var onImage: (ObjectKey, CGImage) -> Void = { _, _ in }
+    var onLoad: () -> Void = {}
     @State private var image: CGImage?
     @State private var originalImages: [CGImage] = []
     @State private var error: String?
@@ -339,7 +343,7 @@ struct DisplayImageView: View {
     }
     private var requestID: String { plan.id + resources.map { ($0.imageURL?.absoluteString ?? $0.key.id) + ($0.refererURL?.absoluteString ?? "") }.joined() + "-\(attempt)" }
     var body: some View {
-        Group {
+        ZStack {
             if let image { Image(decorative: image, scale: 1).resizable().scaledToFit().accessibilityLabel(imageLabel).accessibilityIdentifier("reader.pageImage") }
             else if !originalImages.isEmpty {
                 HStack(spacing: 0) { ForEach(originalImages.indices, id: \.self) { Image(decorative: originalImages[$0], scale: 1).resizable().scaledToFit() } }
@@ -358,8 +362,9 @@ struct DisplayImageView: View {
                 var loaded: [ObjectKey: CGImage] = [:]
                 for page in resources {
                     let decoded = try await page.image(using: repository, refresh: attempt > 0)
-                    try Task.checkCancellation(); loaded[page.key] = decoded; onImage(page.key, decoded)
+                    try Task.checkCancellation(); loaded[page.key] = decoded
                 }
+                onLoad()
                 let images = loaded
                 let rendered = await Task.detached(priority: .userInitiated) { ImageProcessing.render(plan, images: images) }.value
                 try Task.checkCancellation()

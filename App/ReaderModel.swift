@@ -29,6 +29,8 @@ struct ChapterPreview {
     var size: CGSize = .zero
     private var interacting = false
     private var pendingReplan = false
+    private var pendingRestore = false
+    private var learned: [ObjectKey: ImageAnalysis] = [:]
     private var active = false
     private var metadataLoaded = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
@@ -41,7 +43,7 @@ struct ChapterPreview {
         return adjacentChapter(direction)?.key
     }
     private var planning: Task<Void, Never>?
-    private var prefetch: Task<Void, Never>?
+    private var prefetch: [ObjectKey: Task<Void, Never>] = [:]
     private var rule: SiteRule?
 
     init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false) {
@@ -51,12 +53,12 @@ struct ChapterPreview {
     }
     func activate() async {
         active = true
-        if pages.isEmpty { await load() }
-        else { replan(); await loadMangaMetadata() }
+        if plans.isEmpty { await load() }
+        else { replan(restore: true); preparePages(); await loadMangaMetadata() }
     }
     func load() async {
         guard let repository = app.repository else { return }
-        planning?.cancel(); prefetch?.cancel()
+        planning?.cancel(); cancelPrefetch()
         loading = true; error = nil
         defer { loading = false }
         do {
@@ -70,7 +72,19 @@ struct ChapterPreview {
             } catch { ErrorDiagnostics.record(error, operation: .storage); throw error }
             source = startAtEnd ? pages.last?.key : (pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key)
             fraction = startAtEnd ? 0.999_999 : (position?.fractionalOffset ?? 0)
-            replan()
+            // Establish the target's real dimensions before its first layout, including
+            // cold fractional resumes, manual pairs and backward chapter entry.
+            let pipeline = try PagePipeline(ids: processorIDs)
+            let initial = await pipeline.plan(pages.map(\.key), context: ReaderContext(
+                size: size, preferences: app.preferences, analysis: analysis, overrides: overrides))
+            if !initial.isEmpty {
+                let target = initial[PagePipeline.index(for: source, fraction: fraction, in: initial)]
+                for page in pages where target.sourcePageKeys.contains(page.key) && analysis[page.key] == nil {
+                    if let prepared = try? await page.prepare(using: repository) { analysis[page.key] = prepared }
+                    try Task.checkCancellation()
+                }
+            }
+            replan(restore: true)
             loading = false
             await loadMangaMetadata()
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
@@ -107,31 +121,36 @@ struct ChapterPreview {
         guard app.reader?.id == id, let reference else { return }
         app.openChapter(reference.key, preserveImmersion: true, fromEnd: fromEnd)
     }
-    func replan() {
+    func replan(restore: Bool = false) {
         guard active else { return }
+        pendingRestore = pendingRestore || restore
         guard !interacting else { pendingReplan = true; return }
         planning?.cancel()
-        let context = ReaderContext(size: size, preferences: app.preferences, analysis: analysis, overrides: overrides)
+        let context = ReaderContext(size: size, preferences: app.preferences,
+                                    analysis: analysis.merging(learned) { current, _ in current }, overrides: overrides)
         let keys = pages.map(\.key)
-        let ids = rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"]
+        let ids = processorIDs
         planning = Task {
             guard let pipeline = try? PagePipeline(ids: ids) else { return }
             let planned = await pipeline.plan(keys, context: context)
             guard !Task.isCancelled else { return }
             guard !interacting else { pendingReplan = true; return }
+            // Native lazy stacks preserve visible IDs as neighboring rows change.
+            // Only explicit navigation/layout changes or replacing the current region
+            // require restoring its source position, never an ordinary image arrival.
+            let replacedCurrent = current.map { current in !planned.contains { $0.id == current.id } } ?? true
+            analysis = context.analysis
+            learned = learned.filter { context.analysis[$0.key] == nil }
             if plans != planned { plans = planned }
-            // Mode/viewport changes need restoration even when the page regions stay identical.
-            revision += 1
-            schedulePrefetch()
+            if pendingRestore || replacedCurrent { revision += 1 }
+            pendingRestore = false
+            preparePages()
         }
     }
+    private var processorIDs: [String] { rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"] }
     func setInteracting(_ value: Bool) {
         interacting = value
         if !value, pendingReplan { pendingReplan = false; replan() }
-    }
-    func learn(_ key: ObjectKey, image: CGImage) {
-        guard analysis[key] == nil else { return }
-        analysis[key] = ImageProcessing.analyze(image); replan()
     }
     func move(_ delta: Int) {
         guard !plans.isEmpty else { return }
@@ -146,7 +165,7 @@ struct ChapterPreview {
         guard let key else { return }
         let oldIndex = self.index
         source = key; fraction = PagePipeline.fraction(index: index, withinPage: within, source: key, in: plans)
-        if oldIndex != self.index { schedulePrefetch() }
+        if oldIndex != self.index { preparePages() }
     }
     var withinPage: Double {
         guard let source else { return 0 }
@@ -156,7 +175,7 @@ struct ChapterPreview {
     func setOverride(_ value: SpreadOverride) {
         guard let source else { return }; overrides[source] = value
         do { try app.store?.setPreference("overrides:" + chapter.key.id, value: overrides) }
-        catch { app.report(error, operation: .storage) }; replan()
+        catch { app.report(error, operation: .storage) }; replan(restore: true)
     }
     func save() {
         // An outgoing view may settle during the chapter crossfade after stop().
@@ -171,7 +190,7 @@ struct ChapterPreview {
     func stop() {
         guard active else { return }
         save(); active = false; interacting = false; pendingReplan = false
-        planning?.cancel(); prefetch?.cancel(); app.reloadLibrary()
+        planning?.cancel(); cancelPrefetch(); app.reloadLibrary()
     }
     func height(_ plan: DisplayPage, width: Double) -> Double {
         let aspect = plan.regions.reduce(0.0) { total, region in
@@ -180,32 +199,36 @@ struct ChapterPreview {
         }
         return width / max(0.1, aspect)
     }
-    private func schedulePrefetch() {
-        prefetch?.cancel()
+    func preparePages() {
         guard active, let repository = app.repository, !plans.isEmpty else { return }
-        let neighborIndices = [index + 1, index - 1].filter { plans.indices.contains($0) }
+        let neighborIndices = [index, index + 1, index + 2, index - 1].filter { plans.indices.contains($0) }
         var keys: [ObjectKey] = []
         for i in neighborIndices {
             for key in plans[i].sourcePageKeys where !keys.contains(key) { keys.append(key) }
         }
-        // Match the pager's neighbor window, prioritizing the next page over the previous page.
-        let neighbors = keys.prefix(3).compactMap { key in pages.first { $0.key == key } }
-        prefetch = Task {
-            var learned: [ObjectKey: ImageAnalysis] = [:]
-            for page in neighbors {
-                guard !Task.isCancelled else { return }
+        // Keep overlapping work, including the page becoming visible. Its normal
+        // image request independently consumes the same core cache/in-flight request.
+        let neighbors = keys.prefix(6).compactMap { key in pages.first { $0.key == key } }
+        let wanted = Set(neighbors.map(\.key))
+        for key in prefetch.keys where !wanted.contains(key) { prefetch.removeValue(forKey: key)?.cancel() }
+        for page in neighbors where prefetch[page.key] == nil {
+            prefetch[page.key] = Task {
                 do {
-                    let image = try await page.image(using: repository)
+                    if analysis[page.key] != nil || learned[page.key] != nil {
+                        _ = try await page.image(using: repository)
+                        return
+                    }
+                    let result = try await page.prepare(using: repository)
                     try Task.checkCancellation()
-                    if analysis[page.key] == nil { learned[page.key] = ImageProcessing.analyze(image) }
-                } catch is CancellationError { return } catch { /* Visible loading exposes errors and retry. */ }
-            }
-            // Publish analysis and request its plan together. A superseding plan must not cancel
-            // this task after it published evidence but before that evidence reached the renderer.
-            if !Task.isCancelled && !learned.isEmpty {
-                analysis.merge(learned) { current, _ in current }
-                replan()
+                    learned[page.key] = result; replan()
+                } catch {
+                    // A successful visible retry can warm this page again.
+                    if !Task.isCancelled { prefetch[page.key] = nil }
+                }
             }
         }
+    }
+    private func cancelPrefetch() {
+        prefetch.values.forEach { $0.cancel() }; prefetch.removeAll()
     }
 }

@@ -204,6 +204,7 @@ import XCTest
         // Check actual content, since a stale counter alone would hide lost restoration.
         select("Scroll", in: "Mode", app: app)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+        checkCenteredPages(in: app)
         checkImmersion(in: app)
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
@@ -294,6 +295,8 @@ import XCTest
         // Missing adjacent chapters stay on the boundary even after a long pull.
         app.buttons["Next chapter"].tap()
         XCTAssertTrue(wait { title.label == "2 · Starlight" })
+        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 1" })
+        checkCenteredPages(in: app)
         select("Paged", in: "Mode", app: app)
         for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { end.press(forDuration: 0.05, thenDragTo: start) }
         XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
@@ -318,6 +321,14 @@ import XCTest
         XCTAssertTrue(wait { counter.label == "Page 1 of 1" && joined.exists })
         setAdjustment("Detect spreads", enabled: false, app: app)
         XCTAssertTrue(wait { counter.label == "Page 1 of 2" && !joined.exists })
+    }
+    private func checkCenteredPages(in app: XCUIApplication) {
+        let visible = app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.filter { $0.frame.intersects(app.frame) }
+        XCTAssertFalse(visible.isEmpty)
+        for image in visible {
+            XCTAssertEqual(image.frame.midX, app.frame.midX, accuracy: 1, "Loading pages must not change the reader's horizontal layout")
+            XCTAssertLessThanOrEqual(image.frame.width, app.frame.width)
+        }
     }
     private func checkImmersion(in app: XCUIApplication) {
         let image = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 2")).firstMatch

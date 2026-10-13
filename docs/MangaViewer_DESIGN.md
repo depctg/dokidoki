@@ -162,6 +162,10 @@ protocol PageProcessor: Sendable {
 
 `ReaderContext` supplies display size, reading direction, reading mode, relevant image metadata/analysis, and validated processor settings. The registered Swift implementations are **compiled into the app**; JSON selects and configures them. A processor can perform `1 -> 1`, `1 -> many`, or `many -> 1` changes. The renderer fetches and decodes only the images referenced by nearby display plans.
 
+Reader layout uses one stable image/loading/error container per lazy row and full-viewport scroll targets, with artwork insets inside each row. Their width is independent of image size or page count. Native lazy-stack anchoring handles ordinary image arrivals. Explicit navigation, viewport/preferences changes and replacement of the current region can restore source/fraction; unchanged plans never trigger timed repositioning. Initial restoration prepares the target region’s source dimensions before layout, including manual pairs. Image analysis is staged while scrolling and published with its plan after interaction. This follows Apple's [lazy-stack layout guidance](https://developer.apple.com/videos/play/wwdc2026/321/).
+
+The presentation model chooses a small keyed preparation window (current, next two, previous; maximum six source images). It retains overlapping jobs and cancels only obsolete work or a collapsed reader. `PageObject.prepare(using:)` warms the shared core image cache and analyzes off the main executor. Normal display requests independently consume that cache or the same admitted in-flight request; no view-owned network path or second request budget exists.
+
 **Built-in V1 pipeline:**
 
 1. `identity`: no changes; always available as a fallback.
