@@ -40,6 +40,13 @@ public final class ObjectStore: Sendable {
                 CREATE TABLE preferences (key TEXT PRIMARY KEY, payload BLOB NOT NULL);
                 """)
         }
+        migration.registerMigration("v2RuleOwnership") { db in
+            try db.execute(sql: "ALTER TABLE objects ADD COLUMN ruleID TEXT")
+            for row in try Row.fetchAll(db, sql: "SELECT key, payload FROM objects") {
+                let object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
+                try db.execute(sql: "UPDATE objects SET ruleID = ? WHERE key = ?", arguments: [object.key.ruleID, row["key"] as String])
+            }
+        }
         try migration.migrate(db)
     }
     public func snapshot(_ key: ObjectKey) throws -> ObjectSnapshot? {
@@ -55,7 +62,7 @@ public final class ObjectStore: Sendable {
             }
             for object in objects {
                 let owner: String? = if case .page(let page) = object { page.ownerRef?.id } else { nil }
-                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(ttl).timeIntervalSince1970, owner])
+                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(ttl).timeIntervalSince1970, owner, object.key.ruleID])
             }
         }
     }
@@ -66,7 +73,12 @@ public final class ObjectStore: Sendable {
         let data = try rule.exported()
         try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO rules VALUES (?, ?, ?)", arguments: [rule.id, rule.version, data]) }
     }
-    public func removeRule(_ id: String) throws { try db.write { try $0.execute(sql: "DELETE FROM rules WHERE id = ?", arguments: [id]) } }
+    public func removeRule(_ id: String) throws {
+        try db.write {
+            try $0.execute(sql: "DELETE FROM objects WHERE ruleID = ?", arguments: [id])
+            try $0.execute(sql: "DELETE FROM rules WHERE id = ?", arguments: [id])
+        }
+    }
     public func clearContent() throws { try db.write { try $0.execute(sql: "DELETE FROM objects") } }
     public func savePosition(_ position: ReadingPosition) throws {
         try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO readingState VALUES (?, ?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970]) }

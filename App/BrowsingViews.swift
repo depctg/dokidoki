@@ -4,6 +4,7 @@ import MangaCore
 struct RootView: View {
     @Bindable var model: AppModel
     @State private var urlText = "https://www.manhuagui.com/"
+    @FocusState private var urlFocused: Bool
     var body: some View {
         NavigationSplitView {
             List(selection: Binding(get: { model.section }, set: { model.path = []; model.section = $0 })) {
@@ -26,6 +27,7 @@ struct RootView: View {
         .alert("MangaViewer", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
+        .onChange(of: model.openURLRequest) { _, _ in urlFocused = true }
     }
     private var browse: some View {
         ScrollView {
@@ -35,6 +37,7 @@ struct RootView: View {
                 Text("Open a supported URL, or explore the bundled reading room.").foregroundStyle(.secondary)
                 HStack {
                     TextField("Website URL", text: $urlText).textFieldStyle(.roundedBorder)
+                        .focused($urlFocused)
                         .onSubmit { Task { await model.open(urlText) } }
                     Button("Open", systemImage: "arrow.right") { Task { await model.open(urlText) } }.buttonStyle(.borderedProminent)
                 }
@@ -72,7 +75,7 @@ struct ObjectScreen: View {
             else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? "Try a supported URL.") } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
         }
         .id(revision)
-        .task(id: key) { object = nil; await load(.refreshIfStale) }
+        .task(id: "\(key.id)|\(model.ruleRevision)") { object = nil; await load(.refreshIfStale) }
         .toolbar {
             ToolbarItem {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await load(.forceRefresh) } }.disabled(loading)
@@ -165,13 +168,5 @@ struct LibraryView: View {
         }.navigationTitle("My Library")
             .overlay { if model.saved.isEmpty && model.recent.isEmpty { ContentUnavailableView("Make room for a story", systemImage: "books.vertical", description: Text("Saved titles and your reading history appear here.")) } }
             .onAppear { model.reloadLibrary() }
-    }
-}
-
-struct SettingsView: View {
-    let model: AppModel
-    var body: some View {
-        Form { Section("Installed rules") { ForEach(model.rules) { Text("\($0.name) · v\($0.version)") } } }
-            .formStyle(.grouped).navigationTitle("Settings")
     }
 }

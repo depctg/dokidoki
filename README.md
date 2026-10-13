@@ -34,3 +34,9 @@ See [the rule format](docs/RULES.md) for XPath/JSON recipes. Original fixture ar
 Reader options include paged/vertical modes, reading direction, conservative margin trimming, spread detection, and facing pages in wide windows. You can keep, split, or pair the current original page manually. Arrow keys and edge taps turn pages; pinch or double-click/tap zooms in paged mode. Position is saved against original pages, including fractional scroll progress.
 
 Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.
+
+In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
+
+Run all automated checks with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
+
+Manhuagui's live directory, manga, and rendered chapter extraction have been exercised. Both tested chapters' CDN URLs returned HTTP 404 for their first images; the bundled reading room is the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.

@@ -24,6 +24,7 @@ import MangaCore
     init(chapter: ChapterObject, app: AppModel) { self.chapter = chapter; self.app = app }
     func load() async {
         guard let repository = app.repository else { return }
+        planning?.cancel(); prefetch?.cancel()
         loading = true; error = nil
         defer { loading = false }
         do {

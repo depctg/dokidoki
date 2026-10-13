@@ -5,18 +5,18 @@
 - M1 complete: models, validated XPath/JSON rules, bounded HTTP fetcher, SQLite snapshots/reading state, repository and fixture tests.
 - M2 complete: native app and basic reader, ephemeral WebKit adapter for Manhuagui.
 - M3 complete: composable display plans, image analysis, memory/disk cache, prefetch.
-- M4: library/settings, rule exchange/QR, portability and final walkthrough.
+- M4 complete: library/settings, rule exchange/QR, cache controls, portability. All four milestones have received separate clean-session reviews; material findings are resolved.
 
 ## Environment and decisions
 
 - Initial workspace contained only the design. Git initialized on `main`.
 - Xcode 27.0 / Swift 6.4, macOS/iOS/visionOS 27 SDKs available. No available simulator runtimes at initial inspection.
 - Deployment baselines remain 26. Use native libxml2 for XPath, GRDB for SQLite.
-- Manhuagui homepage and manga HTML were reachable with ordinary HTTPS. Site uses `/comic/` paths, not only `/book/`; chapter extraction needs investigation. No third-party content fixtures are committed.
+- Manhuagui homepage and manga HTML are reachable with ordinary HTTPS. The bundled rule supports `/comic/` and `/book/`; chapter extraction uses the compiled WebKit observer described below. No third-party content fixtures are committed.
 
 ## Resume
 
-Read AGENTS.md and design. Run core tests with `swift test --package-path Packages/MangaCore`. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
+Read AGENTS.md and design. Implementation is complete; remaining checks require simulator/device UI access or working source images (see final verification). Run `bash scripts/verify.sh` for all automated checks, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
 
 ## M1 verification and review
 
@@ -25,7 +25,7 @@ Read AGENTS.md and design. Run core tests with `swift test --package-path Packag
 - Live probes on 2026-10-12: Manhuagui homepage produced 328 manga references; `/comic/32602/` produced title, cover, and 108 chapters. Counts are observations, not assertions.
 - Manhuagui `/comic/32602/441493.html` contains a JavaScript-driven reader, so chapter HTTP-only probing reports the rendered-adapter requirement. No decoded scripts, site images, or downloaded third-party HTML are committed.
 - Review correction: parent refresh now replaces its owned page snapshots transactionally, pruning removed pages/covers.
-- Clean-session M1 review: stale-child finding reproduced and fixed; no remaining material blockers. Redirect/body-size limits and cancellation on rule/cache mutation are code-reviewed but not transport-fixture-tested yet.
+- Clean-session M1 review: stale-child finding reproduced and fixed; no remaining material blockers. M4 subsequently added transport fixtures for redirect/body-size limits; cancellation on rule/cache mutation was also reviewed.
 - Core public seams: `RuleRegistry.match`, `SourceFetcher.fetch`, `RuleExtractor.extract`, `ObjectRepository.resolve`, `ObjectStore`; see `docs/RULES.md` for the schema.
 
 ## M2 implementation
@@ -47,4 +47,27 @@ Read AGENTS.md and design. Run core tests with `swift test --package-path Packag
 - Core tests: 11 pass (rule/object seams plus spread order, adjacent pairing, manual overrides, source-progress mapping, image analysis/cropping, disk bounds/clear). macOS build passed before final review refinements.
 - Live image failure confirmed as HTTP 404 from Manhuagui's selected CDN for the tested chapter. Its 25 page references remain resolvable. No access workarounds added.
 - Clean-session M3 review fixes: manual pairing now takes precedence over automatic splitting (regression included); lazy rows release offscreen bitmaps and cancel resource tasks; cached/no-op prefetch does not replan, and scroll restoration waits until interaction ends.
+
+## M4 implementation and review
+
+- Settings: persisted reader defaults, native JSON importer/exporter, import host preview, version-aware installation/removal/restoration, QR sharing via Core Image and ShareLink, separate image/content cache controls. QR limit is 1200 UTF-8 bytes with M correction and a four-module quiet zone; oversized rules retain JSON export.
+- macOS Open URL command uses Command-O; visionOS uses larger controls/rows. Responsive layout uses geometry, never a device/fold model check.
+- Added native QR decode/round-trip, oversized fallback, ambiguous matcher/unknown processor, rule-removal state retention/cache isolation, and Foundation URLProtocol transport fixtures (successful fetch, declared/streamed size bounds, rejected off-host redirect).
+- `scripts/verify.sh` runs core tests and all three unsigned SDK builds. GUI walkthrough constraints remain unchanged: simulator runtimes unavailable, OS screenshot permission unavailable.
+- Clean-session M4 review fixes: enabled macOS user-selected file read/write; rule revisions reload open readers and cancel old resource work; migration `v2RuleOwnership` enables transactional snapshot purge on rule removal; native Settings windows present their own errors. Reviewer confirmed all four corrections and reported no remaining material findings.
+
+## Final verification — 2026-10-12
+
+- `bash scripts/verify.sh` passed: 15 tests in four suites, plus macOS arm64, generic iOS Simulator, and generic visionOS Simulator Debug builds.
+- Ad-hoc signed macOS arm64 Release build passed. Generated entitlements include sandbox, network client, and user-selected file read/write. This is local verification, not distribution signing or notarization.
+- Signed Release app launched directly into the bundled arrival chapter. Its sandbox database contains seven resolved objects, one reading position, and both migrations; its image cache contains all four fixture resources. This confirms launch, fixture loading, image caching, and position persistence without claiming a visual walkthrough.
+- Live Manhuagui chapters `/comic/32602/441493.html` and `/comic/32602/810441.html` yielded 25 and 23 page references respectively. Both first-image requests returned HTTP 404 from the selected CDN. Directory/manga results are recorded under M1. No successful live-image walkthrough is claimed.
+- `git diff --check` passed. Original design is preserved. README, rule documentation, and development conventions reflect the implementation.
+
+## Remaining manual checks and known limitations
+
+- With simulator/device access, exercise narrow and expanded layouts, scroll/resize position preservation, zoom/pan, keyboard controls, and visionOS interaction. SDK builds cannot validate these gestures.
+- On macOS, manually exercise sandboxed JSON import/export and QR sharing. Native QR decoding and file entitlement generation passed automated checks; system panels were not driven end to end.
+- Repeat a live chapter/image walkthrough when Manhuagui supplies accessible images. Normal errors and retry remain available; do not add access-control workarounds.
+- Screen Recording permission was unavailable and no simulator runtime was installed during this session. No screenshots or device walkthrough evidence were produced.
 

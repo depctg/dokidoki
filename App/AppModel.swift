@@ -5,7 +5,8 @@ import MangaCore
     var repository: ObjectRepository?
     var store: ObjectStore?
     let images = ImageLoader()
-    var rules: [SiteRule] = []
+    var rules: [SiteRule] = [] { didSet { ruleRevision += 1 } }
+    var ruleRevision = 0
     var path: [ObjectKey] = []
     var error: String?
     var saved: [SavedManga] = []
@@ -17,6 +18,7 @@ import MangaCore
         }
     }
     var section: String? = "Browse"
+    var openURLRequest = 0
     private var started = false
 
     func start() async {
