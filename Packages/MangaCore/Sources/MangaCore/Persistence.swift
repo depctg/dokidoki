@@ -87,6 +87,23 @@ public final class ObjectStore: Sendable {
         let order = try preference("ruleOrder", as: [String].self) ?? []
         return rules.sorted { (order.firstIndex(of: $0.id) ?? Int.max) < (order.firstIndex(of: $1.id) ?? Int.max) }
     }
+    /// The first bundled file is the shipped default. Adopt a new default once;
+    /// subsequent user ordering/removal survives launches and recipe updates.
+    public func applyBundledRules(_ bundled: [SiteRule]) throws {
+        if try preference("seeded", as: Bool.self) != true {
+            for rule in bundled { try saveRule(rule) }
+            try setRuleOrder(bundled.map(\.id))
+            try setPreference("seeded", value: true)
+        }
+        for rule in bundled {
+            if let installed = try rules().first(where: { $0.id == rule.id }), installed.version < rule.version { try saveRule(rule) }
+        }
+        if let first = bundled.first, try preference("bundledDefaultID", as: String.self) != first.id {
+            if !((try rules()).contains { $0.id == first.id }) { try saveRule(first) }
+            try setRuleOrder([first.id] + rules().map(\.id).filter { $0 != first.id })
+            try setPreference("bundledDefaultID", value: first.id)
+        }
+    }
     public func setRuleOrder(_ ids: [String]) throws {
         let installed = try rules().map(\.id)
         guard ids.count == installed.count, Set(ids) == Set(installed) else { throw ReaderError.invalidRule(String(localized: "Rule order must contain each installed rule exactly once.", bundle: .module)) }

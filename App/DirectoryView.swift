@@ -7,8 +7,21 @@ struct DirectoryView: View {
     var isSearchResult = false
     let changeSort: (ObjectKey) -> Void
     @State private var query = ""
+    @State private var accumulated: DirectoryObject?
+    @State private var visited: Set<ObjectKey> = []
+    @State private var loadingMore = false
+    @State private var loadRequest = 0
+    @State private var loadError: String?
+    @State private var phase = ScrollPhase.idle
+    @State private var pull: CGFloat = 0
+    private let threshold: CGFloat = 72
+    private var current: DirectoryObject { accumulated ?? directory }
+    private var hasMore: Bool {
+        guard let next = current.nextPage else { return false }
+        return next.key != directory.key && !visited.contains(next.key)
+    }
     private var references: [ContentReference] {
-        directory.mangaRefs.filter { query.isEmpty || $0.title.localizedStandardContains(query) }
+        current.mangaRefs.filter { query.isEmpty || $0.title.localizedStandardContains(query) }
     }
     private var title: String {
         if isSearchResult { return String(localized: "Search results") }
@@ -42,12 +55,54 @@ struct DirectoryView: View {
                 NavigationLink(value: AppRoute.object(ref.key)) { MangaPreview(reference: ref, model: model) }
                     .accessibilityIdentifier("manga.item.\(ref.key.id)")
             }
-            if let next = directory.nextPage {
-                NavigationLink("Next directory page", value: AppRoute.object(next.key))
+            if hasMore || loadingMore {
+                HStack {
+                    Spacer()
+                    if loadingMore { ProgressView("Loading more…") }
+                    else {
+                        Button(action: requestMore) {
+                            Label(pull >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"), systemImage: "arrow.up")
+                        }.accessibilityLabel("Load more")
+                    }
+                    Spacer()
+                }.frame(minHeight: 44).listRowSeparator(.hidden)
+                    .accessibilityIdentifier("directory.loadMore")
+            } else if !visited.isEmpty {
+                Text("No more titles").foregroundStyle(.secondary).frame(maxWidth: .infinity)
             }
         }
         .accessibilityIdentifier("directory.list")
-        .overlay { if references.isEmpty { ContentUnavailableView.search(text: query) } }
+        .scrollBounceBehavior(.always)
+        .onScrollGeometryChange(for: CGFloat.self) { distance($0) } action: { _, value in
+            if phase == .interacting { pull = value }
+        }
+        .onScrollPhaseChange { old, new, context in
+            phase = new
+            if old == .interacting, new == .decelerating || new == .idle, distance(context.geometry) >= threshold { requestMore() }
+            if new != .interacting { pull = 0 }
+        }
+        .task(id: loadRequest) {
+            guard loadingMore, let next = current.nextPage, let repository = model.repository else { return }
+            defer { loadingMore = false }
+            do {
+                let loaded = try await current.loadingNext(using: repository)
+                try Task.checkCancellation()
+                accumulated = loaded; visited.insert(next.key)
+            } catch is CancellationError {} catch { if !Task.isCancelled { loadError = error.localizedDescription } }
+        }
+        .alert("Could not load more", isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {
+            Button("Retry") { requestMore() }
+            Button("Cancel", role: .cancel) {}
+        } message: { Text(loadError ?? "") }
+        .overlay { if references.isEmpty && !hasMore { ContentUnavailableView.search(text: query).allowsHitTesting(false) } }
+    }
+    private func requestMore() {
+        guard hasMore, !loadingMore, model.repository != nil else { return }
+        loadError = nil; loadingMore = true; loadRequest += 1
+    }
+    private func distance(_ geometry: ScrollGeometry) -> CGFloat {
+        let end = max(-geometry.contentInsets.top, geometry.contentSize.height - geometry.containerSize.height + geometry.contentInsets.bottom)
+        return max(0, geometry.contentOffset.y - end)
     }
     private func sortPicker(_ title: LocalizedStringKey, options: [ContentReference], selected: ObjectKey?) -> some View {
         Picker(title, selection: Binding<ObjectKey?>(get: {

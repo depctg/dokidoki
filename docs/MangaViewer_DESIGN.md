@@ -26,7 +26,7 @@ V1 is a functional vertical slice, not a general-purpose browser or universal sc
 
 **Include:**
 - Add a supported URL or import a site rule; browse a directory, open a manga, select a chapter, and read its pages.
-- Directory: manga list, local filter, and optional source-defined sorting by/order. Remote search uses a native results list only when a rule explicitly defines a search endpoint.
+- Directory: manga list, local filter, optional source-defined sorting by/order, and appending rule-provided next pages. Remote search uses a native results list only when a rule explicitly defines a search endpoint.
 - Manga: cover/title-page object, metadata, ordered chapters, and resume reading.
 - Chapter reader: paged and continuous-scroll modes, left-to-right/right-to-left order, memory/disk image cache, prefetch, and configurable page processing.
 - My/Settings: saved manga, recent reading, reader preferences, site-rule management, JSON file export/import, and QR export for suitably small rules.
@@ -64,7 +64,7 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
 | `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, `imageURL`, optional `refererURL`, dimensions/analysis |
 
-Use `ObjectKey` references, not embedded recursive object graphs. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object.
+Use `ObjectKey` references, not embedded recursive object graphs. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object. DirectoryObject.loadingNext loads its own next reference through core, deduplicates keys and keeps the first page identity/sorting. JSON APIs may declare offset/limit/total paths plus a query parameter instead of a next-link selector. Matchers can select named extractors so one site can use HTML catalogs and JSON search without transport exceptions. The accessible Load more action accompanies native bottom-pull handling; that gesture’s verification/fix is deferred to the next version (DEV_STATE).
 
 Manga rating and publication status are optional source text, and tags are an optional ordered string list. Rules capture their values using existing selectors/regex; the engine trims blanks and removes duplicate tags. Browse/list/Library/Recent rows and manga details display available values. Preserve the source's score scale and finished/ongoing wording without site-specific Swift mappings or guessed defaults. Metadata and covers share one manga load; missing fields remain compatible with older snapshots.
 

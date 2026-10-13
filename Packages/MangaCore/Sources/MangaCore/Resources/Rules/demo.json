@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "demo",
   "name": "Bundled reading room",
-  "version": 5,
+  "version": 6,
   "allowedHosts": [
     "demo.mangaviewer.local"
   ],
@@ -48,6 +48,10 @@
         },
         "selectedSortOrder": {
           "path": "//nav[@id=\"sortOrder\"]/a[@aria-current=\"true\"]",
+          "read": "attr:href"
+        },
+        "next": {
+          "path": "//a[@rel='next']",
           "read": "attr:href"
         }
       }

@@ -21,7 +21,10 @@ public enum DemoContent {
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let byTitle = query.contains(URLQueryItem(name: "sort", value: "title"))
             let descending = query.contains(URLQueryItem(name: "order", value: "descending"))
-            name = byTitle ? (descending ? "catalog-descending" : "catalog-title") : "catalog"; ext = "html"
+            if query.contains(URLQueryItem(name: "q", value: "story")) {
+                name = query.contains(URLQueryItem(name: "offset", value: "1")) ? "search-second" : "search-first"
+            } else { name = byTitle ? (descending ? "catalog-descending" : "catalog-title") : "catalog" }
+            ext = "html"
         case "/series/observatory": name = "manga"; ext = "html"
         case "/series/aster": name = "aster"; ext = "html"
         case "/chapter/arrival": name = "arrival"; ext = "json"

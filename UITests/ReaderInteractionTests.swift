@@ -115,7 +115,7 @@ import XCTest
         // Reordering site rules belongs to shell coverage; persistence is checked in core tests.
         app.buttons.matching(identifier: "Settings").firstMatch.tap()
         let demo = app.staticTexts["Bundled reading room"]
-        let other = app.staticTexts["漫画柜 · Manhuagui"]
+        let other = app.staticTexts["拷貝漫畫 · MangaCopy"]
         for _ in 0..<4 where !other.isHittable { app.swipeUp() }
         XCTAssertTrue(demo.isHittable && other.isHittable)
         let lower = demo.frame.minY > other.frame.minY ? demo : other
@@ -143,6 +143,7 @@ import XCTest
         XCTAssertTrue(wait { background.value as? String != original })
         background.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         XCTAssertTrue(wait { background.value as? String == original })
+        XCTAssertTrue(resume.exists)
         let reportButton = app.buttons["Error report"]
         for _ in 0..<5 where !reportButton.isHittable { app.swipeUp() }
         XCTAssertTrue(reportButton.isHittable)

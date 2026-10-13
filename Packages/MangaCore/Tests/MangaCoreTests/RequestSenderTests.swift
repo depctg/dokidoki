@@ -5,7 +5,7 @@ import os
 
 @Suite(.serialized) struct RequestSenderTests {
     private func rule(rendered: Bool = false) throws -> SiteRule {
-        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         json["allowedHosts"] = ["a.sender.test", "b.sender.test", "c.sender.test"]
         json.removeValue(forKey: "browse"); json.removeValue(forKey: "searchURLTemplate")
         if rendered {

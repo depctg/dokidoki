@@ -4,7 +4,7 @@ import Testing
 
 struct BrowseTests {
     @Test func listsAndSearchStayRuleScopedAndValidateURLs() async throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let base = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]
         let list = try #require(rule.browse?.first)
         let store = try ObjectStore()
@@ -45,7 +45,7 @@ struct BrowseTests {
     }
 
     @Test func siteReferencesNormalizeAndSearchRevalidatesTheActualQuery() async throws {
-        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         json["browse"] = [["title": "One list", "url": "https://DEMO.mangaviewer.local:443/catalog#section"]]
         var matchers = json["matchers"] as! [[String: Any]]
         matchers.append(["kind": "chapter", "pattern": "^https://demo\\.mangaviewer\\.local/catalog\\?q=blocked$", "priority": 10])
@@ -81,7 +81,7 @@ struct BrowseTests {
     }
 
     @Test func directorySortLinksLoadSourceOrderAndPreserveLegacySnapshots() async throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let repository = try ObjectRepository(store: ObjectStore(), rules: [rule])
         let key = ObjectKey(ruleID: rule.id, identityURL: DemoContent.directoryURL)
         guard case .directory(let original) = try await key.load(using: repository) else { Issue.record("Missing directory"); return }

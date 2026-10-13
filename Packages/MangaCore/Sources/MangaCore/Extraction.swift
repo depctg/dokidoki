@@ -39,11 +39,11 @@ private final class HTMLDocument {
 public struct RuleExtractor: Sendable {
     public init() {}
     public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule) throws -> [ContentObject] {
-        guard let spec = rule.extractors[kind.rawValue] else { throw ReaderError.extraction(String(localized: "Missing extractor.", bundle: .module)) }
+        guard let spec = rule.extraction(for: kind, at: key.identityURL) else { throw ReaderError.extraction(String(localized: "Missing extractor.", bundle: .module)) }
         let html = spec.format.isJSON ? nil : try HTMLDocument(data: data)
         let json: Any? = spec.format.isJSON ? try JSONSerialization.jsonObject(with: data) : nil
-        func nodes(at path: String) -> [Any] {
-            var nodes: [Any] = json.map { [$0] } ?? []
+        func nodes(at path: String, from root: Any? = nil) -> [Any] {
+            var nodes: [Any] = (root ?? json).map { [$0] } ?? []
             for component in path.split(separator: ".").map(String.init) {
                 nodes = nodes.flatMap { node -> [Any] in
                     if component == "*", let array = node as? [Any] { return array }
@@ -66,7 +66,14 @@ public struct RuleExtractor: Sendable {
             else {
                 entries = nodes(at: field.path).compactMap { node in
                     if let text = scalar(node) { return (text, text) }
-                    if let dict = node as? [String: Any], let url = dict["url"] as? String { return (url, dict["title"] as? String ?? url) }
+                    if let dict = node as? [String: Any] {
+                        func read(_ mode: String?) -> String? {
+                            scalar(dict[mode?.hasPrefix("attr:") == true ? String(mode!.dropFirst(5)) : "url"])
+                        }
+                        guard let value = read(field.read) ?? field.fallback.flatMap({ read($0) }) else { return nil }
+                        let title = scalar(nodes(at: field.titlePath ?? "title", from: node).first)
+                        return (value, title ?? value)
+                    }
                     return nil
                 }
             }
@@ -130,6 +137,22 @@ public struct RuleExtractor: Sendable {
                 return ContentReference(key: childKey, title: label.isEmpty ? destination.lastPathComponent : label)
             }
         }
+        func nextPageURL() throws -> URL? {
+            guard let pagination = spec.pagination else { return try refs("next", expected: .directory).first?.key.identityURL }
+            guard let offset = scalar(nodes(at: pagination.offset).first).flatMap(Int.init), offset >= 0,
+                  let limit = scalar(nodes(at: pagination.limit).first).flatMap(Int.init), limit > 0,
+                  let total = scalar(nodes(at: pagination.total).first).flatMap(Int.init), total >= 0 else {
+                throw ReaderError.extraction(String(localized: "Invalid pagination counters.", bundle: .module))
+            }
+            let (next, overflow) = offset.addingReportingOverflow(limit)
+            guard !overflow else { throw ReaderError.extraction(String(localized: "Invalid pagination counters.", bundle: .module)) }
+            guard next < total else { return nil }
+            guard var components = URLComponents(url: responseURL, resolvingAgainstBaseURL: true) else { throw ReaderError.invalidResponse }
+            components.queryItems = (components.queryItems ?? []).filter { $0.name != pagination.parameter } + [URLQueryItem(name: pagination.parameter, value: String(next))]
+            guard let target = components.url, rule.permits(target),
+                  let (_, kind, key) = try? RuleRegistry(rules: [rule]).match(target), kind == .directory else { throw ReaderError.invalidResponse }
+            return key.identityURL
+        }
         let title = try first("title") ?? String(localized: "Untitled", bundle: .module)
         switch kind {
         case .directory:
@@ -137,7 +160,7 @@ public struct RuleExtractor: Sendable {
             let by = try refs("sortByLinks", expected: .directory)
             let order = try refs("sortOrderLinks", expected: .directory)
             return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title,
-                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try refs("next", expected: .directory).first?.key.identityURL,
+                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try nextPageURL(),
                 sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
                 selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
                 selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]

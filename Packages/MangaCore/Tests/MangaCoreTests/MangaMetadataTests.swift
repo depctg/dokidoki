@@ -35,7 +35,7 @@ struct MangaMetadataTests {
     }
 
     @Test func jsonMetadataAndOlderSnapshotsRemainCompatible() throws {
-        let base = try DemoContent.bundledRules()[0]
+        let base = try DemoContent.bundledRules().first { $0.id == "demo" }!
         var json = try JSONSerialization.jsonObject(with: base.exported()) as! [String: Any]
         var extractors = json["extractors"] as! [String: Any]
         extractors["manga"] = ["format": "json", "fields": ["title": ["path": "title"], "chapterLinks": ["path": "chapters.*"], "rating": ["path": "rating"], "status": ["path": "status"], "tags": ["path": "tags.*"]]]

@@ -7,7 +7,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
     private let ordinary: DefaultSourceFetcher
     public init(client: HTTPClient = HTTPClient()) { ordinary = DefaultSourceFetcher(client: client) }
     public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
-        guard let extraction = rule.extractors[kind.rawValue], extraction.format.isRendered else { return try await ordinary.fetch(url, rule: rule, kind: kind, backgroundLoading: backgroundLoading) }
+        guard let extraction = rule.extraction(for: kind, at: url), extraction.format.isRendered else { return try await ordinary.fetch(url, rule: rule, kind: kind, backgroundLoading: backgroundLoading) }
         return try await WebPageSession.read(url, rule: rule, extraction: extraction, backgroundLoading: backgroundLoading)
     }
 }

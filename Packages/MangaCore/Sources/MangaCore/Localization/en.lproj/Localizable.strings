@@ -56,3 +56,6 @@
 "Unsupported rendering options; scripts are not allowed." = "Unsupported rendering options; scripts are not allowed.";
 "Untitled" = "Untitled";
 "Variables have simple names and select values without URL templates." = "Variables have simple names and select values without URL templates.";
+"Invalid JSON link title path." = "Invalid JSON link title path.";
+"Offset pagination needs JSON counters, a query parameter, and no next-link selector." = "Offset pagination needs JSON counters, a query parameter, and no next-link selector.";
+"Invalid pagination counters." = "Invalid pagination counters.";

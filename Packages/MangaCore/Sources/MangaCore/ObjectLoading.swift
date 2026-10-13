@@ -22,6 +22,18 @@ extension ContentObject {
         try await key.load(using: repository, hint: hint)
     }
 }
+extension DirectoryObject {
+    /// Append the next source list without changing the first page's identity/sorting.
+    public func loadingNext(using repository: ObjectRepository) async throws -> DirectoryObject {
+        guard let nextPage else { return self }
+        guard case .directory(let next) = try await nextPage.load(using: repository) else { throw ReaderError.invalidResponse }
+        try Task.checkCancellation()
+        var seen = Set(mangaRefs.map(\.key))
+        let additions = next.mangaRefs.filter { seen.insert($0.key).inserted }
+        return DirectoryObject(key: key, sourceURL: sourceURL, title: title, mangaRefs: mangaRefs + additions,
+            nextURL: next.nextURL, sortBy: sortBy, sortOrder: sortOrder, selectedSortBy: selectedSortBy, selectedSortOrder: selectedSortOrder)
+    }
+}
 extension MangaObject {
     public func coverPage(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> PageObject? {
         guard let coverPageRef, case .page(let page) = try await coverPageRef.load(using: repository, hint: hint) else { return nil }

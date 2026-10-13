@@ -56,3 +56,6 @@
 "Unsupported rendering options; scripts are not allowed." = "不支持的渲染选项；不允许脚本。";
 "Untitled" = "无标题";
 "Variables have simple names and select values without URL templates." = "变量必须使用简单名称，并且在不使用 URL 模板的情况下选择值。";
+"Invalid JSON link title path." = "无效的 JSON 链接标题路径。";
+"Offset pagination needs JSON counters, a query parameter, and no next-link selector." = "偏移分页需要 JSON 计数、查询参数，且不能同时设置下一页链接选择器。";
+"Invalid pagination counters." = "分页计数无效。";

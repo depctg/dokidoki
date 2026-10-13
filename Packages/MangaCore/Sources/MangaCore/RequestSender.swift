@@ -11,7 +11,7 @@ public enum ContentRequest: Sendable {
         switch self { case .source(let key, _, _, _): key.identityURL; case .image(let page, _): page.imageURL }
     }
     fileprivate var rendered: Bool {
-        if case .source(_, let kind, let rule, _) = self { return rule.extractors[kind.rawValue]?.format.isRendered == true }
+        if case .source(_, let kind, let rule, _) = self { return rule.extraction(for: kind, at: url)?.format.isRendered == true }
         return false
     }
 }

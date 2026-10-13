@@ -74,7 +74,7 @@ struct PlanningTests {
         #expect(PagePipeline.index(for: keys[1], fraction: 0.2, in: original) == 1)
     }
     @Test func conservativeAnalysisAndComposition() async throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let loader = ImageLoader(directory: directory)
@@ -94,7 +94,7 @@ struct PlanningTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let largest = try (1...4).map { try DemoContent.resource(String($0), extension: "png").count }.max()!
         let loader = ImageLoader(directory: directory, diskLimit: largest + 1)
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         for n in 1...4 {
             let page = PageObject(key: keys[n - 1], ownerRef: owner, sourceIndex: n - 1, imageURL: URL(string: "https://demo.mangaviewer.local/images/\(n).png")!, refererURL: owner.identityURL)
             _ = try await loader.image(for: page, rule: rule, maxPixel: 256)

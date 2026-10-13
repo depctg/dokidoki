@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 2,
+  "version": 3,
   "allowedHosts": [
     "www.mangacopy.com",
     "s0.mangafunb.fun",
@@ -31,6 +31,12 @@
       "kind": "directory",
       "pattern": "^https://www\\.mangacopy\\.com/(comics|search)(\\?.*)?$",
       "priority": 0
+    },
+    {
+      "kind": "directory",
+      "pattern": "^https://www\\.mangacopy\\.com/api/kb/web/searchcl/comics\\?.*$",
+      "priority": 0,
+      "extractor": "search"
     },
     {
       "kind": "manga",
@@ -126,6 +132,26 @@
           "path": "data.*.url"
         }
       }
+    },
+    "search": {
+      "format": "json",
+      "fields": {
+        "title": {
+          "path": "message"
+        },
+        "mangaLinks": {
+          "path": "results.list.*",
+          "read": "attr:path_word",
+          "titlePath": "name",
+          "urlTemplate": "https://www.mangacopy.com/comic/{value}"
+        }
+      },
+      "pagination": {
+        "offset": "results.offset",
+        "limit": "results.limit",
+        "total": "results.total",
+        "parameter": "offset"
+      }
     }
   },
   "browse": [
@@ -142,5 +168,5 @@
       "url": "https://www.mangacopy.com/comics?status=1"
     }
   ],
-  "searchURLTemplate": "https://www.mangacopy.com/search?q={query}"
+  "searchURLTemplate": "https://www.mangacopy.com/api/kb/web/searchcl/comics?offset=0&platform=2&limit=12&q={query}&q_type="
 }

@@ -8,7 +8,7 @@ struct TransportTests {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [TransportFixture.self]
         let client = HTTPClient(configuration: configuration)
-        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         json["allowedHosts"] = ["transport.fixture.test"]
         json.removeValue(forKey: "browse"); json.removeValue(forKey: "searchURLTemplate")
         let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))

@@ -23,7 +23,7 @@ struct ExchangeTests {
         #expect(try SiteRule.decode(large.exported()).name == large.name)
     }
     @Test func ambiguousMatchesAndUnsupportedProcessorsAreRejected() throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         var json = try JSONSerialization.jsonObject(with: rule.exported()) as! [String: Any]
         json["id"] = "second-demo"
         let other = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
@@ -33,7 +33,7 @@ struct ExchangeTests {
         #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: json)) }
     }
     @Test func deletingRulesPreservesPersonalState() async throws {
-        let rule = try DemoContent.bundledRules()[0]; let store = try ObjectStore()
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!; let store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule])
         try await repository.install(rule)
         let directoryKey = try await repository.key(for: DemoContent.directoryURL)

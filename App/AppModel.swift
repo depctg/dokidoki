@@ -81,13 +81,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("MangaViewer", isDirectory: true)
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             let store = try ObjectStore(path: support.appendingPathComponent("library.sqlite").path)
-            if try store.preference("seeded", as: Bool.self) != true {
-                for rule in try DemoContent.bundledRules() { try store.saveRule(rule) }
-                try store.setPreference("seeded", value: true)
-            }
-            for bundled in try DemoContent.bundledRules() {
-                if let installed = try store.rules().first(where: { $0.id == bundled.id }), installed.version < bundled.version { try store.saveRule(bundled) }
-            }
+            try store.applyBundledRules(DemoContent.bundledRules())
             rules = try store.rules(); self.store = store
             backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()

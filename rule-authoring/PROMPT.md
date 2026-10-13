@@ -23,6 +23,9 @@ readiness, browse shelves, search and sorting. No Swift/bridge exceptions,
 imported executable code, arbitrary expressions, credential exports, access
 gate changes, custom decryption, wildcard hosts or fabricated endpoints.
 Use native HTML/JSON first, normal hidden WebKit behavior when necessary.
+A matcher can select a named extractor for a public JSON search API alongside
+HTML catalogs; JSON link read/titlePath and offset/limit/total pagination are
+available. Only declare endpoints and counters observed in normal requests.
 Background resources default on; object-kind rendering.loadAds=false opts out
 and the global Settings switch always wins. Never present or interact with ads.
 
@@ -36,7 +39,8 @@ can produce a plausible but incomplete or reordered result.
 Deliver an importable schema-1 JSON recipe, a short evidence/verification report
 and explicit unsupported cases. Validate with SiteRule.decode via manga-probe
 --rule; exercise list -> manga -> chapter -> decoded image, search including an
-empty result, actual next/sort links, and background on/off. Keep downloaded
+empty result, actual next/sort links, JSON page two/end counters if declared,
+and background on/off. Keep downloaded
 pages/images/signed URLs in temporary files, never in the app/package or git.
 Use only original synthetic fixture content in regression tests. Update
 docs/RULES.md and this guide/prompt whenever the language or authoring workflow

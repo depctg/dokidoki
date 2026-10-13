@@ -22,7 +22,7 @@ struct CoreTests {
         #expect(empty.previousChapter(before: refs[0].key) == nil)
     }
     @Test func fixtureImageDecodesWithBoundedSize() async throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
         let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0, imageURL: URL(string: "https://demo.mangaviewer.local/images/1.png")!, refererURL: owner.identityURL)
         let repository = try ObjectRepository(store: ObjectStore(), rules: [rule])
@@ -76,7 +76,7 @@ struct CoreTests {
     }
 
     @Test func htmlFallbackRelativeLinksAndHostEnforcement() throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/series/test")!)
         let html = Data("<h1>Test &amp; title</h1><img src='../images/1.png'><a href='../chapter/arrival'>One</a><a href='../chapter/arrival'>Duplicate</a>".utf8)
         let objects = try RuleExtractor().extract(data: html, responseURL: key.identityURL, key: key, kind: .manga, rule: rule)
@@ -87,7 +87,7 @@ struct CoreTests {
     }
 
     @Test func deduplicationAndVersionInvalidation() async throws {
-        let rule = try DemoContent.bundledRules()[0]
+        let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let fetcher = CountingFetcher()
         let store = try ObjectStore()
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))

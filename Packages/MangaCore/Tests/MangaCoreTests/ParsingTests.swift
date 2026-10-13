@@ -4,7 +4,7 @@ import Testing
 
 struct ParsingTests {
     @Test func renderedReadinessAndResourceOptionsRemainDataOnly() throws {
-        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         var extractors = json["extractors"] as! [String: [String: Any]]
         extractors["directory"]!["format"] = "renderedHTML"
         extractors["directory"]!["rendering"] = ["readyXPath": "//main[@data-ready='true']", "loadAds": false]
@@ -89,7 +89,7 @@ struct ParsingTests {
         #expect(throws: ReaderError.self) { try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: blocked), responseURL: key.identityURL, key: key, kind: .chapter, rule: rule) }
     }
     @Test func xpathRegexAndNamedVariableComposeWithoutSiteCode() throws {
-        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules()[0].exported()) as! [String: Any]
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         var extractors = json["extractors"] as! [String: Any]
         extractors["chapter"] = ["format": "html", "variables": ["base": ["path": "//script[@id='metadata']", "regex": "base='([^']+)'", "group": 1]], "fields": ["title": ["path": "//h2", "regex": "Chapter ([0-9]+)", "group": 0], "pageImages": ["path": "//img", "read": "attr:data-page", "regex": "file:(.+)", "urlTemplate": "{vars.base}{value}"]]]
         json["extractors"] = extractors
