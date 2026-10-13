@@ -2343,6 +2343,166 @@
           }
         }
       }
+    },
+    "Could not export report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not export report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法导出报告"
+          }
+        }
+      }
+    },
+    "Could not read error report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not read error report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法读取错误报告"
+          }
+        }
+      }
+    },
+    "Error report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Error report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "错误报告"
+          }
+        }
+      }
+    },
+    "Errors may take a moment to appear. Refresh to check again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Errors may take a moment to appear. Refresh to check again."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "错误可能需要片刻才会显示。请刷新以再次查看。"
+          }
+        }
+      }
+    },
+    "Export report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Export report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "导出报告"
+          }
+        }
+      }
+    },
+    "MangaViewer error report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MangaViewer error report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "MangaViewer 错误报告"
+          }
+        }
+      }
+    },
+    "No errors recorded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No errors recorded"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "没有记录到错误"
+          }
+        }
+      }
+    },
+    "Reading error log…": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reading error log…"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在读取错误日志…"
+          }
+        }
+      }
+    },
+    "Share report": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Share report"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "分享报告"
+          }
+        }
+      }
+    },
+    "Up to 200 errors from this app session, within the last 24 hours. Reports are shared only when you choose.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Up to 200 errors from this app session, within the last 24 hours. Reports are shared only when you choose."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最多显示本次运行期间、过去 24 小时内的 200 条错误。仅在您选择分享时才会分享报告。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

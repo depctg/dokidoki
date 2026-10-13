@@ -14,7 +14,8 @@ public actor ImageLoader {
         self.sender = sender; self.diskLimit = max(0, diskLimit)
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MangaViewer/Images", isDirectory: true)
         memory.totalCostLimit = 96 * 1024 * 1024; memory.countLimit = 24
-        try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
+        do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
+        catch { ErrorDiagnostics.record(error, operation: .imageCache) }
     }
     public func image(for page: PageObject, rule: SiteRule, maxPixel: Int = 1800) async throws -> CGImage {
         try Task.checkCancellation()
@@ -44,13 +45,14 @@ public actor ImageLoader {
                 kCGImageSourceThumbnailMaxPixelSize: maxPixel,
                 kCGImageSourceShouldCacheImmediately: true
               ] as CFDictionary) else {
-            try? FileManager.default.removeItem(at: file)
+            remove(file)
             throw ReaderError.extraction(String(localized: "The image format could not be decoded. Retry to fetch a new copy.", bundle: .module))
         }
         if generation == currentGeneration {
             memory.setObject(image, forKey: memoryKey, cost: image.bytesPerRow * image.height)
             if !FileManager.default.fileExists(atPath: file.path), data.count <= diskLimit {
-                try? data.write(to: file, options: .atomic)
+                do { try data.write(to: file, options: .atomic) }
+                catch { ErrorDiagnostics.record(error, operation: .imageCache) }
                 trimDisk()
             }
         }
@@ -58,7 +60,7 @@ public actor ImageLoader {
     }
     public func clear() {
         generation += 1; memory.removeAllObjects()
-        for file in entries() { try? FileManager.default.removeItem(at: file.url) }
+        for file in entries() { remove(file.url) }
     }
     public func diskUsage() -> Int { entries().reduce(0) { $0 + $1.size } }
     private func entries() -> [(url: URL, size: Int, date: Date)] {
@@ -70,6 +72,15 @@ public actor ImageLoader {
     }
     private func trimDisk() {
         let files = entries().sorted { $0.date < $1.date }; var size = files.reduce(0) { $0 + $1.size }
-        for file in files where size > diskLimit { try? FileManager.default.removeItem(at: file.url); size -= file.size }
+        for file in files where size > diskLimit { remove(file.url); size -= file.size }
+    }
+    private func remove(_ file: URL) {
+        do { try FileManager.default.removeItem(at: file) }
+        catch {
+            let failure = error as NSError
+            if failure.domain != NSCocoaErrorDomain || failure.code != NSFileNoSuchFileError {
+                ErrorDiagnostics.record(error, operation: .imageCache)
+            }
+        }
     }
 }

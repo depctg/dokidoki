@@ -77,7 +77,7 @@ public struct PagePipeline: Sendable {
         for processor in processors {
             if Task.isCancelled { return original }
             do { result = try await processor.plan(result, context: context) }
-            catch { return original }
+            catch { ErrorDiagnostics.record(error, operation: .processImage); return original }
         }
         return result.isEmpty && !sources.isEmpty ? original : result
     }

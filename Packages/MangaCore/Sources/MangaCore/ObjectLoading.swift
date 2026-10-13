@@ -3,7 +3,13 @@ import CoreGraphics
 // Objects describe what to load; the repository owns freshness and the shared sender owns admission.
 extension ObjectKey {
     public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
-        try await repository.resolve(self, hint: hint)
+        do { return try await repository.resolve(self, hint: hint) }
+        catch {
+            // A deliberate offline cache probe is normal, not a failed load.
+            if case ReaderError.cacheMiss = error, hint == .offlineOnly { throw error }
+            ErrorDiagnostics.record(error, operation: .loadContent, url: owner?.identityURL ?? identityURL)
+            throw error
+        }
     }
 }
 extension ContentReference {
@@ -44,7 +50,12 @@ extension PageObject {
             guard case .page(let fresh) = try await key.load(using: repository, hint: .forceRefresh) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
             page = fresh
         } else { page = self }
-        let rule = try await repository.rule(for: page.key)
-        return try await repository.images.image(for: page, rule: rule, maxPixel: maxPixel)
+        do {
+            let rule = try await repository.rule(for: page.key)
+            return try await repository.images.image(for: page, rule: rule, maxPixel: maxPixel)
+        } catch {
+            ErrorDiagnostics.record(error, operation: .loadImage, url: page.imageURL)
+            throw error
+        }
     }
 }

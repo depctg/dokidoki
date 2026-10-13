@@ -63,6 +63,8 @@ Loading belongs to core objects and references: chapters load their pages, manga
 
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 
+**Settings → Error report** collects errors through Apple's native logging and lets you review, share, or export a text report. It includes up to 200 errors from the current app session, excluding normal activity and cancellation; see [diagnostics](docs/DIAGNOSTICS.md) for coverage and privacy limits.
+
 Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/Browse/navigation/actions (including site order), and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, site order, reader preferences, and reading history. Run Product → Test, or:
 
 ```sh

@@ -275,6 +275,8 @@ Use HTTP(S) only for external network requests; respect allowed hosts and delibe
 
 No cloud backend, telemetry platform, dependency injection framework, elaborate event bus, or custom navigation framework in V1. Report unsupported URLs and extraction failures clearly rather than silently guessing their object type.
 
+Use Apple's unified logging for error-only diagnostics. Core object loading records failed content/image loads; local action boundaries record startup, storage and rule failures. Native Settings reporting reads only the app's error category for the current process (at most 200 entries within 24 hours) and offers explicit share/text export. Exclude cancellation, normal activity and sensitive source/error payloads; see [diagnostics](DIAGNOSTICS.md).
+
 ## 11. Implementation milestones for Codex
 
 **M1 — Core engine first**

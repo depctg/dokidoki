@@ -57,7 +57,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var preferences = ReaderPreferences() {
         didSet {
             do { try store?.setPreference("reader", value: preferences) }
-            catch { self.error = error.localizedDescription }
+            catch { report(error, operation: .storage) }
         }
     }
     var section: AppSection = .library
@@ -90,7 +90,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {
                 await open(CommandLine.arguments[index + 1])
             }
-        } catch { self.error = error.localizedDescription }
+        } catch { report(error, operation: .startup) }
     }
     func open(_ text: String) async {
         guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = String(localized: "Enter a supported HTTP or HTTPS URL."); return }
@@ -99,14 +99,18 @@ enum AppSection: String, CaseIterable, Identifiable {
             if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
             else { browseSiteID = key.ruleID; section = .browse; path = [.object(key)] }
         }
-        catch { self.error = error.localizedDescription }
+        catch { report(error, operation: .openURL, url: url) }
+    }
+    func report(_ error: any Error, operation: ErrorDiagnostics.Operation, url: URL? = nil) {
+        ErrorDiagnostics.record(error, operation: operation, url: url)
+        self.error = error.localizedDescription
     }
     func moveRules(from offsets: IndexSet, to destination: Int) {
         var reordered = rules; reordered.move(fromOffsets: offsets, toOffset: destination)
         do {
             try store?.setRuleOrder(reordered.map(\.id)); rules = reordered
             browseSiteID = nil; paths[.browse] = []
-        } catch { self.error = error.localizedDescription }
+        } catch { report(error, operation: .storage) }
     }
     func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
         chapterRequest?.cancel()
@@ -166,7 +170,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             readingPositions = try store?.positions() ?? []
             recent = try store?.positions(includeHidden: false) ?? []
         }
-        catch { self.error = error.localizedDescription }
+        catch { report(error, operation: .storage) }
     }
     func resumeManga(_ key: ObjectKey) {
         if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey); return }
@@ -187,19 +191,19 @@ enum AppSection: String, CaseIterable, Identifiable {
             manga.isStarred.toggle()
             try store?.setSaved(manga, saved: true)
             reloadLibrary()
-        } catch { self.error = error.localizedDescription }
+        } catch { report(error, operation: .storage) }
     }
     func removeLibraryItem(_ key: ObjectKey, from section: AppSection) {
         do {
             if section == .recent { try store?.hideRecent(key) }
             else if let manga = saved.first(where: { $0.key == key }) { try store?.setSaved(manga, saved: false) }
             reloadLibrary()
-        } catch { self.error = error.localizedDescription }
+        } catch { report(error, operation: .storage) }
     }
     func toggleSaved(_ manga: MangaObject) {
         do {
             try store?.setSaved(SavedManga(key: manga.key, title: manga.title), saved: !saved.contains { $0.key == manga.key })
             reloadLibrary()
-        } catch { self.error = error.localizedDescription }
+        } catch { report(error, operation: .storage) }
     }
 }

@@ -63,8 +63,11 @@ struct ChapterPreview {
             rule = try await repository.rule(for: chapter.key)
             let loaded = try await chapter.pages(using: repository)
             try Task.checkCancellation(); pages = loaded
-            overrides = try app.store?.preference("overrides:" + chapter.key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
-            let position = try app.store?.positions().first { $0.chapterKey == chapter.key }
+            let position: ReadingPosition?
+            do {
+                overrides = try app.store?.preference("overrides:" + chapter.key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
+                position = try app.store?.positions().first { $0.chapterKey == chapter.key }
+            } catch { ErrorDiagnostics.record(error, operation: .storage); throw error }
             source = startAtEnd ? pages.last?.key : (pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key)
             fraction = startAtEnd ? 0.999_999 : (position?.fractionalOffset ?? 0)
             replan()
@@ -153,7 +156,7 @@ struct ChapterPreview {
     func setOverride(_ value: SpreadOverride) {
         guard let source else { return }; overrides[source] = value
         do { try app.store?.setPreference("overrides:" + chapter.key.id, value: overrides) }
-        catch { app.error = error.localizedDescription }; replan()
+        catch { app.report(error, operation: .storage) }; replan()
     }
     func save() {
         // An outgoing view may settle during the chapter crossfade after stop().
@@ -163,7 +166,7 @@ struct ChapterPreview {
                 sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,
                 pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count))
         }
-        catch { app.error = error.localizedDescription }
+        catch { app.report(error, operation: .storage) }
     }
     func stop() {
         guard active else { return }

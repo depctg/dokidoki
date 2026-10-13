@@ -126,6 +126,27 @@ import XCTest
         XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
         app.buttons.matching(identifier: "Browse").firstMatch.tap()
         XCTAssertEqual(app.staticTexts["browse.siteTitle"].label, lower.label)
+
+        // Diagnostics owns error reporting; opening a failing bundled URL requires no live site.
+        app.buttons["Open URL"].tap()
+        let url = app.textFields["Website URL"]
+        XCTAssertTrue(url.waitForExistence(timeout: 5))
+        url.tap(); url.typeText("https://demo.mangaviewer.local/chapter/missing?token=private-value\n")
+        XCTAssertTrue(app.alerts["MangaViewer"].waitForExistence(timeout: 8))
+        app.alerts.buttons["OK"].tap()
+        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        let reportButton = app.buttons["Error report"]
+        for _ in 0..<5 where !reportButton.isHittable { app.swipeUp() }
+        XCTAssertTrue(reportButton.isHittable)
+        reportButton.tap()
+        let report = app.staticTexts["diagnostics.report"]
+        XCTAssertTrue(report.waitForExistence(timeout: 15))
+        XCTAssertTrue(report.label.contains("loadContent: unsupported_url [demo.mangaviewer.local]"))
+        XCTAssertFalse(report.label.contains("private-value"))
+        XCTAssertFalse(report.label.contains("/chapter/missing"))
+        XCTAssertTrue(app.buttons["Share report"].isHittable)
+        app.buttons["Export report"].tap()
+        XCTAssertTrue(app.buttons["DOCPicker.actionButton"].waitForExistence(timeout: 8))
     }
 
     // Reader-only gestures, chrome, and original-page/fraction restoration (including one relaunch).
