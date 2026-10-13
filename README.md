@@ -14,6 +14,8 @@ swift test --package-path Packages/MangaCore
 
 Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required.
 
+For an iOS preview, select an iPhone or iPad simulator and Run. Xcode 27 opens simulators in Device Hub. The local `MangaViewer Compact` and `MangaViewer Expanded` devices have iOS 27 installed. The actual iPhone Duo simulator requires [Xcode 27.1](https://developer.apple.com/iphone-duo/prepare/); an iPhone/iPad comparison checks adaptive layout but does not simulate folding.
+
 ```sh
 xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
   -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
@@ -39,4 +41,4 @@ In **Settings**, import/export JSON rules, share small rules as QR images, manag
 
 Run all automated checks with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
 
-Manhuagui's live directory, manga, and rendered chapter extraction have been exercised. Both tested chapters' CDN URLs returned HTTP 404 for their first images; the bundled reading room is the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.
+Manhuagui's live directory, manga, and rendered chapter extraction have been exercised. Initial image probes returned HTTP 404; the user subsequently reported the image issue resolved. The bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.

@@ -16,7 +16,7 @@
 
 ## Resume
 
-Read AGENTS.md and design. Implementation is complete; remaining checks require simulator/device UI access or working source images (see final verification). Run `bash scripts/verify.sh` for all automated checks, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
+Read AGENTS.md and design. Implementation is complete; iOS 27 simulators are now installed (see simulator follow-up below). Run `bash scripts/verify.sh` for all automated checks, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
 
 ## M1 verification and review
 
@@ -66,8 +66,17 @@ Read AGENTS.md and design. Implementation is complete; remaining checks require 
 
 ## Remaining manual checks and known limitations
 
-- With simulator/device access, exercise narrow and expanded layouts, scroll/resize position preservation, zoom/pan, keyboard controls, and visionOS interaction. SDK builds cannot validate these gestures.
+- Continue interactive checks for scroll/resize position preservation, zoom/pan, keyboard controls, and visionOS interaction. Initial compact/expanded iOS screenshots have now been inspected; the full gesture walkthrough is still pending.
 - On macOS, manually exercise sandboxed JSON import/export and QR sharing. Native QR decoding and file entitlement generation passed automated checks; system panels were not driven end to end.
-- Repeat a live chapter/image walkthrough when Manhuagui supplies accessible images. Normal errors and retry remain available; do not add access-control workarounds.
-- Screen Recording permission was unavailable and no simulator runtime was installed during this session. No screenshots or device walkthrough evidence were produced.
+- The user subsequently reported the Manhuagui image issue resolved. The earlier HTTP 404 probes remain historical observations, not a claim about current site availability; no fix was committed during the interrupted investigation.
+- macOS Screen Recording permission remains unavailable. Simulator screenshots can be captured directly with `simctl io`, without desktop capture.
+
+## iOS simulator follow-up — 2026-10-12
+
+- Installed the iOS 27.0 arm64 runtime (24A434) using `xcodebuild -downloadPlatform iOS -architectureVariant arm64`. Rebuilt the iOS Simulator app successfully and installed/launched it on both devices below.
+- `MangaViewer Compact`: iPhone 18 Pro, UDID `A2E97154-A38D-4200-8B85-E8D236417F0B`.
+- `MangaViewer Expanded`: iPad Pro 11-inch (M5), UDID `CFFDBD4A-4E26-471B-B849-1412D5B4E626`.
+- Both were launched with `--open-url https://demo.mangaviewer.local/chapter/arrival` and left running for the user. Simulator captures confirmed the expanded reader's fixture artwork; the compact app had already navigated to a live Manhuagui chapter list. Temporary captures are under `/tmp/mangaviewer-ios-*-ready.png`, not committed artwork.
+- Xcode 27 uses `/Applications/Xcode.app/Contents/Applications/DeviceHub.app` for simulator UI. Select these devices in Device Hub or as Xcode run destinations. Launching the installed app by CLI: `xcrun simctl launch <UDID> com.mangaviewer.reader`.
+- Installed Xcode 27.0 has no iPhone Duo profile. Apple's [Duo preparation guide](https://developer.apple.com/iphone-duo/prepare/) specifies Xcode 27.1 for the Duo simulator. The two devices above exercise compact/expanded layouts, not fold transitions; actual Duo verification requires that update.
 
