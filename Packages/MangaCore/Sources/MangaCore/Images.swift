@@ -5,18 +5,19 @@ import CryptoKit
 
 /// Image bytes and decoded images have separate bounded caches. No object/reading state is stored here.
 public actor ImageLoader {
-    private let client: HTTPClient
+    private let sender: RequestSender
     private let memory = NSCache<NSString, CGImage>()
     private let directory: URL
     private let diskLimit: Int
     private var generation = 0
-    public init(client: HTTPClient = HTTPClient(), directory: URL? = nil, diskLimit: Int = 256 * 1024 * 1024) {
-        self.client = client; self.diskLimit = max(0, diskLimit)
+    public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int = 256 * 1024 * 1024) {
+        self.sender = sender; self.diskLimit = max(0, diskLimit)
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MangaViewer/Images", isDirectory: true)
         memory.totalCostLimit = 96 * 1024 * 1024; memory.countLimit = 24
         try? FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true)
     }
     public func image(for page: PageObject, rule: SiteRule, maxPixel: Int = 1800) async throws -> CGImage {
+        try Task.checkCancellation()
         guard rule.permits(page.imageURL) else { throw ReaderError.blockedHost }
         let maxPixel = min(4096, max(64, maxPixel))
         let digest = SHA256.hash(data: Data("\(rule.id)|\(rule.version)|\(page.imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")".utf8)).map { String(format: "%02x", $0) }.joined()
@@ -28,14 +29,14 @@ public actor ImageLoader {
         }
         let currentGeneration = generation
         let data: Data
-        if let fixture = try DemoContent.response(for: page.imageURL) { data = fixture.data }
-        else if let cached = try? Data(contentsOf: file), cached.count <= 24 * 1024 * 1024 {
+        if let cached = try? Data(contentsOf: file), cached.count <= 24 * 1024 * 1024 {
             data = cached
             try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: file.path)
         } else {
-            data = try await client.download(page.imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024).data
+            data = try await sender.send(.image(page, rule: rule)).data
         }
         try Task.checkCancellation()
+        if let image = memory.object(forKey: memoryKey) { return image }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
               let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,

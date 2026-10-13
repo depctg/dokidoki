@@ -58,7 +58,7 @@ struct SettingsView: View {
             Section {
                 LabeledContent("Image cache", value: ByteCountFormatter.string(fromByteCount: Int64(diskBytes), countStyle: .file))
                 Button("Clear image cache", systemImage: "photo.badge.arrow.down") {
-                    Task { await model.images.clear(); diskBytes = await model.images.diskUsage(); status = "Image cache cleared." }
+                    Task { await model.repository?.clearImages(); diskBytes = await model.repository?.imageCacheUsage() ?? 0; status = "Image cache cleared." }
                 }
                 Button("Clear content cache", systemImage: "trash") {
                     Task {
@@ -72,7 +72,7 @@ struct SettingsView: View {
         }
         .formStyle(.grouped).navigationTitle("Settings")
         .disabled(model.repository == nil)
-        .task { diskBytes = await model.images.diskUsage() }
+        .task { diskBytes = await model.repository?.imageCacheUsage() ?? 0 }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             do {
                 let url = try result.get()

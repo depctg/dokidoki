@@ -49,8 +49,7 @@ import MangaCore
         defer { loading = false }
         do {
             rule = try await repository.rule(for: chapter.key)
-            var loaded: [PageObject] = []
-            for key in chapter.pageRefs { if case .page(let page) = try await repository.resolve(key) { loaded.append(page) } }
+            let loaded = try await chapter.pages(using: repository)
             try Task.checkCancellation(); pages = loaded
             overrides = try app.store?.preference("overrides:" + chapter.key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
             let position = try app.store?.positions().first { $0.chapterKey == chapter.key }
@@ -62,14 +61,14 @@ import MangaCore
         } catch is CancellationError {} catch { self.error = error.localizedDescription }
     }
     func loadMangaMetadata() async {
-        guard !metadataLoaded, let key = chapter.mangaRef, let repository = app.repository else { return }
+        guard !metadataLoaded, let repository = app.repository else { return }
         do {
-            guard case .manga(let manga) = try await repository.resolve(key) else { return }
+            guard let manga = try await chapter.manga(using: repository) else { return }
             try Task.checkCancellation()
             mangaTitle = manga.title
             previousChapter = manga.previousChapter(before: chapter.key)
             nextChapter = manga.nextChapter(after: chapter.key)
-            if let cover = manga.coverPageRef, case .page(let page) = try? await repository.resolve(cover) { mangaCover = page }
+            mangaCover = try? await manga.coverPage(using: repository)
             try Task.checkCancellation()
             metadataLoaded = true
             if active { save() }
@@ -80,10 +79,9 @@ import MangaCore
         guard let key = nextChapterToPrefetch, nextPreview == nil, let repository = app.repository else { return }
         nextPreviewError = nil
         do {
-            guard case .chapter(let next) = try await repository.resolve(key), let first = next.pageRefs.first,
-                  case .page(let page) = try await repository.resolve(first) else { nextPreviewError = "Preview unavailable"; return }
-            let rule = try await repository.rule(for: page.key)
-            _ = try await app.images.image(for: page, rule: rule)
+            guard case .chapter(let next) = try await key.load(using: repository),
+                  let page = try await next.page(at: 0, using: repository) else { nextPreviewError = "Preview unavailable"; return }
+            _ = try await page.image(using: repository)
             try Task.checkCancellation()
             nextPreview = page
         } catch is CancellationError {} catch { if !Task.isCancelled { nextPreviewError = "Preview unavailable" } }
@@ -166,7 +164,7 @@ import MangaCore
     }
     private func schedulePrefetch() {
         prefetch?.cancel()
-        guard active, let rule, !plans.isEmpty else { return }
+        guard active, let repository = app.repository, !plans.isEmpty else { return }
         let neighborIndices = [index + 1, index - 1].filter { plans.indices.contains($0) }
         var keys: [ObjectKey] = []
         for i in neighborIndices {
@@ -179,7 +177,7 @@ import MangaCore
             for page in neighbors {
                 guard !Task.isCancelled else { return }
                 do {
-                    let image = try await app.images.image(for: page, rule: rule)
+                    let image = try await page.image(using: repository)
                     try Task.checkCancellation()
                     if analysis[page.key] == nil { analysis[page.key] = ImageProcessing.analyze(image); learned = true }
                 } catch is CancellationError { return } catch { /* Visible loading exposes errors and retry. */ }

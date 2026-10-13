@@ -25,7 +25,8 @@ struct CoreTests {
         let rule = try DemoContent.bundledRules()[0]
         let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
         let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0, imageURL: URL(string: "https://demo.mangaviewer.local/images/1.png")!, refererURL: owner.identityURL)
-        let image = try await ImageLoader().image(for: page, rule: rule, maxPixel: 512)
+        let repository = try ObjectRepository(store: ObjectStore(), rules: [rule])
+        let image = try await page.image(using: repository, maxPixel: 512)
         #expect(max(image.width, image.height) == 512)
         #expect(image.height > image.width)
     }
@@ -50,10 +51,14 @@ struct CoreTests {
         let store = try ObjectStore(path: path)
         let repository = try ObjectRepository(store: store, rules: rules)
         let key = try await repository.key(for: DemoContent.directoryURL)
-        guard case .directory(let directory) = try await repository.resolve(key),
-              case .manga(let manga) = try await repository.resolve(directory.mangaRefs[0].key),
-              case .chapter(let chapter) = try await repository.resolve(manga.chapterRefs[0].key),
-              case .page(let page) = try await repository.resolve(chapter.pageRefs[0]) else { Issue.record("Unexpected graph"); return }
+        guard case .directory(let directory) = try await key.load(using: repository),
+              case .manga(let manga) = try await directory.mangaRefs[0].load(using: repository),
+              case .chapter(let chapter) = try await manga.chapterRefs[0].load(using: repository),
+              let page = try await chapter.page(at: 0, using: repository) else { Issue.record("Unexpected graph"); return }
+        #expect(try await chapter.manga(using: repository)?.key == manga.key)
+        #expect(try await chapter.pages(using: repository).map(\.key) == chapter.pageRefs)
+        #expect(try await manga.coverPage(using: repository)?.role == .cover)
+        #expect(try await chapter.page(at: -1, using: repository) == nil)
         #expect(chapter.pageRefs.count == 4)
         #expect(page.imageURL.absoluteString == "https://demo.mangaviewer.local/images/1.png")
         #expect(page.key.owner == chapter.key)
@@ -85,7 +90,7 @@ struct CoreTests {
         let rule = try DemoContent.bundledRules()[0]
         let fetcher = CountingFetcher()
         let store = try ObjectStore()
-        let repository = try ObjectRepository(store: store, rules: [rule], fetcher: fetcher)
+        let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         async let a = repository.resolve(key)
         async let b = repository.resolve(key)
@@ -116,7 +121,7 @@ struct CoreTests {
         let rules = try DemoContent.bundledRules()
         let store = try ObjectStore()
         let fetcher = SlowFetcher()
-        let repository = try ObjectRepository(store: store, rules: rules, fetcher: fetcher)
+        let repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         let request = Task { try await repository.resolve(key) }
         while await fetcher.count == 0 { await Task.yield() }
@@ -131,7 +136,7 @@ struct CoreTests {
     @Test func cancellationPreservesOtherResolutionConsumers() async throws {
         let rules = try DemoContent.bundledRules()
         let fetcher = SlowFetcher()
-        let repository = try ObjectRepository(store: ObjectStore(), rules: rules, fetcher: fetcher)
+        let repository = try ObjectRepository(store: ObjectStore(), rules: rules, sender: RequestSender(fetcher: fetcher))
         let key = try await repository.key(for: DemoContent.directoryURL)
         let first = Task { try await repository.resolve(key) }
         let second = Task { try await repository.resolve(key) }

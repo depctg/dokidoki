@@ -148,7 +148,8 @@ struct ObjectScreen: View {
         guard let repository = model.repository else { return }
         loading = true; error = nil; defer { loading = false }
         do {
-            let result = try await repository.resolve(key, hint: hint)
+            let result = if let object { try await object.reload(using: repository, hint: hint) }
+                else { try await key.load(using: repository, hint: hint) }
             try Task.checkCancellation()
             object = result; revision = UUID()
             if case .chapter(let chapter) = result { openChapter(chapter) }
@@ -219,7 +220,7 @@ struct MangaView: View {
             }.navigationTitle(manga.title)
             .toolbar { ToolbarItem { Button(model.saved.contains { $0.key == manga.key } ? "Unsave" : "Save", systemImage: "bookmark") { model.toggleSaved(manga) } } }
             .task(id: manga.coverPageRef) {
-                if let key = manga.coverPageRef, let object = try? await model.repository?.resolve(key), case .page(let page) = object { cover = page }
+                if let repository = model.repository { cover = try? await manga.coverPage(using: repository) }
             }
             .task(id: model.chapterToReveal) {
                 if let key = model.chapterToReveal, manga.chapterRefs.contains(where: { $0.key == key }) {

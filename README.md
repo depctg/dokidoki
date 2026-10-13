@@ -47,6 +47,8 @@ Reader settings use icon choices for paged/scroll mode and right-to-left/left-to
 
 Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.
 
+Loading belongs to core objects and references: chapters load their pages, manga load their covers, and pages load their images. They share one repository and request sender. The sender queues document/image requests and rendered sessions, allowing four active requests total, two per initial host, and one rendered session. Identical requests share a result; canceling one caller preserves work needed by others. Results and errors return through native Swift async calls. WebKit manages subresources within its active session.
+
 In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
 
 Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/navigation/actions, and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, reader preferences, and reading history. Run Product → Test, or:

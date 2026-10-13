@@ -62,7 +62,9 @@ struct PlanningTests {
     }
     @Test func conservativeAnalysisAndComposition() async throws {
         let rule = try DemoContent.bundledRules()[0]
-        let loader = ImageLoader()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let loader = ImageLoader(directory: directory)
         let page = PageObject(key: keys[0], ownerRef: owner, sourceIndex: 0, imageURL: URL(string: "https://demo.mangaviewer.local/images/3.png")!, refererURL: owner.identityURL)
         let image = try await loader.image(for: page, rule: rule)
         let analysis = ImageProcessing.analyze(image)

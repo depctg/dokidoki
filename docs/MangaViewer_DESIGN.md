@@ -78,9 +78,11 @@ Use `ObjectKey` references, not embedded recursive object graphs. Lists are orde
 ```text
 External URL / ObjectKey
   -> RuleRegistry.match(URL)
-  -> ObjectRepository.resolve(key, cacheHint)
+  -> object/reference.load(using: repository, hint: cacheHint)
+  -> ObjectRepository (freshness and shared resolution)
       -> ObjectStore (cached snapshot, if valid)
-      -> SourceFetcher (URLSession)
+      -> RequestSender (shared admission and completion)
+          -> SourceFetcher (URLSession or rendered WebKit session)
       -> RuleExtractor (HTML or JSON)
       -> typed ContentObject + child references
       -> ObjectStore.upsert(...)
@@ -90,9 +92,11 @@ External URL / ObjectKey
 **Responsibilities:**
 
 - `RuleRegistry`: installed rules; match by host, URL pattern, object type, and explicit priority. Return an `unsupportedURL` result if no rule matches. Ambiguous matches are errors, not arbitrary choices.
-- `SourceFetcher`: HTTP(S) requests, redirects, timeouts, limited request headers, and site-aware polite concurrency. No UI dependency.
-- `RuleExtractor`: CSS-select HTML or traverse JSON; resolve relative links against the response URL; preserve item order; create child `PageObject`s while parsing a chapter.
-- `ObjectRepository` (`actor`): public entry point for the UI, cache decisions, deduplicated in-flight fetches, and atomic storage of parent/child snapshots.
+- Core objects/references expose loading methods; callers supply a shared repository without persisting service references inside Codable values. Chapters load their pages/parent manga, manga load their covers, and pages determine their image requests. `MangaObject` decides adjacent chapters using its rule-supplied reference order.
+- `RequestSender` (`actor`): one admission queue for documents, images and rendered sessions, with native async result/error delivery. Share identical requests by URL, purpose, complete rule policy and image referer; each caller can cancel independently. Last-consumer cancellation removes queued work or cancels active transport, retaining capacity until that transport exits. FIFO among eligible requests allows four active total, two per initial host, and one rendered session. Browser-internal subresources remain WebKit-managed.
+- `SourceFetcher`: HTTP(S) transport, redirects, timeouts and limited request headers; rendered sources use the generic WebKit adapter. Admission belongs to the shared sender. No UI dependency.
+- `RuleExtractor`: XPath-select HTML or traverse JSON; resolve relative links against the response URL; preserve item order; create child `PageObject`s while parsing a chapter.
+- `ObjectRepository` (`actor`): shared context for object loading, cache decisions, deduplicated complete object resolutions, atomic storage of parent/child snapshots, and ownership of the shared sender/image cache.
 - `ObjectStore`: local SQLite store of keyed, versioned `Codable` snapshots. Use GRDB as a small SQLite wrapper. Keep a storage protocol only where it supports a real fixture/in-memory implementation.
 - `ReadingStateStore`: a separate small table for saved manga, chapter/page progress, and preferences. Reading state must survive content cache eviction.
 
@@ -102,7 +106,7 @@ External URL / ObjectKey
 
 The **object/repository layer owns freshness**. Views can send `preferCache`, `refreshIfStale`, `forceRefresh`, or `offlineOnly` hints; they cannot directly manage HTTP or database lifetimes. Start with overridable defaults (e.g., shorter TTL for directories, longer TTL for published chapters). Stale cached objects may remain visible while a refresh runs.
 
-Image *bytes* are a separate resource cache with memory eviction and bounded on-disk LRU. `PageObject` determines its resource identity/request; a shared image loader handles bytes and decoding. Never persist credentials or cookies in exported rules. Decode/display only visible images and a small neighbor window; cancel irrelevant prefetches when the user jumps chapters.
+Image *bytes* are a separate resource cache with memory eviction and bounded on-disk LRU. `PageObject.image(using:)` determines its resource identity/request; the repository-owned image loader checks caches, asks the same sender for missing bytes, and decodes images. Never persist credentials or cookies in exported rules. Decode/display only visible images and a small neighbor window; cancel irrelevant prefetches when the user jumps chapters.
 
 ## 6. Site rules (JSON)
 

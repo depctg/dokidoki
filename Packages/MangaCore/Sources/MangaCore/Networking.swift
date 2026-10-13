@@ -17,19 +17,15 @@ private final class RedirectPolicy: NSObject, URLSessionTaskDelegate, Sendable {
     }
 }
 
-/// Shared, bounded transport. Redirect checks happen before the redirected request is sent.
+/// Bounded HTTP bodies and redirect policy. RequestSender owns request admission.
 public actor HTTPClient {
-    private var active: [String: Int] = [:]
     private let configuration: URLSessionConfiguration
     public init(configuration: URLSessionConfiguration = .ephemeral) {
         self.configuration = configuration.copy() as! URLSessionConfiguration
     }
     public func download(_ url: URL, rule: SiteRule, referer: URL? = nil, limit: Int = 8 * 1024 * 1024) async throws -> SourceResponse {
         guard rule.permits(url) else { throw ReaderError.blockedHost }
-        let host = url.host ?? ""
-        while active[host, default: 0] >= 2 { try await Task.sleep(for: .milliseconds(50)) }
-        try Task.checkCancellation(); active[host, default: 0] += 1
-        defer { active[host, default: 1] -= 1 }
+        try Task.checkCancellation()
         let config = configuration.copy() as! URLSessionConfiguration
         config.timeoutIntervalForRequest = 30; config.timeoutIntervalForResource = 60
         config.httpCookieStorage = nil; config.urlCache = nil

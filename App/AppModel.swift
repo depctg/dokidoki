@@ -17,7 +17,6 @@ enum AppSection: String, CaseIterable, Identifiable {
 @MainActor @Observable final class AppModel {
     var repository: ObjectRepository?
     var store: ObjectStore?
-    let images = ImageLoader()
     var rules: [SiteRule] = [] { didSet { ruleRevision += 1 } }
     var ruleRevision = 0 { didSet { invalidateReader() } }
     var paths: [AppSection: [ObjectKey]] = [:]
@@ -60,7 +59,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             }
             rules = try store.rules(); self.store = store
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
-            repository = try ObjectRepository(store: store, rules: rules, fetcher: RenderedSourceFetcher())
+            repository = try ObjectRepository(store: store, rules: rules, sender: RequestSender(fetcher: RenderedSourceFetcher()))
             reloadLibrary()
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {
                 await open(CommandLine.arguments[index + 1])
@@ -87,7 +86,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
-                guard let repository, case .chapter(let chapter) = try await repository.resolve(key, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
+                guard let repository, case .chapter(let chapter) = try await key.load(using: repository, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
                 try Task.checkCancellation()
                 presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion)
             } catch is CancellationError {} catch {
@@ -141,7 +140,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
-                guard let repository, case .manga(let manga) = try await repository.resolve(key, hint: .preferCache),
+                guard let repository, case .manga(let manga) = try await key.load(using: repository, hint: .preferCache),
                       let first = manga.chapterRefs.first else { throw ReaderError.extraction("This manga has no chapters yet.") }
                 try Task.checkCancellation()
                 openChapter(first.key)

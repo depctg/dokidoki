@@ -5,7 +5,8 @@ public enum CacheHint: Sendable { case preferCache, refreshIfStale, forceRefresh
 public actor ObjectRepository {
     public let store: ObjectStore
     private var registry: RuleRegistry
-    private let fetcher: any SourceFetcher
+    public nonisolated let sender: RequestSender
+    nonisolated let images: ImageLoader
     private struct Request {
         let id = UUID()
         let task: Task<ContentObject, Error>
@@ -14,9 +15,12 @@ public actor ObjectRepository {
     private var inFlight: [ObjectKey: Request] = [:]
     private var generation = 0
 
-    public init(store: ObjectStore, rules: [SiteRule], fetcher: any SourceFetcher = DefaultSourceFetcher()) throws {
-        self.store = store; registry = try RuleRegistry(rules: rules); self.fetcher = fetcher
+    public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender = RequestSender()) throws {
+        self.store = store; registry = try RuleRegistry(rules: rules); self.sender = sender
+        images = ImageLoader(sender: sender)
     }
+    public func clearImages() async { await images.clear() }
+    public func imageCacheUsage() async -> Int { await images.diskUsage() }
     public func installedRules() -> [SiteRule] { registry.rules }
     public func rule(for key: ObjectKey) throws -> SiteRule {
         guard let rule = registry.rules.first(where: { $0.id == key.ruleID }) else { throw ReaderError.missingRule }; return rule
@@ -55,8 +59,8 @@ public actor ObjectRepository {
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
         guard canonical == key else { return try await resolve(canonical, hint: hint) }
         let currentGeneration = generation
-        let task = Task<ContentObject, Error> { [fetcher] in
-            let response = try await fetcher.fetch(key.identityURL, rule: rule, kind: kind)
+        let task = Task<ContentObject, Error> { [sender] in
+            let response = try await sender.send(.source(key, kind: kind, rule: rule))
             try Task.checkCancellation()
             let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule)
             try Task.checkCancellation()

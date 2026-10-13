@@ -345,11 +345,8 @@ struct DisplayImageView: View {
             do {
                 guard let repository = model.repository else { return }
                 var loaded: [ObjectKey: CGImage] = [:]
-                for original in resources {
-                    var page = original
-                    if attempt > 0, case .page(let fresh) = try await repository.resolve(page.key, hint: .forceRefresh) { page = fresh }
-                    let rule = try await repository.rule(for: page.key)
-                    let decoded = try await model.images.image(for: page, rule: rule)
+                for page in resources {
+                    let decoded = try await page.image(using: repository, refresh: attempt > 0)
                     try Task.checkCancellation(); loaded[page.key] = decoded; onImage(page.key, decoded)
                 }
                 let images = loaded
