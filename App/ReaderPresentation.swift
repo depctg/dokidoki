@@ -59,9 +59,7 @@ struct ReaderResumeBar: View {
         Button { model.resumeReader() } label: {
             HStack(spacing: 12) {
                 if let page = reader.mangaCover {
-                    PageImageView(page: page, model: model)
-                        .frame(width: 36, height: 36).clipShape(.rect(cornerRadius: 6))
-                        .accessibilityHidden(true)
+                    CoverImageView(page: page, model: model, bounds: CGSize(width: 36, height: 36), cornerRadius: 6)
                 } else { Image(systemName: "book.pages").font(.title2) }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(placement == .inline ? [reader.mangaTitle, reader.chapter.title].compactMap { $0 }.joined(separator: " · ") : reader.mangaTitle ?? reader.chapter.title)

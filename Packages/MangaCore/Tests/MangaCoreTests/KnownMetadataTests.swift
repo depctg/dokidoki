@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import GRDB
 @testable import MangaCore
 
 struct KnownMetadataTests {
@@ -13,7 +14,7 @@ struct KnownMetadataTests {
     private let url = DemoContent.directoryURL
     private var key: ObjectKey { ObjectKey(ruleID: "demo", identityURL: url) }
 
-    @Test func coversKeepTheirOwnFreshnessAcrossDatabaseReopen() async throws {
+    @Test func knownCoverObjectsSurviveDatabaseReopenWithoutExpiry() async throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -25,12 +26,9 @@ struct KnownMetadataTests {
         let ref = try #require(list.mangaRefs.first)
         guard case .manga(let manga) = try await ref.preview(using: repository) else { throw ReaderError.invalidResponse }
         let coverKey = try #require(manga.coverPageRef)
-        let cover = try #require(try store.snapshot(coverKey))
-        #expect(cover.expiresAt.timeIntervalSinceNow > 29 * 86_400)
-        let mangaSnapshot = try #require(try store.snapshot(manga.key))
-        #expect(mangaSnapshot.expiresAt.timeIntervalSinceNow > 6 * 86_400)
-        // Expire the originating directory; its known cover must not load the manga document.
-        try store.upsert([.directory(list)], version: cover.ruleVersion, ttl: -1)
+        // Age does not expire objects; only the cache's retention budget matters.
+        let db = try DatabaseQueue(path: path)
+        try await db.write { try $0.execute(sql: "UPDATE objects SET fetchedAt = 0, accessedAt = 0") }
         let reopened = try ObjectRepository(store: ObjectStore(path: path), rules: rules, sender: RequestSender(fetcher: fetcher))
         guard case .manga(let preview) = try await ref.preview(using: reopened) else { throw ReaderError.invalidResponse }
         #expect(try await preview.coverPage(using: reopened)?.key == coverKey)
@@ -105,7 +103,7 @@ struct KnownMetadataTests {
         _ = try await key.load(using: repository, hint: .forceRefresh)
         guard case .manga(let kept) = try await ref.load(using: repository, hint: .offlineOnly) else { throw ReaderError.invalidResponse }
         #expect(kept.chapters?.count == 4 && kept.tags == full.tags)
-        #expect(try store.snapshot(full.key)?.expiresAt == before.expiresAt)
+        #expect(try store.snapshot(full.key)?.fetchedAt == before.fetchedAt)
         let keptCover = try #require(try await kept.coverPage(using: repository))
         #expect(keptCover.refererURL == originalCover.refererURL && keptCover.sessionURL == originalCover.sessionURL)
         // A fresh repository/process sees the same complete snapshot, including old serialized chapterRefs.
@@ -117,10 +115,10 @@ struct KnownMetadataTests {
         // Partial updates merge optional knowledge, but a changed rule cannot inherit old metadata.
         let partialKey = list.mangaRefs[1].key
         let empty = MangaObject(key: partialKey, sourceURL: partialKey.identityURL, title: "Updated label")
-        try store.upsert([.manga(empty)], version: rule.version, ttl: 60)
+        try store.upsert([.manga(empty)], version: rule.version)
         guard case .manga(let merged) = try #require(try store.snapshot(partialKey)).object else { throw ReaderError.invalidResponse }
         #expect(merged.coverPageRef != nil && merged.chapters == nil && merged.title == "Updated label")
-        try store.upsert([.manga(empty)], version: rule.version + 1, ttl: 60)
+        try store.upsert([.manga(empty)], version: rule.version + 1)
         guard case .manga(let changed) = try #require(try store.snapshot(partialKey)).object else { throw ReaderError.invalidResponse }
         #expect(changed.coverPageRef == nil)
     }

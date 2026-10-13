@@ -30,7 +30,7 @@ struct SiteLoadingTests {
         _ = try await site.load(using: repository, hint: .forceRefresh)
         guard case .directory(let retained) = try #require(try store.snapshot(full.key)).object else { throw ReaderError.invalidResponse }
         #expect(retained.sortBy == full.sortBy && retained.isPreview != true)
-        #expect(try store.snapshot(full.key)?.expiresAt == saved.expiresAt)
+        #expect(try store.snapshot(full.key)?.fetchedAt == saved.fetchedAt)
         #expect(await fetcher.requests.map(\.path) == ["/home", "/catalog", "/home"])
         var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(full)) as! [String: Any]
         legacy.removeValue(forKey: "isPreview")
@@ -72,7 +72,7 @@ struct SiteLoadingTests {
         #expect(directory.items == nil && directory.hasMore == nil)
     }
 
-    @Test func linkOnlySourcesRefreshStaleListsWithoutReloadingFreshSiblings() async throws {
+    @Test func linkOnlySourcesReloadInvalidatedListsWithoutReloadingCachedSiblings() async throws {
         var json = try JSONSerialization.jsonObject(with: rule().exported()) as! [String: Any]
         var extractors = json["extractors"] as! [String: Any]
         extractors["site"] = ["format": "html", "fields": ["title": ["path": "//h1"],
@@ -83,15 +83,15 @@ struct SiteLoadingTests {
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: fetcher))
         let lists = try await site.load(using: repository), first = try #require(lists.first)
         #expect(lists.count == 2 && lists.allSatisfy { $0.isPreview != true })
-        for hint: CacheHint in [.refreshIfStale, .forceRefresh] {
-            try store.upsert([.directory(first)], version: rule.version, ttl: -1)
+        for hint: CacheHint in [.preferCache, .forceRefresh] {
+            try store.upsert([.directory(first)], version: rule.version - 1)
             let before = await fetcher.requests
             let loaded = try await site.load(using: repository, hint: hint)
             #expect(loaded.map(\.key) == lists.map(\.key))
             let added = await fetcher.requests.dropFirst(before.count)
             #expect(added.filter { $0.path == "/catalog" } == [first.sourceURL])
             #expect(added.filter { $0.path == "/home" }.count == (hint == .forceRefresh ? 1 : 0))
-            #expect(try #require(try store.snapshot(first.key)).expiresAt > Date())
+            #expect(try store.snapshot(first.key)?.ruleVersion == rule.version)
         }
     }
 

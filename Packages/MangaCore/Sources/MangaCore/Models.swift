@@ -93,7 +93,7 @@ public struct MangaObject: Codable, Sendable {
     /// Named source lists; older snapshots expose their flat chapters as one list.
     public var chapterLists: [ChapterList] { lists ?? (chapters.map { [ChapterList(id: "chapters", chapters: $0)] } ?? []) }
     private let lists: [ChapterList]?
-    /// Local reading knowledge, hydrated by core independently of source-cache freshness.
+    /// Local reading knowledge, hydrated by core independently of source-cache retention.
     public internal(set) var chapterStatuses: [ObjectKey: ChapterReadingStatus]? = nil
     public func readingStatus(for chapter: ObjectKey) -> ChapterReadingStatus { chapterStatuses?[chapter] ?? .unread }
     private enum CodingKeys: String, CodingKey {

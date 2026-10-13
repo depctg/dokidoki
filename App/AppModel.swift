@@ -128,7 +128,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             browseSiteID = nil; paths[.browse] = []
         } catch { report(error, operation: .storage) }
     }
-    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .preferCache, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
         chapterRequest?.cancel()
         if reader?.chapter.key == key, hint != .forceRefresh, listID == nil || reader?.chapterListID == listID {
             openingChapter = false

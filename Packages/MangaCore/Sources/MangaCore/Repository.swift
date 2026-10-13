@@ -1,6 +1,6 @@
 import Foundation
 
-public enum CacheHint: Sendable { case preferCache, refreshIfStale, forceRefresh, offlineOnly }
+public enum CacheHint: Sendable { case preferCache, forceRefresh, offlineOnly }
 
 public actor ObjectRepository {
     public let store: ObjectStore
@@ -58,29 +58,36 @@ public actor ObjectRepository {
         await sender.invalidateResources()
     }
     public func clearContent() async throws { await invalidate(); try store.clearContent() }
-    public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, sessionURL: URL? = nil, preview: Bool = false) async throws -> ContentObject {
+    public func resolve(_ key: ObjectKey, hint: CacheHint = .preferCache, sessionURL: URL? = nil, preview: Bool = false) async throws -> ContentObject {
         try Task.checkCancellation()
         if hint == .forceRefresh, let old = directoryFlights.removeValue(forKey: key) { old.task.cancel(); old.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }
         let rule = try rule(for: key)
-        let cached = try store.snapshot(key)
-        if let cached, cached.ruleVersion == rule.version, (cached.object.isComplete || (preview && cached.object.hasPreview)),
-           hint == .offlineOnly || hint == .preferCache || (hint == .refreshIfStale && cached.expiresAt > Date()) { return cached.object }
+        if hint != .forceRefresh, let cached = try store.cachedObject(key, version: rule.version, preview: preview) { return cached }
         if hint == .offlineOnly { throw ReaderError.cacheMiss }
         if let owner = key.owner {
-            let parent = try await resolve(owner, hint: hint == .forceRefresh ? .forceRefresh : .refreshIfStale)
-            if let child = try store.snapshot(key), child.ruleVersion == rule.version, child.expiresAt > Date() { return child.object }
-            // A rendered chapter can declare all page identities before their URLs exist.
-            if case .chapter(let chapter) = parent {
+            let parent = try await resolve(owner, hint: hint == .forceRefresh ? .forceRefresh : .preferCache)
+            if let child = try store.cachedObject(key, version: rule.version) { return child }
+            // Missing children are fetched through their owning object's extractor,
+            // including when the cache declined to retain an earlier extraction.
+            let range: Range<Int>?
+            switch parent {
+            case .chapter(let chapter):
                 guard let index = Int(key.identityURL.lastPathComponent), chapter.pageRefs.indices.contains(index), chapter.pageRefs[index] == key else { throw ReaderError.cacheMiss }
-                let epoch = generation
-                let response = try await sender.send(.source(owner, kind: .chapter, rule: rule, backgroundLoading: backgroundLoading,
-                    load: SourceLoad(range: index..<(index + 1), refresh: hint == .forceRefresh)))
-                try Task.checkCancellation()
-                guard epoch == generation else { throw CancellationError() }
-                let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: owner, kind: .chapter, rule: rule)
-                try store.upsert(objects, version: rule.version, replacingChildren: false)
-            } else { _ = try await resolve(owner, hint: .forceRefresh) }
-            guard let child = try store.snapshot(key), child.ruleVersion == rule.version else { throw ReaderError.cacheMiss }; return child.object
+                range = index..<(index + 1)
+            case .manga(let manga):
+                guard manga.coverPageRef == key else { throw ReaderError.cacheMiss }
+                range = nil
+            default: throw ReaderError.cacheMiss
+            }
+            let epoch = generation
+            let response = try await sender.send(.source(owner, kind: parent.kind, rule: rule, backgroundLoading: backgroundLoading,
+                load: SourceLoad(range: range, refresh: hint == .forceRefresh)))
+            try Task.checkCancellation()
+            guard epoch == generation else { throw CancellationError() }
+            let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: owner, kind: parent.kind, rule: rule)
+            try store.upsert(objects, version: rule.version, replacingChildren: parent.kind != .chapter)
+            guard let child = objects.first(where: { $0.key == key && $0.isComplete }) else { throw ReaderError.cacheMiss }
+            return child
         }
         if let request = inFlight[key] { return try await consume(request, key: key) }
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
@@ -93,7 +100,9 @@ public actor ObjectRepository {
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
             try self.store.upsert(objects, version: rule.version)
-            guard let object = try self.store.snapshot(key)?.object else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
+            guard var object = objects.first(where: { $0.key == key }) else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }
+            if case .manga(let manga) = object { object = .manga(try self.store.readingState(for: manga)) }
+            return object
         }
         let request = Request(task: task)
         inFlight[key] = request
@@ -118,9 +127,9 @@ public actor ObjectRepository {
         }
         var seen: Set<ObjectKey> = []
         let references = batches.filter { seen.insert($0.key).inserted }
-        // Freshly seeded excerpts need no second request. Linked full lists retain
-        // their own expiry, including when refreshing a source with only links.
-        let result = try await directoryPreviews(references, hint: hint == .forceRefresh ? .refreshIfStale : hint)
+        // Source requests seed known metadata through normal object creation.
+        // The cache decides whether each linked list is already available.
+        let result = try await directoryPreviews(references, hint: hint == .forceRefresh ? .preferCache : hint)
         try Task.checkCancellation()
         guard generation == epoch else { throw CancellationError() }
         return result
@@ -139,8 +148,9 @@ public actor ObjectRepository {
     }
     func pageDescriptors(for chapter: ChapterObject) throws -> [PageObject] {
         let rule = try rule(for: chapter.key)
-        return try chapter.pageRefs.enumerated().map { index, key in
-            if let cached = try store.snapshot(key), cached.ruleVersion == rule.version, cached.expiresAt > Date(), case .page(let page) = cached.object { return page }
+        let cached = try store.cachedObjects(chapter.pageRefs, version: rule.version)
+        return chapter.pageRefs.enumerated().map { index, key in
+            if case .page(let page) = cached[key] { return page }
             return PageObject(key: key, ownerRef: chapter.key, sourceIndex: index, imageURL: nil, refererURL: chapter.sourceURL)
         }
     }

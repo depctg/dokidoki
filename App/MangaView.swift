@@ -74,13 +74,7 @@ struct MangaView: View {
         VStack(alignment: .leading, spacing: 16) {
             let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
             layout {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-                    if let cover { PageImageView(page: cover, model: model) }
-                    else { Image(systemName: "book.closed").foregroundStyle(.secondary) }
-                }
-                .frame(width: min(170, coverWidth), height: min(170, coverWidth) * 1.5)
-                .clipShape(.rect(cornerRadius: 8)).accessibilityHidden(true)
+                CoverImageView(page: cover, model: model, bounds: CGSize(width: min(170, coverWidth), height: 260))
                 VStack(alignment: .leading, spacing: 10) {
                     Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
                     if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }

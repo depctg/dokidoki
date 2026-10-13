@@ -17,7 +17,7 @@ public struct SiteObject: Sendable, Identifiable {
         }
     }
 
-    public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> [DirectoryObject] {
+    public func load(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> [DirectoryObject] {
         do { return try await repository.directories(from: browseRefs, hint: hint) }
         catch {
             if case ReaderError.cacheMiss = error, hint == .offlineOnly { throw error }

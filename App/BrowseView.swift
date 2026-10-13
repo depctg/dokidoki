@@ -131,7 +131,7 @@ struct BrowseLists: View {
             directories = nil; error = nil
             do {
                 guard let repository = model.repository else { return }
-                let loaded = try await load(repository, attempt > 0 ? .forceRefresh : .refreshIfStale)
+                let loaded = try await load(repository, attempt > 0 ? .forceRefresh : .preferCache)
                 try Task.checkCancellation(); directories = loaded
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
@@ -180,12 +180,12 @@ struct MangaPreview: View {
         Group {
             if shelf {
                 VStack(alignment: .leading, spacing: 8) {
-                    artwork.frame(width: 148, height: 210)
+                    artwork.frame(width: 148, height: 210, alignment: .bottomLeading)
                     details
                 }.frame(width: 148, alignment: .leading)
             } else {
                 HStack(spacing: 14) {
-                    artwork.frame(width: 52, height: 76)
+                    artwork.frame(width: 52)
                     details
                 }.padding(.vertical, 4)
             }
@@ -208,11 +208,6 @@ struct MangaPreview: View {
         }
     }
     private var artwork: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-            if let cover { PageImageView(page: cover, model: model) }
-            else { Image(systemName: "book.closed").font(.title).foregroundStyle(.secondary) }
-        }
-        .clipShape(.rect(cornerRadius: 8)).accessibilityHidden(true)
+        CoverImageView(page: cover, model: model, bounds: shelf ? CGSize(width: 148, height: 210) : CGSize(width: 52, height: 90))
     }
 }

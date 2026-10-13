@@ -11,11 +11,11 @@ public actor ImageLoader {
     private let directory: URL
     private let diskLimit: Int
     private var generation = 0
-    public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int = 512 * 1024 * 1024) {
-        self.sender = sender; self.diskLimit = max(0, diskLimit)
+    public init(sender: RequestSender = RequestSender(), directory: URL? = nil, diskLimit: Int? = nil) {
+        self.sender = sender; self.diskLimit = max(0, diskLimit ?? CachePolicy.imageBytes)
         self.directory = directory ?? FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appendingPathComponent("MangaViewer/Images", isDirectory: true)
-        memory.totalCostLimit = 80 * 1024 * 1024; memory.countLimit = 24
-        covers.totalCostLimit = 32 * 1024 * 1024; covers.countLimit = 256
+        memory.totalCostLimit = CachePolicy.decodedPageBytes; memory.countLimit = 24
+        covers.totalCostLimit = CachePolicy.decodedCoverBytes; covers.countLimit = 256
         do { try FileManager.default.createDirectory(at: self.directory, withIntermediateDirectories: true) }
         catch { ErrorDiagnostics.record(error, operation: .imageCache) }
     }

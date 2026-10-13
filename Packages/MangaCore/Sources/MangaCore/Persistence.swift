@@ -4,7 +4,7 @@ import GRDB
 public struct ObjectSnapshot: Sendable {
     public let object: ContentObject
     public let ruleVersion: Int
-    public let expiresAt: Date
+    public let fetchedAt: Date
 }
 public struct ReadingPosition: Codable, Sendable {
     public let mangaKey: ObjectKey
@@ -43,7 +43,9 @@ public struct SavedManga: Codable, Sendable, Identifiable {
 /// GRDB serializes access. Parent/child snapshots are always written in one transaction.
 public final class ObjectStore: Sendable {
     private let db: DatabaseQueue
-    public init(path: String = ":memory:") throws {
+    private let cacheLimit: Int
+    public init(path: String = ":memory:", cacheLimit: Int? = nil) throws {
+        self.cacheLimit = max(0, cacheLimit ?? CachePolicy.metadataBytes)
         db = try DatabaseQueue(path: path)
         var migration = DatabaseMigrator()
         migration.registerMigration("v1") { db in
@@ -73,19 +75,51 @@ public final class ObjectStore: Sendable {
                 try db.execute(sql: "INSERT INTO mangaReadingState VALUES (?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(statuses)])
             }
         }
+        migration.registerMigration("v5PriorityCache") { db in
+            try db.execute(sql: "ALTER TABLE objects RENAME COLUMN expiresAt TO accessedAt")
+            try db.execute(sql: "UPDATE objects SET accessedAt = fetchedAt")
+            try db.execute(sql: "ALTER TABLE objects ADD COLUMN priority INTEGER NOT NULL DEFAULT 1")
+            for row in try Row.fetchAll(db, sql: "SELECT key, payload FROM objects") {
+                let object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
+                try db.execute(sql: "UPDATE objects SET priority = ? WHERE key = ?", arguments: [CachePolicy.priority(object), row["key"] as String])
+            }
+        }
         try migration.migrate(db)
+        try db.write { try trimCache($0) }
     }
     public func snapshot(_ key: ObjectKey) throws -> ObjectSnapshot? {
-        try db.read { db in
-            guard let row = try Row.fetchOne(db, sql: "SELECT * FROM objects WHERE key = ?", arguments: [key.id]) else { return nil }
-            var object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
-            if case .manga(var manga) = object { manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); object = .manga(manga) }
-            return ObjectSnapshot(object: object, ruleVersion: row["ruleVersion"], expiresAt: Date(timeIntervalSince1970: row["expiresAt"]))
+        try snapshots([key])[key]
+    }
+    private func snapshots(_ keys: [ObjectKey]) throws -> [ObjectKey: ObjectSnapshot] {
+        try db.write { db in
+            var result: [ObjectKey: ObjectSnapshot] = [:]
+            // One transaction per lookup batch; bound SQL parameters for long chapters.
+            for start in stride(from: 0, to: keys.count, by: 500) {
+                let ids = keys[start..<min(start + 500, keys.count)].map(\.id)
+                let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
+                for row in try Row.fetchAll(db, sql: "SELECT * FROM objects WHERE key IN (\(placeholders))", arguments: StatementArguments(ids)) {
+                    var object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
+                    if case .manga(var manga) = object { manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); object = .manga(manga) }
+                    result[object.key] = ObjectSnapshot(object: object, ruleVersion: row["ruleVersion"], fetchedAt: Date(timeIntervalSince1970: row["fetchedAt"]))
+                }
+                var arguments = StatementArguments([Date().timeIntervalSince1970]); arguments += StatementArguments(ids)
+                try db.execute(sql: "UPDATE objects SET accessedAt = ? WHERE key IN (\(placeholders))", arguments: arguments)
+            }
+            return result
         }
     }
-    /// Default freshness belongs to each object, not the document that introduced it.
-    /// An explicit TTL remains useful for imports and deliberately stale snapshots.
-    public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval? = nil, replacingChildren: Bool = true) throws {
+    /// The cache, rather than callers or objects, decides whether retained metadata
+    /// satisfies a request. Incomplete known metadata remains usable for previews.
+    func cachedObject(_ key: ObjectKey, version: Int, preview: Bool = false) throws -> ContentObject? {
+        try cachedObjects([key], version: version, preview: preview)[key]
+    }
+    func cachedObjects(_ keys: [ObjectKey], version: Int, preview: Bool = false) throws -> [ObjectKey: ContentObject] {
+        try snapshots(keys).compactMapValues { cached in
+            guard cached.ruleVersion == version, cached.object.isComplete || (preview && cached.object.hasPreview) else { return nil }
+            return cached.object
+        }
+    }
+    public func upsert(_ objects: [ContentObject], version: Int, replacingChildren: Bool = true) throws {
         try db.write { db in
             let partialKeys = Set(objects.filter { !$0.isComplete }.map(\.key))
             if replacingChildren, let root = objects.first, root.kind != .page, !partialKeys.contains(root.key) {
@@ -97,7 +131,7 @@ public final class ObjectStore: Sendable {
                 if !incoming.isComplete,
                    let row = try Row.fetchOne(db, sql: "SELECT payload FROM objects WHERE key = ? AND ruleVersion = ?", arguments: [incoming.key.id, version]) {
                     let existing = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
-                    // Previews cannot erase complete data or extend its freshness.
+                    // Linked knowledge cannot erase a complete snapshot or change its fetch date.
                     if existing.isComplete { preserved.insert(incoming.key); continue }
                     switch (incoming, existing) {
                     case (.manga(let manga), .manga(let old)):
@@ -113,12 +147,22 @@ public final class ObjectStore: Sendable {
                 }
                 if case .page(let page) = object, let owner = page.ownerRef, preserved.contains(owner) { continue }
                 let owner: String? = if case .page(let page) = object { page.ownerRef?.id } else { nil }
-                let isCover = if case .page(let page) = object { page.role == .cover } else { false }
-                let lifetime = ttl ?? CachePolicy.lifetime(object.kind, cover: isCover)
-                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(lifetime).timeIntervalSince1970, owner, object.key.ruleID])
+                let now = Date().timeIntervalSince1970
+                try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, now, now, owner, object.key.ruleID, CachePolicy.priority(object)])
             }
+            try trimCache(db)
         }
     }
+    private func trimCache(_ db: Database) throws {
+        var bytes = try Int.fetchOne(db, sql: "SELECT COALESCE(SUM(length(payload)), 0) FROM objects") ?? 0
+        guard bytes > cacheLimit else { return }
+        let entries = try Row.fetchAll(db, sql: "SELECT key, length(payload) AS bytes FROM objects ORDER BY priority, accessedAt, key")
+        for row in entries where bytes > cacheLimit {
+            try db.execute(sql: "DELETE FROM objects WHERE key = ?", arguments: [row["key"] as String])
+            bytes -= row["bytes"] as Int
+        }
+    }
+
     public func rules() throws -> [SiteRule] {
         let rules = try db.read { db in try Data.fetchAll(db, sql: "SELECT payload FROM rules ORDER BY id").map(SiteRule.decode) }
         let order = try preference("ruleOrder", as: [String].self) ?? []

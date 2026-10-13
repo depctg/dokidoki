@@ -1,13 +1,19 @@
 import Foundation
 
-/// One content policy for metadata and the pages owned by that metadata.
+/// Retention is a cache concern. Objects carry neither TTLs nor cache priority.
+/// Within each priority, metadata and on-disk images evict least-recently-used data.
 enum CachePolicy {
-    static func lifetime(_ kind: ContentKind, cover: Bool = false) -> TimeInterval {
-        switch kind {
-        case .site, .directory: 15 * 60
-        case .manga: 7 * 86_400
-        case .chapter: 7 * 86_400
-        case .page: (cover ? 30 : 7) * 86_400
+    static let metadataBytes = 64 * 1024 * 1024
+    static let imageBytes = 512 * 1024 * 1024
+    static let decodedPageBytes = 80 * 1024 * 1024
+    static let decodedCoverBytes = 32 * 1024 * 1024
+
+    static func priority(_ object: ContentObject) -> Int {
+        switch object {
+        case .site, .directory: 0
+        case .manga: 2
+        case .chapter: 1
+        case .page(let page): page.role == .cover ? 2 : 1
         }
     }
 }

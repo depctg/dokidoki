@@ -113,7 +113,7 @@ struct CoreTests {
         let key = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
         guard case .chapter(let chapter) = try await repository.resolve(key) else { Issue.record("Missing chapter"); return }
         let replacement = ChapterObject(key: key, sourceURL: key.identityURL, title: "Now empty", mangaRef: chapter.mangaRef, pageRefs: [])
-        try store.upsert([.chapter(replacement)], version: 1, ttl: 3600)
+        try store.upsert([.chapter(replacement)], version: 1)
         #expect(try store.snapshot(chapter.pageRefs[0]) == nil)
     }
 

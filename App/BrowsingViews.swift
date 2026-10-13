@@ -125,7 +125,7 @@ struct ObjectScreen: View {
             else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? String(localized: "Try a supported URL.")) } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
         }
         .id(revision)
-        .task(id: "\(key.id)|\(model.loadingRevision)") { object = nil; await load(.refreshIfStale) }
+        .task(id: "\(key.id)|\(model.loadingRevision)") { object = nil; await load(.preferCache) }
         .toolbar {
             ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await load(.forceRefresh) } }.disabled(loading)

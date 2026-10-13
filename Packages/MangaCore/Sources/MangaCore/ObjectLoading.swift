@@ -1,8 +1,8 @@
 import CoreGraphics
 
-// Objects describe what to load; the repository owns freshness and the shared sender owns admission.
+// Objects describe what to load; the core cache owns retention and the shared sender owns admission.
 extension ObjectKey {
-    public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
+    public func load(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> ContentObject {
         do { return try await repository.resolve(self, hint: hint) }
         catch {
             // A deliberate offline cache probe is normal, not a failed load.
@@ -21,7 +21,7 @@ extension ContentReference {
             ErrorDiagnostics.record(error, operation: .loadContent, url: key.identityURL); throw error
         }
     }
-    public func load(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
+    public func load(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> ContentObject {
         try await key.load(using: repository, hint: hint)
     }
 }
@@ -40,11 +40,11 @@ extension DirectoryObject {
 }
 
 extension MangaObject {
-    /// Refresh local chapter status without a document request or extending cache freshness.
+    /// Refresh local chapter status without a document request or changing the cached source snapshot.
     public func readingState(using repository: ObjectRepository) throws -> MangaObject {
         try repository.store.readingState(for: self)
     }
-    public func coverPage(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> PageObject? {
+    public func coverPage(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> PageObject? {
         guard let coverPageRef, case .page(let page) = try await coverPageRef.load(using: repository, hint: hint) else { return nil }
         return page
     }
@@ -82,7 +82,7 @@ extension PageObject {
     public func image(using repository: ObjectRepository, refresh: Bool = false, maxPixel: Int = 1800) async throws -> CGImage {
         let page: PageObject
         if refresh || imageURL == nil {
-            guard case .page(let fresh) = try await key.load(using: repository, hint: refresh ? .forceRefresh : .refreshIfStale) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
+            guard case .page(let fresh) = try await key.load(using: repository, hint: refresh ? .forceRefresh : .preferCache) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
             page = fresh
         } else { page = self }
         do {

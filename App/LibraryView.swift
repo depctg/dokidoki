@@ -60,13 +60,8 @@ private struct LibraryRow: View {
         HStack(spacing: 12) {
             NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 16) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-                        if let cover { PageImageView(page: cover, model: model) }
-                        else { Image(systemName: "book.closed").font(.largeTitle).foregroundStyle(.secondary) }
-                    }
-                    .frame(width: 76, height: 108).clipShape(.rect(cornerRadius: 8))
-                    .accessibilityHidden(true)
+                    CoverImageView(page: cover, model: model, bounds: CGSize(width: 76, height: 140))
+                        .frame(width: 76)
                     VStack(alignment: .leading, spacing: 6) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(title).font(.headline).lineLimit(2)
