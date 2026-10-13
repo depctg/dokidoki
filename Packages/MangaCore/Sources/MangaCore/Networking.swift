@@ -37,7 +37,8 @@ public actor HTTPClient {
         request.setValue("MangaViewer/1.0", forHTTPHeaderField: "User-Agent")
         if let referer, rule.permits(referer) { request.setValue(referer.absoluteString, forHTTPHeaderField: "Referer") }
         let (bytes, response) = try await session.bytes(for: request)
-        guard let response = response as? HTTPURLResponse, let finalURL = response.url, rule.permits(finalURL), (200..<300).contains(response.statusCode) else { throw ReaderError.invalidResponse }
+        guard let response = response as? HTTPURLResponse, let finalURL = response.url, rule.permits(finalURL) else { throw ReaderError.invalidResponse }
+        guard (200..<300).contains(response.statusCode) else { throw ReaderError.httpStatus(response.statusCode) }
         guard response.expectedContentLength <= limit else { throw ReaderError.tooLarge }
         var data = Data(); data.reserveCapacity(min(limit, max(0, Int(response.expectedContentLength))))
         for try await byte in bytes {

@@ -2,14 +2,18 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 1,
+  "version": 2,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
     "i.hamreus.com",
     "eu.hamreus.com",
+    "eu1.hamreus.com",
+    "eu2.hamreus.com",
     "us.hamreus.com",
-    "ru.hamreus.com"
+    "us1.hamreus.com",
+    "us2.hamreus.com",
+    "us3.hamreus.com"
   ],
   "matchers": [
     {

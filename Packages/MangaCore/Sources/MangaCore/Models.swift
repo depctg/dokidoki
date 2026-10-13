@@ -78,7 +78,7 @@ public enum ContentObject: Codable, Sendable {
     }
 }
 public enum ReaderError: LocalizedError, Sendable {
-    case unsupportedURL, ambiguousURL, invalidRule(String), blockedHost, invalidResponse, tooLarge, extraction(String), cacheMiss, missingRule, renderedSourceRequired
+    case unsupportedURL, ambiguousURL, invalidRule(String), blockedHost, invalidResponse, httpStatus(Int), tooLarge, extraction(String), cacheMiss, missingRule, renderedSourceRequired
     public var errorDescription: String? {
         switch self {
         case .unsupportedURL: "This URL is not supported by an installed rule."
@@ -86,6 +86,7 @@ public enum ReaderError: LocalizedError, Sendable {
         case .invalidRule(let reason): "Invalid rule: \(reason)"
         case .blockedHost: "The URL or redirect is outside this rule's allowed hosts."
         case .invalidResponse: "The server did not return a successful response."
+        case .httpStatus(let code): "The server returned HTTP \(code). Try refreshing the chapter or opening the source website."
         case .tooLarge: "The response exceeds the download size limit."
         case .extraction(let reason): "Could not read this page: \(reason)"
         case .cacheMiss: "This content is not available in the local cache."

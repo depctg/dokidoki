@@ -3,6 +3,14 @@ import Testing
 @testable import MangaCore
 
 struct CoreTests {
+    @Test func fixtureImageDecodesWithBoundedSize() async throws {
+        let rule = try DemoContent.bundledRules()[0]
+        let owner = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
+        let page = PageObject(key: .page(owner: owner, index: 0), ownerRef: owner, sourceIndex: 0, imageURL: URL(string: "https://demo.mangaviewer.local/images/1.png")!, refererURL: owner.identityURL)
+        let image = try await ImageLoader().image(for: page, rule: rule, maxPixel: 512)
+        #expect(max(image.width, image.height) == 512)
+        #expect(image.height > image.width)
+    }
     @Test func matchingAndRuleRoundTrip() throws {
         let rules = try DemoContent.bundledRules()
         let registry = try RuleRegistry(rules: rules)

@@ -10,4 +10,6 @@ Implement milestones sequentially, with a clean-session review subagent after ea
 - External requests, redirects, and extracted URLs must respect exact allowed hosts. Never export credentials. Do not implement access-control workarounds.
 - Verify risky seams with fixture tests, run actual platform builds, and record unavailable simulator/device checks honestly.
 - User requested https://www.manhuagui.com/ for live testing; deterministic bundled fixtures remain the offline baseline.
+- The Manhuagui WebKit adapter must observe normal site behavior. Require a site-created reader image before extracting page references; never manipulate access gates or cookies. Keep imported rules data-only.
+- SwiftUI image task identity must include resource URL, not just object key; clear stale image state before loading. Refresh must invalidate view data even when the chapter key is unchanged.
 
