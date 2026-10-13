@@ -1,6 +1,13 @@
 import Foundation
 @preconcurrency import libxml2
 
+private struct Selection {
+    let value: String
+    let title: String
+    var node: xmlNodePtr? = nil
+    var json: Any? = nil
+}
+
 /// XPath is evaluated without external entities or network access. Each document stays on one task.
 private final class HTMLDocument {
     let document: htmlDocPtr
@@ -19,9 +26,10 @@ private final class HTMLDocument {
         defer { xmlXPathFreeObject(result) }
         return (result.pointee.nodesetval?.pointee.nodeNr ?? 0) > 0
     }
-    func values(_ field: Field) throws -> [(String, String)] {
+    func values(_ field: Field, relativeTo node: xmlNodePtr? = nil) throws -> [Selection] {
         guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction(String(localized: "Could not create XPath context.", bundle: .module)) }
         defer { xmlXPathFreeContext(context) }
+        if let node { context.pointee.node = node }
         guard let result = xmlXPathEvalExpression(field.path, context) else { throw ReaderError.extraction(String(localized: "Invalid XPath.", bundle: .module)) }
         defer { xmlXPathFreeObject(result) }
         guard let set = result.pointee.nodesetval, set.pointee.nodeNr > 0 else { return [] }
@@ -38,14 +46,14 @@ private final class HTMLDocument {
             }
             var value = read(field.read ?? "text")
             if value.isEmpty, let fallback = field.fallback { value = read(fallback) }
-            return value.isEmpty ? nil : (value, title.isEmpty ? text : title)
+            return value.isEmpty ? nil : Selection(value: value, title: title.isEmpty ? text : title, node: node)
         }
     }
 }
 
 public struct RuleExtractor: Sendable {
     public init() {}
-    public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule) throws -> [ContentObject] {
+    public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule, sessionURL: URL? = nil) throws -> [ContentObject] {
         guard let spec = rule.extraction(for: kind, at: key.identityURL) else { throw ReaderError.extraction(String(localized: "Missing extractor.", bundle: .module)) }
         let html = spec.format.isJSON ? nil : try HTMLDocument(data: data)
         let json: Any? = spec.format.isJSON ? try JSONSerialization.jsonObject(with: data) : nil
@@ -67,19 +75,19 @@ public struct RuleExtractor: Sendable {
             return nil
         }
         var variables: [String: String] = [:]
-        func extract(_ field: Field) throws -> [(String, String)] {
-            var entries: [(String, String)]
-            if let html { entries = try html.values(field) }
+        func extract(_ field: Field, relativeTo selection: Selection? = nil) throws -> [Selection] {
+            var entries: [Selection]
+            if let html { entries = try html.values(field, relativeTo: selection?.node) }
             else {
-                entries = nodes(at: field.path).compactMap { node in
-                    if let text = scalar(node) { return (text, text) }
+                entries = nodes(at: field.path, from: selection?.json).compactMap { node in
+                    if let text = scalar(node) { return Selection(value: text, title: text, json: node) }
                     if let dict = node as? [String: Any] {
                         func read(_ mode: String?) -> String? {
                             scalar(dict[mode?.hasPrefix("attr:") == true ? String(mode!.dropFirst(5)) : "url"])
                         }
                         guard let value = read(field.read) ?? field.fallback.flatMap({ read($0) }) else { return nil }
                         let title = scalar(nodes(at: field.titlePath ?? "title", from: node).first)
-                        return (value, title ?? value)
+                        return Selection(value: value, title: title ?? value, json: node)
                     }
                     return nil
                 }
@@ -87,7 +95,7 @@ public struct RuleExtractor: Sendable {
             if field.reverse == true { entries.reverse() }
             let regex = try field.regex.map { try NSRegularExpression(pattern: $0) }
             return try entries.compactMap { entry in
-                var value = entry.0
+                var value = entry.value
                 if let regex {
                     let group = field.group ?? min(1, regex.numberOfCaptureGroups)
                     guard let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
@@ -101,13 +109,13 @@ public struct RuleExtractor: Sendable {
                     value = template
                     for match in expression.matches(in: template, range: NSRange(template.startIndex..., in: template)).reversed() {
                         let token = String(template[Range(match.range(at: 1), in: template)!])
-                        let replacement = token == "value" ? selected : token.hasPrefix("vars.") ? variables[String(token.dropFirst(5))] : scalar(nodes(at: token).first)
+                        let replacement = token == "value" ? selected : token.hasPrefix("vars.") ? variables[String(token.dropFirst(5))] : scalar(nodes(at: token, from: selection?.json).first)
                         guard let replacement else { throw ReaderError.extraction(String(localized: "Missing URL template value: \(token).", bundle: .module)) }
                         value.replaceSubrange(Range(match.range, in: value)!, with: replacement)
                     }
                 }
                 if let path = field.queryPath {
-                    guard let query = nodes(at: path).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction(String(localized: "Query parameters must be a JSON object.", bundle: .module)) }
+                    guard let query = nodes(at: path, from: selection?.json).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction(String(localized: "Query parameters must be a JSON object.", bundle: .module)) }
                     let items = try query.keys.sorted().map { key in
                         guard let value = scalar(query[key]) else { throw ReaderError.extraction(String(localized: "Query parameters must be strings or numbers.", bundle: .module)) }
                         return URLQueryItem(name: key, value: value)
@@ -115,13 +123,13 @@ public struct RuleExtractor: Sendable {
                     components.queryItems = (components.queryItems ?? []) + items
                     guard let rendered = components.string else { throw ReaderError.extraction(String(localized: "Invalid image URL.", bundle: .module)) }; value = rendered
                 }
-                return (value, entry.1)
+                return Selection(value: value, title: entry.title, node: entry.node, json: entry.json)
             }
         }
-        for (name, field) in spec.variables ?? [:] { variables[name] = try extract(field).first?.0 }
+        for (name, field) in spec.variables ?? [:] { variables[name] = try extract(field).first?.value }
         func values(_ name: String) throws -> [(String, String)] {
             guard let field = spec.fields[name] else { return [] }
-            return try extract(field)
+            return try extract(field).map { ($0.value, $0.title) }
         }
         func first(_ name: String) throws -> String? { try values(name).first?.0 }
         func counter(_ name: String, minimum: Int = 0) throws -> Int? {
@@ -129,24 +137,55 @@ public struct RuleExtractor: Sendable {
             guard let value = try first(name).flatMap(Int.init), (minimum...100_000).contains(value) else { throw ReaderError.invalidResponse }
             return value
         }
-        func metadata(_ name: String) throws -> [String] {
+        func cleaned(_ values: [String]) -> [String] {
             var seen: Set<String> = []
-            return try values(name).compactMap { value, _ in
+            return values.compactMap { value in
                 let text = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 return !text.isEmpty && seen.insert(text).inserted ? text : nil
             }
+        }
+        let metadataNames = ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
+        func knownMetadata(_ fields: [String: Field], relativeTo selection: Selection? = nil) throws -> [String: [String]] {
+            var result: [String: [String]] = [:]
+            for name in metadataNames {
+                if let field = fields[name] { result[name] = cleaned(try extract(field, relativeTo: selection).map(\.value)) }
+            }
+            if result["title"]?.isEmpty != false, let selection { result["title"] = cleaned([selection.title]) }
+            return result
         }
         func url(_ string: String) throws -> URL {
             guard let url = URL(string: string, relativeTo: responseURL)?.absoluteURL, rule.permits(url) else { throw ReaderError.blockedHost }
             return try RuleRegistry.normalize(url)
         }
+        // Full documents and relationship previews use the same metadata-to-object construction.
+        func manga(_ childKey: ObjectKey, sourceURL: URL, known: [String: [String]], chapters: [ContentReference]?) throws -> [ContentObject] {
+            let cover = try known["coverImage"]?.first.map { value in
+                PageObject(key: .page(owner: childKey, index: -1), ownerRef: childKey, role: .cover, sourceIndex: nil,
+                    imageURL: try url(value), refererURL: responseURL, sessionURL: sessionURL ?? key.identityURL)
+            }
+            let object = MangaObject(key: childKey, sourceURL: sourceURL,
+                title: known["title"]?.first ?? String(localized: "Untitled", bundle: .module),
+                author: known["author"]?.first, summary: known["summary"]?.first, coverPageRef: cover?.key, chapterRefs: chapters,
+                rating: known["rating"]?.first, status: known["status"]?.first, tags: known["tags"].flatMap { $0.isEmpty ? nil : $0 })
+            return [.manga(object)] + (cover.map { [.page($0)] } ?? [])
+        }
+        var children: [ContentObject] = []
         func refs(_ name: String, expected: ContentKind) throws -> [ContentReference] {
+            guard let field = spec.fields[name] else { return [] }
             let registry = try RuleRegistry(rules: [rule]); var seen: Set<ObjectKey> = []
-            return try values(name).compactMap { value, label in
-                let destination = try url(value)
+            return try extract(field).compactMap { selection in
+                let destination = try url(selection.value)
                 // Selectors may include other site links; retain only references of the requested kind.
                 guard let (_, kind, childKey) = try? registry.match(destination), kind == expected, seen.insert(childKey).inserted else { return nil }
-                return ContentReference(key: childKey, title: label.isEmpty ? destination.lastPathComponent : label)
+                var label = selection.title.isEmpty ? destination.lastPathComponent : selection.title
+                if name == "mangaLinks" {
+                    var known = try knownMetadata(field.fields ?? [:], relativeTo: selection)
+                    if known["title"]?.isEmpty != false { known["title"] = [label] }
+                    let objects = try manga(childKey, sourceURL: destination, known: known, chapters: nil)
+                    children += objects
+                    label = objects[0].title
+                }
+                return ContentReference(key: childKey, title: label)
             }
         }
         func nextPageURL() throws -> URL? {
@@ -180,14 +219,9 @@ public struct RuleExtractor: Sendable {
                 mangaRefs: items, nextURL: try nextPageURL(), endReached: end, totalCount: total,
                 sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
                 selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
-                selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]
+                selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))] + children
         case .manga:
-            let cover = try first("coverImage").map { value in
-                PageObject(key: .page(owner: key, index: -1), ownerRef: key, role: .cover, sourceIndex: nil, imageURL: try url(value), refererURL: responseURL)
-            }
-            let tags = try metadata("tags")
-            let manga = MangaObject(key: key, sourceURL: responseURL, title: title, author: try first("author"), summary: try first("summary"), coverPageRef: cover?.key, chapterRefs: try refs("chapterLinks", expected: .chapter), rating: try metadata("rating").first, status: try metadata("status").first, tags: tags.isEmpty ? nil : tags)
-            return [.manga(manga)] + (cover.map { [.page($0)] } ?? [])
+            return try manga(key, sourceURL: responseURL, known: knownMetadata(spec.fields), chapters: refs("chapterLinks", expected: .chapter))
         case .chapter:
             let offset = (try counter("pageNumber", minimum: 1) ?? 1) - 1
             let pages = try values("pageImages").enumerated().map { position, entry in

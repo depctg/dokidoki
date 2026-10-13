@@ -12,6 +12,8 @@ public struct Field: Codable, Sendable {
     public var regex: String? = nil
     public var group: Int? = nil
     public var reverse: Bool? = nil
+    /// Known child metadata, evaluated relative to each selected relationship node.
+    public var fields: [String: Field]? = nil
 }
 /// Data-only parameters for the generic WebKit observer, never executable script.
 public struct RenderingRule: Codable, Sendable {
@@ -122,9 +124,19 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             guard required.allSatisfy({ extraction.fields[$0] != nil }) else { throw ReaderError.invalidRule(String(localized: "Missing required extraction fields for \(matcher.kind.rawValue).", bundle: .module)) }
             for (name, field) in extraction.variables ?? [:] {
                 guard name.range(of: #"^[A-Za-z][A-Za-z0-9_]*$"#, options: .regularExpression) != nil,
-                      field.urlTemplate == nil, field.queryPath == nil else { throw ReaderError.invalidRule(String(localized: "Variables have simple names and select values without URL templates.", bundle: .module)) }
+                      field.urlTemplate == nil, field.queryPath == nil, field.fields == nil else { throw ReaderError.invalidRule(String(localized: "Variables have simple names and select values without URL templates.", bundle: .module)) }
             }
-            for field in Array(extraction.fields.values) + Array((extraction.variables ?? [:]).values) {
+            let metadataNames: Set<String> = ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
+            for (name, field) in extraction.fields where field.fields != nil {
+                guard name == "mangaLinks", matcher.kind == .directory,
+                      Set(field.fields!.keys).isSubset(of: metadataNames),
+                      field.fields!.values.allSatisfy({ $0.fields == nil }) else {
+                    throw ReaderError.invalidRule(String(localized: "Known metadata fields belong to manga links and cannot be nested further.", bundle: .module))
+                }
+            }
+            let fields = Array(extraction.fields.values) + Array((extraction.variables ?? [:]).values)
+                + extraction.fields.values.flatMap { Array(($0.fields ?? [:]).values) }
+            for field in fields {
                 guard !field.path.isEmpty, field.path.count <= 2048 else { throw ReaderError.invalidRule(String(localized: "Empty or oversized selector.", bundle: .module)) }
                 for read in [field.read, field.fallback].compactMap({ $0 }) {
                     guard read == "text" || read.range(of: "^attr:[a-zA-Z0-9_-]+$", options: .regularExpression) != nil else { throw ReaderError.invalidRule(String(localized: "Unsupported field reader.", bundle: .module)) }
@@ -219,7 +231,11 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             if let pagination = extractor["pagination"] as? [String: Any], !Set(pagination.keys).isSubset(of: ["offset", "limit", "total", "parameter"]) { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)
             for field in fields {
-                guard Set(field.keys).isSubset(of: ["path", "read", "titlePath", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+                let options: Set<String> = ["path", "read", "titlePath", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]
+                guard Set(field.keys).isSubset(of: options.union(["fields"])) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+                for child in (field["fields"] as? [String: [String: Any]] ?? [:]).values {
+                    guard Set(child.keys).isSubset(of: options) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
+                }
             }
             if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "captureResult", "readyImageXPath", "readyXPath", "loadAds"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
         }

@@ -73,10 +73,26 @@ public final class ObjectStore: Sendable {
     }
     public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval, replacingChildren: Bool = true) throws {
         try db.write { db in
-            if replacingChildren, let root = objects.first, root.kind != .page {
+            let partialKeys = Set(objects.compactMap { object -> ObjectKey? in
+                if case .manga(let manga) = object, manga.chapters == nil { return manga.key }; return nil
+            })
+            if replacingChildren, let root = objects.first, root.kind != .page, !partialKeys.contains(root.key) {
                 try db.execute(sql: "DELETE FROM objects WHERE ownerKey = ?", arguments: [root.key.id])
             }
-            for object in objects {
+            var preserved: Set<ObjectKey> = []
+            for incoming in objects {
+                var object = incoming
+                if case .manga(let manga) = incoming, manga.chapters == nil,
+                   let row = try Row.fetchOne(db, sql: "SELECT payload FROM objects WHERE key = ? AND ruleVersion = ?", arguments: [manga.key.id, version]),
+                   case .manga(let existing) = try JSONDecoder().decode(ContentObject.self, from: row["payload"]) {
+                    // A list refresh must not erase detail fields, chapters, covers or their freshness.
+                    if existing.chapters != nil { preserved.insert(manga.key); continue }
+                    object = .manga(MangaObject(key: manga.key, sourceURL: manga.sourceURL, title: manga.title,
+                        author: manga.author ?? existing.author, summary: manga.summary ?? existing.summary,
+                        coverPageRef: manga.coverPageRef ?? existing.coverPageRef,
+                        rating: manga.rating ?? existing.rating, status: manga.status ?? existing.status, tags: manga.tags ?? existing.tags))
+                }
+                if case .page(let page) = object, let owner = page.ownerRef, preserved.contains(owner) { continue }
                 let owner: String? = if case .page(let page) = object { page.ownerRef?.id } else { nil }
                 try db.execute(sql: "INSERT OR REPLACE INTO objects VALUES (?, ?, ?, ?, ?, ?, ?, ?)", arguments: [object.key.id, object.kind.rawValue, try JSONEncoder().encode(object), version, Date().timeIntervalSince1970, Date().addingTimeInterval(ttl).timeIntervalSince1970, owner, object.key.ruleID])
             }

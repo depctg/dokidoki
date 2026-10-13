@@ -64,7 +64,18 @@ public struct MangaObject: Codable, Sendable {
     public let summary: String?
     public let coverPageRef: ObjectKey?
     /// Reading order supplied by the parsing rule; this object owns chapter navigation.
-    public let chapterRefs: [ContentReference]
+    public let chapters: [ContentReference]?
+    public var chapterRefs: [ContentReference] { chapters ?? [] }
+    private enum CodingKeys: String, CodingKey {
+        case key, sourceURL, title, author, summary, coverPageRef, rating, status, tags
+        case chapters = "chapterRefs"
+    }
+    public init(key: ObjectKey, sourceURL: URL, title: String, author: String? = nil, summary: String? = nil,
+                coverPageRef: ObjectKey? = nil, chapterRefs: [ContentReference]? = nil,
+                rating: String? = nil, status: String? = nil, tags: [String]? = nil) {
+        self.key = key; self.sourceURL = sourceURL; self.title = title; self.author = author; self.summary = summary
+        self.coverPageRef = coverPageRef; chapters = chapterRefs; self.rating = rating; self.status = status; self.tags = tags
+    }
     /// Optional source text, including its own rating scale and publication-status wording.
     /// Missing keys decode as nil in snapshots written before metadata support.
     public var rating: String? = nil
@@ -96,10 +107,13 @@ public struct PageObject: Codable, Sendable, Identifiable {
     /// Nil until a partial chapter's normal DOM actions expose this resource.
     public let imageURL: URL?
     public let refererURL: URL?
+    /// Logical document whose rendered session already may contain this resource.
+    /// Kept separate from ownership: a manga cover can be discovered in a directory.
+    public let sessionURL: URL?
     public var id: ObjectKey { key }
-    public init(key: ObjectKey, ownerRef: ObjectKey?, role: Role = .content, sourceIndex: Int?, imageURL: URL?, refererURL: URL?) {
+    public init(key: ObjectKey, ownerRef: ObjectKey?, role: Role = .content, sourceIndex: Int?, imageURL: URL?, refererURL: URL?, sessionURL: URL? = nil) {
         self.key = key; self.ownerRef = ownerRef; self.role = role; self.sourceIndex = sourceIndex
-        self.imageURL = imageURL; self.refererURL = refererURL
+        self.imageURL = imageURL; self.refererURL = refererURL; self.sessionURL = sessionURL
     }
 }
 public enum ContentObject: Codable, Sendable {

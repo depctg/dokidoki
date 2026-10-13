@@ -36,7 +36,7 @@ public actor RequestSender {
         let owner: URL
         switch request {
         case .source(let key, _, _, _, let load): owner = load.sessionURL ?? key.identityURL
-        case .image(let page, _): owner = page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL ?? page.key.identityURL
+        case .image(let page, _): owner = page.sessionURL ?? page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL ?? page.key.identityURL
         }
         return ResourceKey(policy: try request.rule.exported(), url: owner)
     }
@@ -144,7 +144,7 @@ public actor RequestSender {
                         response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind, backgroundLoading: backgroundLoading, load: load)
                     case .image(let page, let rule):
                         guard let imageURL = page.imageURL else { throw ReaderError.invalidResponse }
-                        if let cached = await fetcher.cachedResource(imageURL, rule: rule, owner: page.ownerRef?.identityURL, referer: page.refererURL) { response = cached }
+                        if let cached = await fetcher.cachedResource(imageURL, rule: rule, owner: page.sessionURL ?? page.ownerRef?.identityURL, referer: page.refererURL) { response = cached }
                         else if let fixture = try DemoContent.response(for: imageURL) { response = fixture }
                         else { response = try await client.download(imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024) }
                     }

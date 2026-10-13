@@ -107,8 +107,13 @@ import os
             return .image(PageObject(key: .page(owner: context, index: 0), ownerRef: context, sourceIndex: 0,
                                      imageURL: url, refererURL: context.identityURL), rule: rule)
         }
+        // A manga discovered by a list owns the cover, while the list owns the browser context.
+        let manga = ObjectKey(ruleID: rule.id, identityURL: owner.identityURL.appendingPathComponent("manga"))
+        let cover = PageObject(key: .page(owner: manga, index: -1), ownerRef: manga, role: .cover, sourceIndex: nil,
+                               imageURL: resource, refererURL: owner.identityURL, sessionURL: owner.identityURL)
+        #expect(try await sender.send(.image(cover, rule: rule)).data == Data("already loaded".utf8))
         for _ in 0..<2 { #expect(try await sender.send(request(resource)).data == Data("already loaded".utf8)) }
-        #expect(await fetcher.lookups == 1) // Second lookup uses the native per-session buffer.
+        #expect(await fetcher.lookups == 1) // The later requests use the native per-session buffer.
         #expect(SenderFixture.state.withLock { $0.paths.isEmpty })
         _ = try await sender.send(request(resource.appendingPathComponent("missing")))
         let other = ObjectKey(ruleID: owner.ruleID, identityURL: owner.identityURL.appendingPathComponent("other"))

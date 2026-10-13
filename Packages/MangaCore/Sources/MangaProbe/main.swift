@@ -66,6 +66,16 @@ import AppKit
                 }
             }
             if let next = directory.nextURL { print("Next list page: \(next.absoluteString)") }
+            if arguments.contains("--previews") {
+                let start = ContinuousClock.now
+                var previews: [MangaObject] = []
+                for ref in directory.mangaRefs.prefix(8) { previews.append(try await ref.mangaPreview(using: repository)) }
+                print("Previews: \(previews.count); known covers: \(previews.filter { $0.coverPageRef != nil }.count); detail documents still unknown: \(previews.filter { $0.chapters == nil }.count); elapsed: \(start.duration(to: .now))")
+                if let first = previews.first, let cover = try await first.coverPage(using: repository) {
+                    let image = try await cover.image(using: repository)
+                    print("Preview cover decoded: \(image.width) × \(image.height)")
+                }
+            }
             if url == DemoContent.directoryURL, let ref = directory.mangaRefs.first,
                case .manga(let manga) = try await ref.load(using: repository), let chapter = manga.chapterRefs.first,
                case .chapter(let chapter) = try await chapter.load(using: repository), let page = chapter.pageRefs.first,

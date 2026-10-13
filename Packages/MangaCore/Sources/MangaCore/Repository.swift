@@ -63,7 +63,7 @@ public actor ObjectRepository {
         if hint == .forceRefresh, let old = directoryFlights.removeValue(forKey: key) { old.task.cancel(); old.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }
         let rule = try rule(for: key)
         let cached = try store.snapshot(key)
-        if let cached, cached.ruleVersion == rule.version,
+        if let cached, cached.ruleVersion == rule.version, Self.isComplete(cached.object),
            hint == .offlineOnly || hint == .preferCache || (hint == .refreshIfStale && cached.expiresAt > Date()) { return cached.object }
         if hint == .offlineOnly { throw ReaderError.cacheMiss }
         if let owner = key.owner {
@@ -89,7 +89,7 @@ public actor ObjectRepository {
         let task = Task<ContentObject, Error> { [sender] in
             let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(refresh: hint == .forceRefresh, sessionURL: sessionURL)))
             try Task.checkCancellation()
-            let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule)
+            let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule, sessionURL: sessionURL)
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
             try self.store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(kind))
@@ -98,6 +98,19 @@ public actor ObjectRepository {
         let request = Request(task: task)
         inFlight[key] = request
         return try await consume(request, key: key)
+    }
+    private static func isComplete(_ object: ContentObject) -> Bool {
+        if case .manga(let manga) = object { return manga.chapters != nil }
+        return true
+    }
+    /// Use already-known card metadata; legacy links without a cover fall back to detail loading.
+    func mangaPreview(_ key: ObjectKey) async throws -> MangaObject {
+        try Task.checkCancellation()
+        let rule = try rule(for: key)
+        if let cached = try store.snapshot(key), cached.ruleVersion == rule.version,
+           case .manga(let manga) = cached.object, manga.coverPageRef != nil || manga.chapters != nil { return manga }
+        guard case .manga(let manga) = try await resolve(key, hint: .preferCache) else { throw ReaderError.invalidResponse }
+        return manga
     }
     func pageDescriptors(for chapter: ChapterObject) throws -> [PageObject] {
         let rule = try rule(for: chapter.key)
@@ -131,7 +144,11 @@ public actor ObjectRepository {
                     let rule = try self.rule(for: key)
                     let response = try await self.sender.send(.source(key, kind: .directory, rule: rule, backgroundLoading: self.backgroundLoading,
                         load: SourceLoad(range: current.mangaRefs.count..<range.upperBound, knownItems: Set(current.mangaRefs.map(\.key)))))
-                    guard case .directory(let result) = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: .directory, rule: rule).first else { throw ReaderError.invalidResponse }
+                    let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: .directory, rule: rule)
+                    guard case .directory(let result) = objects.first else { throw ReaderError.invalidResponse }
+                    try Task.checkCancellation()
+                    guard epoch == self.generation else { throw CancellationError() }
+                    try self.store.upsert(Array(objects.dropFirst()), version: rule.version, ttl: CachePolicy.lifetime(.directory), replacingChildren: false)
                     batch = result
                 }
                 try Task.checkCancellation()

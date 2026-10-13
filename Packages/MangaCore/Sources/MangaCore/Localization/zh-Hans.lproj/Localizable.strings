@@ -64,3 +64,5 @@
 "The source did not advance to the requested items. Retry or refresh." = "来源未加载到所需内容。请重试或刷新。";
 
 "Indexed session targets are only supported for chapter pages." = "索引会话目标仅支持章节页面。";
+
+"Known metadata fields belong to manga links and cannot be nested further." = "已知元数据字段仅适用于漫画链接，不能进一步嵌套。";

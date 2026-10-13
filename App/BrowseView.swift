@@ -181,7 +181,8 @@ struct MangaPreview: View {
         .task(id: "\(reference.id.id)|\(model.loadingRevision)") {
             manga = nil; cover = nil
             do {
-                guard let repository = model.repository, case .manga(let loaded) = try await reference.load(using: repository, hint: .preferCache) else { return }
+                guard let repository = model.repository else { return }
+                let loaded = try await reference.mangaPreview(using: repository)
                 try Task.checkCancellation(); manga = loaded
                 let page = try await loaded.coverPage(using: repository, hint: .preferCache)
                 try Task.checkCancellation(); cover = page

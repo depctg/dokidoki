@@ -132,6 +132,10 @@ import AppKit
         await sender.invalidateResources()
         let final = try await first.load(6..<12, using: repository)
         #expect(final.mangaRefs.map(\.title) == (1...8).map { "Item \($0)" })
+        for ref in final.mangaRefs {
+            guard case .manga(let preview) = try #require(try store.snapshot(ref.key)).object else { throw ReaderError.cacheMiss }
+            #expect(preview.title == ref.title && preview.chapters == nil)
+        }
         #expect(final.hasMore == false && final.totalCount == 8)
         #expect(try JSONDecoder().decode(DirectoryObject.self, from: JSONEncoder().encode(final)).hasMore == false)
         await sender.invalidateResources()

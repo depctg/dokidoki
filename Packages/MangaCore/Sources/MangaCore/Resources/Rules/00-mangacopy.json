@@ -2,21 +2,25 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 4,
+  "version": 5,
   "allowedHosts": [
-    "www.mangacopy.com",
     "s0.mangafunb.fun",
     "s3.mangafunb.fun",
+    "sa.mangafunb.fun",
     "sb.mangafunb.fun",
     "sc.mangafunb.fun",
     "sd.mangafunb.fun",
+    "se.mangafunb.fun",
     "sf.mangafunb.fun",
     "sg.mangafunb.fun",
     "sh.mangafunb.fun",
     "sj.mangafunb.fun",
+    "sk.mangafunb.fun",
     "sl.mangafunb.fun",
     "sm.mangafunb.fun",
     "sn.mangafunb.fun",
+    "so.mangafunb.fun",
+    "sp.mangafunb.fun",
     "sq.mangafunb.fun",
     "sr.mangafunb.fun",
     "ss.mangafunb.fun",
@@ -24,7 +28,8 @@
     "sw.mangafunb.fun",
     "sx.mangafunb.fun",
     "sy.mangafunb.fun",
-    "sz.mangafunb.fun"
+    "sz.mangafunb.fun",
+    "www.mangacopy.com"
   ],
   "matchers": [
     {
@@ -62,7 +67,21 @@
         },
         "mangaLinks": {
           "path": "//div[contains(@class,'exemptComic-box')]//a[contains(@href,'/comic/') and normalize-space(.)!=''] | //div[@id='comic']//a[contains(@href,'/comic/') and normalize-space(.)!='']",
-          "read": "attr:href"
+          "read": "attr:href",
+          "fields": {
+            "title": {
+              "path": ".//p[@title]",
+              "read": "attr:title"
+            },
+            "coverImage": {
+              "path": "ancestor::div[contains(concat(' ',normalize-space(@class),' '),' exemptComic_Item ')][1]//img",
+              "read": "attr:data-src",
+              "fallback": "attr:src"
+            },
+            "author": {
+              "path": "ancestor::div[contains(concat(' ',normalize-space(@class),' '),' exemptComic_Item ')][1]//span[contains(@class,'exemptComicItem-txt-span')]/a"
+            }
+          }
         },
         "next": {
           "path": "//li[@class='next']/a[starts-with(@href,'/comics?')]",
@@ -146,8 +165,21 @@
         "mangaLinks": {
           "path": "results.list.*",
           "read": "attr:path_word",
-          "titlePath": "name",
-          "urlTemplate": "https://www.mangacopy.com/comic/{value}"
+          "urlTemplate": "https://www.mangacopy.com/comic/{value}",
+          "fields": {
+            "title": {
+              "path": "name"
+            },
+            "coverImage": {
+              "path": "cover"
+            },
+            "author": {
+              "path": "author.*.name"
+            },
+            "tags": {
+              "path": "theme.*.name"
+            }
+          }
         }
       },
       "pagination": {

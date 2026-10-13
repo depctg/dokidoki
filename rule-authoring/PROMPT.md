@@ -34,6 +34,13 @@ an arbitrary fetch inside an existing session to fill its cache.
 A matcher can select a named extractor for a public JSON search API alongside
 HTML catalogs; JSON link read/titlePath and offset/limit/total pagination are
 available. Only declare endpoints and counters observed in normal requests.
+Pass known child metadata using mangaLinks.fields and the existing Field syntax:
+title, coverImage, author, summary, rating, status, tags. Select whole JSON items
+or HTML links and evaluate metadata relative to each selected item. Known title
+and cover URL use one creation process; title falls back to the normal link
+label. One level only. Do not fetch detail documents merely to rediscover list
+metadata; chapters remain unknown until requested. Check --previews and cover
+association when some rows lack images. Resource reuse stays in core.
 Background resources default on; object-kind rendering.loadAds=false opts out
 and the global Settings switch always wins. Never present or interact with ads.
 

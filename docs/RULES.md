@@ -25,6 +25,28 @@ URLs resolve against the final response URL and must still pass the exact-host p
 
 Manga `rating` and `status` use the first nonblank selected value; `tags` uses all nonblank selected values, deduplicated in source order. They use the existing XPath/JSON path and regex options. Rating and status remain source text (for example `4.5 / 5`, `Ongoing`, or `已完结`); Swift does not invent a scale, translate source labels, or infer a status. Omitted fields and unmatched selectors produce no metadata UI. Exclude site placeholders with a rule regex when necessary. Older manga snapshots without these keys remain readable.
 
+### Known metadata on linked objects
+
+`mangaLinks.fields` optionally maps `title`, `coverImage`, `author`, `summary`, `rating`, `status`, and `tags` through the same Field language as a full manga document. Evaluate each field relative to its selected link node (XPath `.`/`..`/`.//`) or selected JSON object; JSON template/query paths in these nested fields are also relative to that object. Named variables remain extractor-scoped. One level only: no nested relationships, scripts, or extra metadata names.
+
+```json
+"mangaLinks": {
+  "path": "//article/a[@class='title']",
+  "read": "attr:href",
+  "fields": {
+    "title": { "path": ".", "read": "attr:title", "fallback": "text" },
+    "coverImage": { "path": "../img", "read": "attr:data-src", "fallback": "attr:src" },
+    "rating": { "path": "../span[@class='rating']" }
+  }
+}
+```
+
+For JSON, select the whole item (`items.*`), read its URL/identifier with `read`, and use `fields.title: {"path":"name"}`, `fields.coverImage: {"path":"cover"}`, etc. Do not select just `items.*.url`: that loses the sibling metadata context. The existing link label (`title` attribute/text for HTML; `titlePath` or `title` for JSON) supplies known title when `fields.title` is absent or empty. Explicit known title also becomes the reference label. Full manga extraction and linked previews share the same metadata construction, trimming and tag deduplication. Missing optional values stay unknown; selections never zip unrelated arrays of links/covers.
+
+Core stores each linked manga and its known cover as separate keyed snapshots. The manga's chapters stay unknown until detail loading, distinct from a known empty list; existing serialized `chapterRefs` remain compatible. Browse calls `ContentReference.mangaPreview`, using cached known covers without fetching detail documents. Legacy links without a known cover fall back to a detail load. A normal reference load still resolves chapters. Same-version partial updates merge optional knowledge, and never downgrade a full manga or overwrite its cover/freshness. List seeds use the list's lifetime; a fetched complete manga uses the manga lifetime.
+
+Covers carry the logical source session URL separately from their manga owner and final-response referer. The central sender checks that session's passive URL buffer before HTTP. This does not create browser requests or relax rule/host/referer isolation. Missing, not-yet-loaded, or cross-origin-inaccessible browser images use normal centralized HTTP; metadata reuse works even with background loading off.
+
 Optional `browse` declares the Site object’s ordered directories as `{ "title": "Recent updates", "url": "https://reader.example/recent" }` entries. Each URL must be an allowed directory URL matched by this rule. Titles must be nonempty; URLs must be unique after normalization; at most 24 directories are accepted. Core normalizes these URLs into SiteObject.directoryRefs; each target parses as a single DirectoryObject list. The declared title is also the directory title when that exact URL is parsed. Browse previews up to eight manga per shelf and opens the full directory when its heading is selected. Omission remains valid for older imported rules.
 
 Directory sorting is optional and uses the existing `Field` language. `sortByLinks` and `sortOrderLinks` select titled links to directory URLs; `selectedSortBy` and `selectedSortOrder` select the active links. HTML normally uses XPath plus `read: "attr:href"`; JSON can select `{ "url": "…", "title": "…" }` objects. Each axis is independent: missing or empty links produce no picker, and both missing means no sort control. The app keeps source order and does not invent local title sorting or reverse a single fetched page.
@@ -86,7 +108,7 @@ Example lazy chapter extractor (all selectors are illustrative):
 }
 ```
 
-Session resource lookup is passive: first reuse already acquired bytes or readable pixels of already-loaded browser images. A miss uses a normal centralized HTTP/rendered request according to the rule, never a new fetch inside the old document. Native WebKit does not expose all cross-origin response bytes; tainted canvas/absent images fall back to HTTP. Buffers are bounded to four logical contexts × 24 MiB, isolated by rule, owner URL and referer, and backed by the shared durable image cache.
+Session resource lookup is passive: first reuse already acquired bytes or readable pixels of already-loaded browser images. A miss uses a normal centralized HTTP/rendered request according to the rule, never a new fetch inside the old document. Native WebKit does not expose all cross-origin response bytes; tainted canvas/absent images fall back to HTTP. Buffers are bounded to four logical contexts × 24 MiB, isolated by rule, logical session URL and referer, and backed by the shared durable image cache.
 
 For the explicit compatibility format `renderedJSON`, `rendering.captureFunction` names a simple dotted function path. A fixed generic observer preserves that function's normal calls and captures the first argument, or its return value with `captureResult: true`. `rendering.readyImageXPath` must select an image the website created. Only after that image has a `src` does the adapter return `{ "data": <captured value>, "imageURL": <rendered image URL>, "title": <document title>, "url": <document URL> }` for normal JSON extraction. An optional `readyXPath` adds another readiness condition. The observer never invokes the named function, changes access gates/cookies, decrypts payloads itself, or executes rule-supplied code. Unsupported scripts/options and prototype-path components are rejected. Prefer a specific site function; when observing a shared function, verify that its last completed call at readiness contains the intended data.
 
