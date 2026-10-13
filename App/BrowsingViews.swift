@@ -10,7 +10,7 @@ struct RootView: View {
             NavigationSplitView(columnVisibility: $columns) {
                 List(selection: Binding<AppSection?>(get: { model.section }, set: { if let section = $0 { model.section = section } })) {
                     ForEach(AppSection.allCases) { section in
-                        Label(section.rawValue, systemImage: section.symbol).tag(section)
+                        Label(section.title, systemImage: section.symbol).tag(section)
                     }
                 }
                 .navigationTitle("MangaViewer")
@@ -28,7 +28,7 @@ struct RootView: View {
             #else
             TabView(selection: $model.section) {
                 ForEach(AppSection.allCases) { section in
-                    Tab(section.rawValue, systemImage: section.symbol, value: section) {
+                    Tab(section.title, systemImage: section.symbol, value: section) {
                         navigation(for: section)
                     }
                 }
@@ -102,7 +102,7 @@ struct ObjectScreen: View {
                 case .page(let page): PageImageView(page: page, model: model)
                 }
             } else if loading { ProgressView("Opening content…").frame(maxWidth: .infinity, maxHeight: .infinity) }
-            else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? "Try a supported URL.") } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
+            else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? String(localized: "Try a supported URL.")) } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
         }
         .id(revision)
         .task(id: "\(key.id)|\(model.ruleRevision)") { object = nil; await load(.refreshIfStale) }
@@ -184,13 +184,13 @@ struct MangaView: View {
                     ForEach(manga.chapterRefs) { chapter in
                         Button(chapter.title) { model.openChapter(chapter.key) }
                             .id(chapter.key)
-                            .accessibilityValue(model.reader?.chapter.key == chapter.key ? "Current chapter" : "")
+                            .accessibilityValue(model.reader?.chapter.key == chapter.key ? String(localized: "Current chapter") : "")
                             .listRowBackground(model.reader?.chapter.key == chapter.key ? Color.accentColor.opacity(0.15) : nil)
                     }
                     if manga.chapterRefs.isEmpty { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
                 }
             }.navigationTitle(manga.title)
-            .toolbar { ToolbarItem { Button(model.saved.contains { $0.key == manga.key } ? "Unsave" : "Save", systemImage: "bookmark") { model.toggleSaved(manga) } } }
+            .toolbar { ToolbarItem { Button(model.saved.contains { $0.key == manga.key } ? String(localized: "Unsave") : String(localized: "Save"), systemImage: "bookmark") { model.toggleSaved(manga) } } }
             .task(id: manga.coverPageRef) {
                 if let repository = model.repository { cover = try? await manga.coverPage(using: repository) }
             }

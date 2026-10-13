@@ -18,13 +18,13 @@ struct LibraryView: View {
             }
             .overlay {
                 if keys.isEmpty {
-                    ContentUnavailableView(section == .recent ? "Your next chapter awaits" : "Make room for a story",
+                    ContentUnavailableView(section == .recent ? String(localized: "Your next chapter awaits") : String(localized: "Make room for a story"),
                         systemImage: section.symbol,
-                        description: Text(section == .recent ? "Manga you read appears here." : "Save manga while browsing, or star a title in Recent to add it here."))
+                        description: Text(section == .recent ? String(localized: "Manga you read appears here.") : String(localized: "Save manga while browsing, or star a title in Recent to add it here.")))
                 }
             }
         }
-        .navigationTitle(section.rawValue)
+        .navigationTitle(section.title)
         .onAppear { model.reloadLibrary() }
     }
 }
@@ -39,22 +39,22 @@ private struct LibraryRow: View {
     @State private var cachedChapter: ChapterObject?
     private var saved: SavedManga? { model.saved.first { $0.key == key } }
     private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == key } }
-    private var title: String { manga?.title ?? saved?.title ?? position?.mangaTitle ?? position?.title ?? "Untitled manga" }
+    private var title: String { manga?.title ?? saved?.title ?? position?.mangaTitle ?? position?.title ?? String(localized: "Untitled manga") }
     private var starred: Bool { saved?.isStarred == true }
-    private var chapterTitle: String { position?.title ?? manga?.chapterRefs.first?.title ?? "Not started" }
+    private var chapterTitle: String { position?.title ?? manga?.chapterRefs.first?.title ?? String(localized: "Not started") }
     private var pageNumber: Int? {
         guard let position else { return 0 }
         return position.pageNumber ?? cachedChapter?.pageRefs.firstIndex(of: position.sourcePageKey).map { $0 + 1 }
     }
     private var totalPages: Int? { position?.totalPages ?? cachedChapter?.pageRefs.count }
-    private var progress: String { "Page \(pageNumber.map(String.init) ?? "—") / \(totalPages.map(String.init) ?? "—")" }
+    private var progress: String { String(localized: "Page \(pageNumber.map { $0.formatted() } ?? "—") / \(totalPages.map { $0.formatted() } ?? "—")") }
     private var lastRead: String {
-        guard let date = position?.updatedAt else { return "Not read yet" }
+        guard let date = position?.updatedAt else { return String(localized: "Not read yet") }
         let hours = max(0, Int(now.timeIntervalSince(date) / 3600))
-        if hours < 1 { return "Last read <1 hr ago" }
-        if hours < 24 { return "Last read \(hours) hr ago" }
+        if hours < 1 { return String(localized: "Last read <1 hr ago") }
+        if hours < 24 { return String(localized: "Last read \(hours) hr ago") }
         let days = hours / 24
-        return "Last read \(days) \(days == 1 ? "day" : "days") ago"
+        return String(localized: "Last read \(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
     }
     var body: some View {
         Button { model.resumeManga(key) } label: {
@@ -82,12 +82,12 @@ private struct LibraryRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityIdentifier("library.item.\(key.id)")
-        .accessibilityHint(position == nil ? "Start reading" : "Resume reading")
+        .accessibilityHint(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"))
         #if os(iOS)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions }
         #endif
         .contextMenu { actions }
-        .accessibilityAction(named: starred ? "Unstar" : "Star") { model.toggleStar(key, title: title) }
+        .accessibilityAction(named: starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
         .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(key) }
         .task(id: "\(key.id)|\(model.ruleRevision)") { await loadDetails() }
@@ -95,7 +95,7 @@ private struct LibraryRow: View {
     }
     @ViewBuilder private var actions: some View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
-        Button(starred ? "Unstar" : "Star", systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
+        Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
             .tint(.orange)
         Button("Manga details", systemImage: "book.closed") { model.paths[section, default: []].append(key) }
             .tint(.blue)

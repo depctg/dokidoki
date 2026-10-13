@@ -8,14 +8,14 @@ private final class HTMLDocument {
         let options = Int32(HTML_PARSE_RECOVER.rawValue | HTML_PARSE_NOERROR.rawValue | HTML_PARSE_NOWARNING.rawValue | HTML_PARSE_NONET.rawValue)
         guard let doc = data.withUnsafeBytes({ raw in
             htmlReadMemory(raw.bindMemory(to: CChar.self).baseAddress, Int32(data.count), nil, "UTF-8", options)
-        }) else { throw ReaderError.extraction("Invalid HTML.") }
+        }) else { throw ReaderError.extraction(String(localized: "Invalid HTML.", bundle: .module)) }
         document = doc
     }
     deinit { xmlFreeDoc(document) }
     func values(_ field: Field) throws -> [(String, String)] {
-        guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction("Could not create XPath context.") }
+        guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction(String(localized: "Could not create XPath context.", bundle: .module)) }
         defer { xmlXPathFreeContext(context) }
-        guard let result = xmlXPathEvalExpression(field.path, context) else { throw ReaderError.extraction("Invalid XPath.") }
+        guard let result = xmlXPathEvalExpression(field.path, context) else { throw ReaderError.extraction(String(localized: "Invalid XPath.", bundle: .module)) }
         defer { xmlXPathFreeObject(result) }
         guard let set = result.pointee.nodesetval, set.pointee.nodeNr > 0 else { return [] }
         func string(_ pointer: UnsafeMutablePointer<xmlChar>?) -> String {
@@ -39,7 +39,7 @@ private final class HTMLDocument {
 public struct RuleExtractor: Sendable {
     public init() {}
     public func extract(data: Data, responseURL: URL, key: ObjectKey, kind: ContentKind, rule: SiteRule) throws -> [ContentObject] {
-        guard let spec = rule.extractors[kind.rawValue] else { throw ReaderError.extraction("Missing extractor.") }
+        guard let spec = rule.extractors[kind.rawValue] else { throw ReaderError.extraction(String(localized: "Missing extractor.", bundle: .module)) }
         let html = spec.format.isJSON ? nil : try HTMLDocument(data: data)
         let json: Any? = spec.format.isJSON ? try JSONSerialization.jsonObject(with: data) : nil
         func nodes(at path: String) -> [Any] {
@@ -88,18 +88,18 @@ public struct RuleExtractor: Sendable {
                     for match in expression.matches(in: template, range: NSRange(template.startIndex..., in: template)).reversed() {
                         let token = String(template[Range(match.range(at: 1), in: template)!])
                         let replacement = token == "value" ? selected : token.hasPrefix("vars.") ? variables[String(token.dropFirst(5))] : scalar(nodes(at: token).first)
-                        guard let replacement else { throw ReaderError.extraction("Missing URL template value: \(token).") }
+                        guard let replacement else { throw ReaderError.extraction(String(localized: "Missing URL template value: \(token).", bundle: .module)) }
                         value.replaceSubrange(Range(match.range, in: value)!, with: replacement)
                     }
                 }
                 if let path = field.queryPath {
-                    guard let query = nodes(at: path).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction("Query parameters must be a JSON object.") }
+                    guard let query = nodes(at: path).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction(String(localized: "Query parameters must be a JSON object.", bundle: .module)) }
                     let items = try query.keys.sorted().map { key in
-                        guard let value = scalar(query[key]) else { throw ReaderError.extraction("Query parameters must be strings or numbers.") }
+                        guard let value = scalar(query[key]) else { throw ReaderError.extraction(String(localized: "Query parameters must be strings or numbers.", bundle: .module)) }
                         return URLQueryItem(name: key, value: value)
                     }
                     components.queryItems = (components.queryItems ?? []) + items
-                    guard let rendered = components.string else { throw ReaderError.extraction("Invalid image URL.") }; value = rendered
+                    guard let rendered = components.string else { throw ReaderError.extraction(String(localized: "Invalid image URL.", bundle: .module)) }; value = rendered
                 }
                 return (value, entry.1)
             }
@@ -130,7 +130,7 @@ public struct RuleExtractor: Sendable {
                 return ContentReference(key: childKey, title: label.isEmpty ? destination.lastPathComponent : label)
             }
         }
-        let title = try first("title") ?? "Untitled"
+        let title = try first("title") ?? String(localized: "Untitled", bundle: .module)
         switch kind {
         case .directory:
             return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title, mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try first("next").map(url)))]
@@ -148,7 +148,7 @@ public struct RuleExtractor: Sendable {
             let parent = try refs("mangaLink", expected: .manga).first?.key
             return [.chapter(ChapterObject(key: key, sourceURL: responseURL, title: title, mangaRef: parent, pageRefs: pages.map(\.key)))] + pages.map(ContentObject.page)
         case .page:
-            guard let image = try first("image") else { throw ReaderError.extraction("Missing image URL.") }
+            guard let image = try first("image") else { throw ReaderError.extraction(String(localized: "Missing image URL.", bundle: .module)) }
             return [.page(PageObject(key: key, ownerRef: nil, sourceIndex: nil, imageURL: try url(image), refererURL: responseURL))]
         }
     }

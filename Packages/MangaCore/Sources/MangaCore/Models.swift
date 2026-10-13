@@ -89,24 +89,24 @@ public enum ContentObject: Codable, Sendable {
         switch self { case .directory: .directory; case .manga: .manga; case .chapter: .chapter; case .page: .page }
     }
     public var title: String {
-        switch self { case .directory(let x): x.title; case .manga(let x): x.title; case .chapter(let x): x.title; case .page(let x): "Page \((x.sourceIndex ?? 0) + 1)" }
+        switch self { case .directory(let x): x.title; case .manga(let x): x.title; case .chapter(let x): x.title; case .page(let x): String(localized: "Page \((x.sourceIndex ?? 0) + 1)", bundle: .module) }
     }
 }
 public enum ReaderError: LocalizedError, Sendable {
     case unsupportedURL, ambiguousURL, invalidRule(String), blockedHost, invalidResponse, httpStatus(Int), tooLarge, extraction(String), cacheMiss, missingRule, renderedSourceRequired
     public var errorDescription: String? {
         switch self {
-        case .unsupportedURL: "This URL is not supported by an installed rule."
-        case .ambiguousURL: "More than one rule matches this URL. Adjust rule priorities."
-        case .invalidRule(let reason): "Invalid rule: \(reason)"
-        case .blockedHost: "The URL or redirect is outside this rule's allowed hosts."
-        case .invalidResponse: "The server did not return a successful response."
-        case .httpStatus(let code): "The server returned HTTP \(code). Try refreshing the chapter or opening the source website."
-        case .tooLarge: "The response exceeds the download size limit."
-        case .extraction(let reason): "Could not read this page: \(reason)"
-        case .cacheMiss: "This content is not available in the local cache."
-        case .missingRule: "The rule for this content is no longer installed."
-        case .renderedSourceRequired: "This chapter needs the app's rendered website adapter."
+        case .unsupportedURL: String(localized: "This URL is not supported by an installed rule.", bundle: .module)
+        case .ambiguousURL: String(localized: "More than one rule matches this URL. Adjust rule priorities.", bundle: .module)
+        case .invalidRule(let reason): String(localized: "Invalid rule: \(reason)", bundle: .module)
+        case .blockedHost: String(localized: "The URL or redirect is outside this rule's allowed hosts.", bundle: .module)
+        case .invalidResponse: String(localized: "The server did not return a successful response.", bundle: .module)
+        case .httpStatus(let code): String(localized: "The server returned HTTP \(code). Try refreshing the chapter or opening the source website.", bundle: .module)
+        case .tooLarge: String(localized: "The response exceeds the download size limit.", bundle: .module)
+        case .extraction(let reason): String(localized: "Could not read this page: \(reason)", bundle: .module)
+        case .cacheMiss: String(localized: "This content is not available in the local cache.", bundle: .module)
+        case .missingRule: String(localized: "The rule for this content is no longer installed.", bundle: .module)
+        case .renderedSourceRequired: String(localized: "This chapter needs the app's rendered website adapter.", bundle: .module)
         }
     }
 }

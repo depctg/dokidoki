@@ -45,7 +45,7 @@ public actor ImageLoader {
                 kCGImageSourceShouldCacheImmediately: true
               ] as CFDictionary) else {
             try? FileManager.default.removeItem(at: file)
-            throw ReaderError.extraction("The image format could not be decoded. Retry to fetch a new copy.")
+            throw ReaderError.extraction(String(localized: "The image format could not be decoded. Retry to fetch a new copy.", bundle: .module))
         }
         if generation == currentGeneration {
             memory.setObject(image, forKey: memoryKey, cost: image.bytesPerRow * image.height)

@@ -68,7 +68,7 @@ struct ReaderResumeBar: View {
                         .font(.subheadline.weight(.semibold)).lineLimit(1)
                     if placement != .inline {
                         Text([reader.mangaTitle == nil ? nil : reader.chapter.title,
-                              reader.plans.isEmpty ? "Resume reading" : "Page \(reader.index + 1) of \(reader.plans.count)"].compactMap { $0 }.joined(separator: " · "))
+                              reader.plans.isEmpty ? String(localized: "Resume reading") : String(localized: "Page \(reader.index + 1) of \(reader.plans.count)")].compactMap { $0 }.joined(separator: " · "))
                             .lineLimit(1)
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
@@ -81,7 +81,7 @@ struct ReaderResumeBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Resume \([reader.mangaTitle, reader.chapter.title].compactMap { $0 }.joined(separator: ", "))")
-        .accessibilityValue(reader.plans.isEmpty ? "" : "Page \(reader.index + 1) of \(reader.plans.count)")
+        .accessibilityValue(reader.plans.isEmpty ? "" : String(localized: "Page \(reader.index + 1) of \(reader.plans.count)"))
         .accessibilityIdentifier("reader.resume")
         .task { await reader.loadMangaMetadata() }
     }

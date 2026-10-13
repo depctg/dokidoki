@@ -32,7 +32,7 @@ struct ReaderView: View {
     private var preloadHint: String? {
         guard reader.chapterToPrefetch(.next) != nil else { return nil }
         if reader.previews[.next]?.page != nil { return nil }
-        return reader.previews[.next]?.error ?? "Preloading next chapter…"
+        return reader.previews[.next]?.error ?? String(localized: "Preloading next chapter…")
     }
     var body: some View {
         GeometryReader { geometry in
@@ -157,7 +157,7 @@ struct ReaderView: View {
                 Toggle("Detect spreads", isOn: $app.preferences.detectSpreads)
                 Toggle("Facing pages in wide windows", isOn: $app.preferences.facingPages)
                 Picker("Current source page", selection: Binding(get: { reader.source.flatMap { reader.overrides[$0] } ?? .automatic }, set: reader.setOverride)) {
-                    ForEach(SpreadOverride.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                    ForEach(SpreadOverride.allCases, id: \.self) { Text($0.title).tag($0) }
                 }.disabled(reader.source == nil)
             }
             Divider()
@@ -323,14 +323,14 @@ struct ReaderView: View {
         return ZStack {
             // Fixed typography/position: the expanding gap unmasks text without reflowing it.
             VStack(spacing: 6) {
-                Text(reference?.title ?? (forward ? "No next chapter" : "No previous chapter"))
+                Text(reference?.title ?? (forward ? String(localized: "No next chapter") : String(localized: "No previous chapter")))
                     .font(.caption.bold()).lineLimit(2).accessibilityIdentifier("reader.continuationTitle")
                 Image(systemName: reference == nil ? "book.closed" : (ready ? "checkmark.circle.fill" : "arrow.down.circle"))
                     .contentTransition(.symbolEffect(.replace)).font(.title3).frame(width: 24, height: 24)
                 ZStack {
                     Text("Pull farther to continue").opacity(reference != nil && !ready ? 1 : 0)
-                    Text("Release for \(forward ? "next" : "previous") chapter").opacity(ready ? 1 : 0)
-                    Text(forward ? "End of manga" : "Beginning of manga").opacity(reference == nil ? 1 : 0)
+                    Text(forward ? String(localized: "Release for next chapter") : String(localized: "Release for previous chapter")).opacity(ready ? 1 : 0)
+                    Text(forward ? String(localized: "End of manga") : String(localized: "Beginning of manga")).opacity(reference == nil ? 1 : 0)
                 }.font(.caption2).accessibilityIdentifier("reader.continuationHint")
             }
             .multilineTextAlignment(.center)
@@ -415,7 +415,7 @@ struct DisplayImageView: View {
     private var resources: [PageObject] { pages.filter { plan.sourcePageKeys.contains($0.key) } }
     private var imageLabel: String {
         let numbers = resources.compactMap { $0.sourceIndex.map { String($0 + 1) } }
-        return numbers.isEmpty ? "Comic page" : "Comic page " + numbers.joined(separator: ", ")
+        return numbers.isEmpty ? String(localized: "Comic page") : String(localized: "Comic page \(numbers.joined(separator: ", "))")
     }
     private var requestID: String { plan.id + resources.map { $0.imageURL.absoluteString + ($0.refererURL?.absoluteString ?? "") }.joined() + "-\(attempt)" }
     var body: some View {

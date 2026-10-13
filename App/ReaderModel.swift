@@ -93,12 +93,12 @@ struct ChapterPreview {
         do {
             guard case .chapter(let chapter) = try await key.load(using: repository),
                   let page = try await chapter.page(at: direction == .next ? 0 : chapter.pageRefs.count - 1, using: repository) else {
-                previews[direction] = ChapterPreview(error: "Preview unavailable"); return
+                previews[direction] = ChapterPreview(error: String(localized: "Preview unavailable")); return
             }
             _ = try await page.image(using: repository)
             try Task.checkCancellation()
             previews[direction] = ChapterPreview(page: page)
-        } catch is CancellationError {} catch { if !Task.isCancelled { previews[direction] = ChapterPreview(error: "Preview unavailable") } }
+        } catch is CancellationError {} catch { if !Task.isCancelled { previews[direction] = ChapterPreview(error: String(localized: "Preview unavailable")) } }
     }
     func openAdjacent(_ reference: ContentReference?, fromEnd: Bool = false) {
         guard app.reader?.id == id, let reference else { return }

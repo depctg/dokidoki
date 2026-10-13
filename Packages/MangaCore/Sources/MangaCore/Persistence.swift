@@ -89,7 +89,7 @@ public final class ObjectStore: Sendable {
     }
     public func setRuleOrder(_ ids: [String]) throws {
         let installed = try rules().map(\.id)
-        guard ids.count == installed.count, Set(ids) == Set(installed) else { throw ReaderError.invalidRule("Rule order must contain each installed rule exactly once.") }
+        guard ids.count == installed.count, Set(ids) == Set(installed) else { throw ReaderError.invalidRule(String(localized: "Rule order must contain each installed rule exactly once.", bundle: .module)) }
         try setPreference("ruleOrder", value: ids)
     }
     public func saveRule(_ rule: SiteRule) throws {

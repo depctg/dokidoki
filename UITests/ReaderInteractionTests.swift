@@ -6,6 +6,7 @@ import XCTest
     // Shell ownership, library action wiring, and replacing the one global reader.
     func testLibraryNavigationAndActions() {
         let app = XCUIApplication()
+        app.launchArguments += ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         let libraryTab = app.buttons.matching(identifier: "My Library").firstMatch
         let recentTab = app.buttons.matching(identifier: "Recent").firstMatch
@@ -113,7 +114,7 @@ import XCTest
     // Reader-only gestures, chrome, and original-page/fraction restoration (including one relaunch).
     func testReaderGesturesAndPosition() {
         let app = XCUIApplication()
-        app.launchArguments = ["--open-url", "https://demo.mangaviewer.local/chapter/arrival"]
+        app.launchArguments = ["--open-url", "https://demo.mangaviewer.local/chapter/arrival", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         app.launch()
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))

@@ -63,7 +63,7 @@ public struct PagePipeline: Sendable {
             case "marginAlign": return MarginProcessor() as any PageProcessor
             case "spreadDetect": return SpreadProcessor() as any PageProcessor
             case "layout": return LayoutProcessor() as any PageProcessor
-            default: throw ReaderError.invalidRule("Unknown processor: \(id)")
+            default: throw ReaderError.invalidRule(String(localized: "Unknown processor: \(id)", bundle: .module))
             }
         }
     }

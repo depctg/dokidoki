@@ -29,7 +29,7 @@ for number in 1...4 {
     image.unlockFocus()
     var rect = NSRect(origin: .zero, size: image.size)
     let cg = image.cgImage(forProposedRect: &rect, context: nil, hints: nil)!
-    let url = URL(fileURLWithPath: "Packages/MangaCore/Sources/MangaCore/Resources/\(number).png")
+    let url = URL(fileURLWithPath: "Packages/MangaCore/Sources/MangaCore/Resources/Fixtures/\(number).png")
     let destination = CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil)!
     CGImageDestinationAddImage(destination, cg, nil); CGImageDestinationFinalize(destination)
 }

@@ -3,13 +3,13 @@ import Foundation
 public enum DemoContent {
     public static let directoryURL = URL(string: "https://demo.mangaviewer.local/catalog")!
     public static func bundledRules() throws -> [SiteRule] {
-        guard let directory = Bundle.module.url(forResource: "Rules", withExtension: nil, subdirectory: "Resources") else { throw ReaderError.cacheMiss }
+        guard let directory = Bundle.module.url(forResource: "Rules", withExtension: nil) else { throw ReaderError.cacheMiss }
         let files = try FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)
             .filter { $0.pathExtension == "json" }.sorted { $0.lastPathComponent < $1.lastPathComponent }
         return try files.map { try SiteRule.decode(Data(contentsOf: $0)) }
     }
     public static func resource(_ name: String, extension ext: String) throws -> Data {
-        guard let url = Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Resources") else { throw ReaderError.cacheMiss }
+        guard let url = Bundle.module.url(forResource: name, withExtension: ext, subdirectory: "Fixtures") else { throw ReaderError.cacheMiss }
         return try Data(contentsOf: url)
     }
     public static func response(for url: URL) throws -> SourceResponse? {

@@ -1,5 +1,15 @@
 # Development state
 
+## Native localization — 2026-10-13
+
+- Added native app String Catalogs (139 UI keys plus two bundle-text keys), English/Simplified Chinese, compiler extraction, plural variants and complete-message interpolation. Localized controls, enum display labels, fallbacks, status/errors, reader progress/continuation and accessibility. System/per-app language selection needs no custom manager or picker. Website/rule content, persisted raw preferences and object identities stay unchanged.
+- Core errors/reasons and generated labels use 57 native `.lproj/Localizable.strings` entries through `String(localized:bundle: .module)`, with SwiftPM defaultLocalization. No dependency, parser feature or rule schema change. The rare extracted “Untitled” fallback remains in its snapshot's language until refresh; source titles remain verbatim.
+- The Chinese simulator probe caught an existing package layout trap: copying a root folder named Resources makes Foundation ignore sibling localizations. Rules and the eight unchanged fixtures now copy separately as Rules/Fixtures; source recipes remain under Resources/Rules. DemoContent and the fixture generator follow the new paths. The localization test checks native Bundle.module language discovery, translation/placeholder parity, actual formatted translations and old preference decoding.
+- All 33 core tests pass (`/tmp/mangaviewer-i18n-core-final.log`); the final focused localization run also passes. Compiler audits cover all emitted app keys on iOS/macOS/visionOS and all core keys. Native compiled-catalog checks verify singular/plural chapter/day messages in both languages (`/tmp/mangaviewer-i18n-plurals.log`). Localized InfoPlist.strings are present in the built bundles.
+- Both permanent English UI journeys pass on the final iPhone build, together with a temporary Chinese walkthrough (`/tmp/mangaviewer-i18n-phone-final.xcresult`). The English shell journey passes on iPad (`/tmp/mangaviewer-i18n-pad.xcresult`, whose initial Chinese probe exposed the packaging bug); the corrected Chinese iPad walkthrough passes (`/tmp/mangaviewer-i18n-zh-pad-final.xcresult`). Language checks cover a core error, Settings, Search, source metadata preservation, plural counts, reader controls/counter, collapsed reader and relative history. Chinese screenshots were inspected on both sizes. The temporary probe is removed; the committed UI suite remains two nonoverlapping journeys, pinned to English.
+- iOS Simulator test builds, macOS arm64 and visionOS Simulator builds pass (`/tmp/mangaviewer-i18n-{phone-final,macos,visionos}.log`). Both user preview apps were updated without clearing data and reopened on their live Manhuagui manga details; they follow the simulator's native Chinese preference. Captures remain under `/tmp/mangaviewer-i18n-*.png`, with no third-party artwork committed.
+- Clean-session review cleared text coverage, formats/plurals, storage compatibility, resource packaging and the JSON-only site boundary. `git diff --check` passes. README/design/AGENTS and docs/LOCALIZATION.md document the resource workflow. No remaining implementation work; other translations and the existing Mac/visionOS/Duo manual checks remain future work.
+
 ## Manga metadata — 2026-10-13
 
 - Added optional rating/status strings and ordered tags to MangaObject, with backward-compatible decoding for existing snapshots. Existing rule fields select all metadata via XPath/JSON paths/regex; no language feature, schema migration, Swift status mapping or rating scale assumption was added. Blanks are omitted and tags are deduplicated in source order.
@@ -25,7 +35,7 @@
 
 ## Resume
 
-Read AGENTS.md and design. Implementation, core request ownership, bidirectional overscroll reading, rule-driven Browse/site ordering, and manga metadata are complete. iOS 27 simulators are installed (see simulator follow-up below). Run `bash scripts/verify.sh` for core tests and platform builds, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
+Read AGENTS.md and design. Implementation, core request ownership, bidirectional overscroll reading, rule-driven Browse/site ordering, manga metadata, and native English/Simplified Chinese localization are complete. iOS 27 simulators are installed (see simulator follow-up below). Run `bash scripts/verify.sh` for core tests and platform builds, or `swift test --package-path Packages/MangaCore` for core tests. Open `MangaViewer.xcodeproj` for the application. Command line: `xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build`.
 
 ## M1 verification and review
 

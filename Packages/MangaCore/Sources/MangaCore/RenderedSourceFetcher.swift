@@ -63,7 +63,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
             }
             try await Task.sleep(for: .milliseconds(250))
         }
-        throw ReaderError.extraction("The website did not expose readable pages within 30 seconds. It may require interaction or restrict this chapter. Try another chapter or open the source website.")
+        throw ReaderError.extraction(String(localized: "The website did not expose readable pages within 30 seconds. It may require interaction or restrict this chapter. Try another chapter or open the source website.", bundle: .module))
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {

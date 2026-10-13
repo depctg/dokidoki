@@ -59,17 +59,17 @@ private struct BrowseEntryView: View {
     var body: some View {
         NavigationStack {
             Form {
-                TextField(entry == .search ? "Search titles" : "Website URL", text: $text)
+                TextField(entry == .search ? String(localized: "Search titles") : String(localized: "Website URL"), text: $text)
                     .focused($focused).onSubmit(submit)
                     #if !os(macOS)
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     #endif
                 if entry == .search, let site { Text(site.name).foregroundStyle(.secondary) }
             }
-            .navigationTitle(entry == .search ? "Search site" : "Open URL")
+            .navigationTitle(entry == .search ? String(localized: "Search site") : String(localized: "Open URL"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(entry == .search ? "Search" : "Open", action: submit).disabled(query.isEmpty) }
+                ToolbarItem(placement: .confirmationAction) { Button(entry == .search ? String(localized: "Search") : String(localized: "Open"), action: submit).disabled(query.isEmpty) }
             }
             .onAppear { focused = true }
         }.frame(minWidth: 300, idealWidth: 480, minHeight: 220)

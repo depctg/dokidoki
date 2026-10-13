@@ -4,6 +4,14 @@ import MangaCore
 enum AppSection: String, CaseIterable, Identifiable {
     case library = "My Library", browse = "Browse", recent = "Recent", settings = "Settings"
     var id: Self { self }
+    var title: String {
+        switch self {
+        case .library: String(localized: "My Library")
+        case .browse: String(localized: "Browse")
+        case .recent: String(localized: "Recent")
+        case .settings: String(localized: "Settings")
+        }
+    }
     var symbol: String {
         switch self {
         case .library: "books.vertical"
@@ -75,7 +83,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         } catch { self.error = error.localizedDescription }
     }
     func open(_ text: String) async {
-        guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = "Enter a supported HTTP or HTTPS URL."; return }
+        guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = String(localized: "Enter a supported HTTP or HTTPS URL."); return }
         do {
             let key = try await repository.key(for: url)
             if try RuleRegistry(rules: rules).match(url).1 == .chapter { openChapter(key) }
@@ -101,7 +109,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
-                guard let repository, case .chapter(let chapter) = try await key.load(using: repository, hint: hint) else { throw ReaderError.extraction("This link does not contain a chapter.") }
+                guard let repository, case .chapter(let chapter) = try await key.load(using: repository, hint: hint) else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
                 try Task.checkCancellation()
                 presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd)
             } catch is CancellationError {} catch {
@@ -157,7 +165,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
                 guard let repository, case .manga(let manga) = try await key.load(using: repository, hint: .preferCache),
-                      let first = manga.chapterRefs.first else { throw ReaderError.extraction("This manga has no chapters yet.") }
+                      let first = manga.chapterRefs.first else { throw ReaderError.extraction(String(localized: "This manga has no chapters yet.")) }
                 try Task.checkCancellation()
                 openChapter(first.key)
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }

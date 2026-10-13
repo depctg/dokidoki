@@ -215,6 +215,8 @@ Handle loading, failed images (retry), empty chapters, and end-of-chapter naviga
 
 Use one SwiftUI multi-platform application target over the shared core package. Prefer `NavigationStack` for compact layouts, `NavigationSplitView` where appropriate, system search/toolbar/settings/file sharing, and standard controls. Avoid device-name branches.
 
+Use native Apple localization and system/per-app language selection. App text lives in String Catalogs, including accessibility and plural variants; core error resources use localized SwiftPM bundles. Separate localized display labels from persisted enum raw values and object identities. Website/rule content retains its source text. English and Simplified Chinese are the initial interface languages; see `docs/LOCALIZATION.md` for maintenance.
+
 | View | Minimum experience |
 | --- | --- |
 | Browse | First site in persisted rule order; JSON-defined horizontal cover shelves with full-list links, selected-site search and site switcher |

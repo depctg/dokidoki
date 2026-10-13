@@ -31,7 +31,7 @@ public actor ObjectRepository {
         if let existing = registry.rules.first(where: { $0.id == rule.id }) {
             let identical = try rule.exported() == existing.exported()
             if identical { return }
-            guard rule.version > existing.version else { throw ReaderError.invalidRule("Changed rules must increase their version.") }
+            guard rule.version > existing.version else { throw ReaderError.invalidRule(String(localized: "Changed rules must increase their version.", bundle: .module)) }
         }
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != rule.id } + [rule])
         try store.saveRule(rule); invalidate(); registry = next
@@ -67,7 +67,7 @@ public actor ObjectRepository {
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
             try self.store.upsert(objects, version: rule.version, ttl: kind == .directory ? 900 : 86_400)
-            guard let object = objects.first else { throw ReaderError.extraction("No content was found.") }; return object
+            guard let object = objects.first else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
         }
         let request = Request(task: task)
         inFlight[key] = request

@@ -41,7 +41,7 @@ extension PageObject {
     public func image(using repository: ObjectRepository, refresh: Bool = false, maxPixel: Int = 1800) async throws -> CGImage {
         let page: PageObject
         if refresh {
-            guard case .page(let fresh) = try await key.load(using: repository, hint: .forceRefresh) else { throw ReaderError.extraction("This reference does not contain a page.") }
+            guard case .page(let fresh) = try await key.load(using: repository, hint: .forceRefresh) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
             page = fresh
         } else { page = self }
         let rule = try await repository.rule(for: page.key)

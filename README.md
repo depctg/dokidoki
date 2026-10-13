@@ -6,6 +6,8 @@ Implementation follows [the design](docs/MangaViewer_DESIGN.md). Progress and ve
 
 The core uses Foundation networking, native XPath (libxml2), and [GRDB](https://github.com/groue/GRDB.swift) for SQLite. Rules are versioned data, never executable scripts.
 
+The interface supports English and Simplified Chinese through Apple's native localization. It follows your system/per-app language and includes localized controls, accessibility labels, errors, progress and plural forms. Website content keeps its source language. See [localization](docs/LOCALIZATION.md) to add languages or update translations.
+
 Build and test the core with Xcode 26 or later:
 
 ```sh

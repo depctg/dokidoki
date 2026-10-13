@@ -7,7 +7,7 @@ struct RuleDocument: FileDocument {
     var data: Data
     init(data: Data = Data()) { self.data = data }
     init(configuration: ReadConfiguration) throws {
-        guard let data = configuration.file.regularFileContents else { throw ReaderError.invalidRule("Cannot read the JSON file.") }
+        guard let data = configuration.file.regularFileContents else { throw ReaderError.invalidRule(String(localized: "Cannot read the JSON file.")) }
         self.data = data
     }
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
@@ -27,8 +27,8 @@ struct SettingsView: View {
     var body: some View {
         List {
             Section("Reader defaults") {
-                Picker("Mode", selection: $model.preferences.mode) { ForEach(ReadingMode.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Picker("Direction", selection: $model.preferences.direction) { ForEach(ReadingDirection.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
+                Picker("Mode", selection: $model.preferences.mode) { ForEach(ReadingMode.allCases, id: \.self) { Text($0.title).tag($0) } }
+                Picker("Direction", selection: $model.preferences.direction) { ForEach(ReadingDirection.allCases, id: \.self) { Text($0.title).tag($0) } }
                 Toggle("Trim blank margins", isOn: $model.preferences.trimMargins)
                 Toggle("Detect spreads", isOn: $model.preferences.detectSpreads)
                 Toggle("Facing pages in wide windows", isOn: $model.preferences.facingPages)
@@ -58,11 +58,11 @@ struct SettingsView: View {
             Section {
                 LabeledContent("Image cache", value: ByteCountFormatter.string(fromByteCount: Int64(diskBytes), countStyle: .file))
                 Button("Clear image cache", systemImage: "photo.badge.arrow.down") {
-                    Task { await model.repository?.clearImages(); diskBytes = await model.repository?.imageCacheUsage() ?? 0; status = "Image cache cleared." }
+                    Task { await model.repository?.clearImages(); diskBytes = await model.repository?.imageCacheUsage() ?? 0; status = String(localized: "Image cache cleared.") }
                 }
                 Button("Clear content cache", systemImage: "trash") {
                     Task {
-                        do { try await model.repository?.clearContent(); status = "Content cache cleared. Reading progress and saved manga are kept." }
+                        do { try await model.repository?.clearContent(); status = String(localized: "Content cache cleared. Reading progress and saved manga are kept.") }
                         catch { model.error = error.localizedDescription }
                     }
                 }
@@ -87,7 +87,7 @@ struct SettingsView: View {
             } catch { model.error = error.localizedDescription }
         }
         .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .json, defaultFilename: filename) { result in
-            switch result { case .success: status = "Rule exported."; case .failure(let error): model.error = error.localizedDescription }
+            switch result { case .success: status = String(localized: "Rule exported."); case .failure(let error): model.error = error.localizedDescription }
         }
         .sheet(item: $pendingRule) { rule in
             NavigationStack {
@@ -116,7 +116,7 @@ struct SettingsView: View {
     private func install(_ rule: SiteRule) async {
         do {
             try await model.repository?.install(rule); model.rules = try model.store?.rules() ?? []
-            pendingRule = nil; status = "Installed \(rule.name)."
+            pendingRule = nil; status = String(localized: "Installed \(rule.name).")
         } catch { model.error = error.localizedDescription; pendingRule = nil }
     }
     private func remove(_ rule: SiteRule) async {
@@ -129,7 +129,7 @@ struct SettingsView: View {
                 if let installed = model.rules.first(where: { $0.id == rule.id }), installed.version >= rule.version { continue }
                 try await model.repository?.install(rule)
             }
-            model.rules = try model.store?.rules() ?? []; status = "Bundled rules restored."
+            model.rules = try model.store?.rules() ?? []; status = String(localized: "Bundled rules restored.")
         } catch { model.error = error.localizedDescription }
     }
 }
@@ -138,7 +138,7 @@ private struct RuleQRView: View {
     let rule: SiteRule
     let export: () -> Void
     @State private var qr: CGImage?
-    @State private var message = "Preparing QR code…"
+    @State private var message = String(localized: "Preparing QR code…")
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
@@ -159,7 +159,7 @@ private struct RuleQRView: View {
         .task {
             do {
                 qr = try RuleExchange.qrImage(for: rule)
-                if qr == nil { message = "This rule is too large for a reliable single QR code (\(RuleExchange.qrByteLimit) UTF-8 bytes). Use JSON file export." }
+                if qr == nil { message = String(localized: "This rule is too large for a reliable single QR code (\(RuleExchange.qrByteLimit) UTF-8 bytes). Use JSON file export.") }
             } catch { message = error.localizedDescription }
         }
     }

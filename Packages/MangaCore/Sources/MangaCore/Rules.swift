@@ -58,65 +58,65 @@ public struct SiteRule: Codable, Sendable, Identifiable {
     }
     public func validate() throws {
         guard schemaVersion == 1, version > 0, !id.isEmpty, id.count < 100, !name.isEmpty,
-              !allowedHosts.isEmpty, !matchers.isEmpty else { throw ReaderError.invalidRule("Missing identity, hosts, or supported schema version.") }
+              !allowedHosts.isEmpty, !matchers.isEmpty else { throw ReaderError.invalidRule(String(localized: "Missing identity, hosts, or supported schema version.", bundle: .module)) }
         for host in allowedHosts {
             guard host == host.lowercased(), host.range(of: "^[a-z0-9][a-z0-9.-]*[a-z0-9]$", options: .regularExpression) != nil,
-                  !host.contains("..") else { throw ReaderError.invalidRule("Hosts must be exact domain names.") }
+                  !host.contains("..") else { throw ReaderError.invalidRule(String(localized: "Hosts must be exact domain names.", bundle: .module)) }
         }
         for matcher in matchers {
             guard matcher.pattern.count <= 1024, matcher.pattern.hasPrefix("^"), matcher.pattern.hasSuffix("$"),
                   (try? NSRegularExpression(pattern: matcher.pattern)) != nil,
-                  let extraction = extractors[matcher.kind.rawValue] else { throw ReaderError.invalidRule("Invalid URL matcher or missing extractor.") }
+                  let extraction = extractors[matcher.kind.rawValue] else { throw ReaderError.invalidRule(String(localized: "Invalid URL matcher or missing extractor.", bundle: .module)) }
             let required: [String] = switch matcher.kind {
             case .directory: ["title", "mangaLinks"]
             case .manga: ["title", "chapterLinks"]
             case .chapter: ["title", "pageImages"]
             case .page: ["image"]
             }
-            guard required.allSatisfy({ extraction.fields[$0] != nil }) else { throw ReaderError.invalidRule("Missing required extraction fields for \(matcher.kind.rawValue).") }
+            guard required.allSatisfy({ extraction.fields[$0] != nil }) else { throw ReaderError.invalidRule(String(localized: "Missing required extraction fields for \(matcher.kind.rawValue).", bundle: .module)) }
             for (name, field) in extraction.variables ?? [:] {
                 guard name.range(of: #"^[A-Za-z][A-Za-z0-9_]*$"#, options: .regularExpression) != nil,
-                      field.urlTemplate == nil, field.queryPath == nil else { throw ReaderError.invalidRule("Variables have simple names and select values without URL templates.") }
+                      field.urlTemplate == nil, field.queryPath == nil else { throw ReaderError.invalidRule(String(localized: "Variables have simple names and select values without URL templates.", bundle: .module)) }
             }
             for field in Array(extraction.fields.values) + Array((extraction.variables ?? [:]).values) {
-                guard !field.path.isEmpty, field.path.count <= 2048 else { throw ReaderError.invalidRule("Empty or oversized selector.") }
+                guard !field.path.isEmpty, field.path.count <= 2048 else { throw ReaderError.invalidRule(String(localized: "Empty or oversized selector.", bundle: .module)) }
                 for read in [field.read, field.fallback].compactMap({ $0 }) {
-                    guard read == "text" || read.range(of: "^attr:[a-zA-Z0-9_-]+$", options: .regularExpression) != nil else { throw ReaderError.invalidRule("Unsupported field reader.") }
+                    guard read == "text" || read.range(of: "^attr:[a-zA-Z0-9_-]+$", options: .regularExpression) != nil else { throw ReaderError.invalidRule(String(localized: "Unsupported field reader.", bundle: .module)) }
                 }
                 if !extraction.format.isJSON {
-                    guard let compiled = xmlXPathCompile(field.path) else { throw ReaderError.invalidRule("Invalid XPath selector.") }
+                    guard let compiled = xmlXPathCompile(field.path) else { throw ReaderError.invalidRule(String(localized: "Invalid XPath selector.", bundle: .module)) }
                     xmlXPathFreeCompExpr(compiled)
                 }
                 if let template = field.urlTemplate {
-                    guard template.count <= 4096 else { throw ReaderError.invalidRule("URL templates allow at most 4096 characters.") }
+                    guard template.count <= 4096 else { throw ReaderError.invalidRule(String(localized: "URL templates allow at most 4096 characters.", bundle: .module)) }
                     let pattern = #"\{(value|[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z0-9_$]+)*)\}"#
                     let stripped = template.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
-                    guard !stripped.contains("{"), !stripped.contains("}") else { throw ReaderError.invalidRule("URL templates support only {value} and dotted paths.") }
+                    guard !stripped.contains("{"), !stripped.contains("}") else { throw ReaderError.invalidRule(String(localized: "URL templates support only {value} and dotted paths.", bundle: .module)) }
                 }
                 if let pattern = field.regex {
                     guard pattern.count <= 2048, let regex = try? NSRegularExpression(pattern: pattern),
-                          (0...regex.numberOfCaptureGroups).contains(field.group ?? min(1, regex.numberOfCaptureGroups)) else { throw ReaderError.invalidRule("Invalid extraction regex or capture group.") }
-                } else if field.group != nil { throw ReaderError.invalidRule("Capture groups require a regex.") }
+                          (0...regex.numberOfCaptureGroups).contains(field.group ?? min(1, regex.numberOfCaptureGroups)) else { throw ReaderError.invalidRule(String(localized: "Invalid extraction regex or capture group.", bundle: .module)) }
+                } else if field.group != nil { throw ReaderError.invalidRule(String(localized: "Capture groups require a regex.", bundle: .module)) }
                 if let path = field.queryPath {
-                    guard extraction.format.isJSON, path.range(of: #"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z0-9_$]+)*$"#, options: .regularExpression) != nil else { throw ReaderError.invalidRule("Query parameters require a JSON object path.") }
+                    guard extraction.format.isJSON, path.range(of: #"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z0-9_$]+)*$"#, options: .regularExpression) != nil else { throw ReaderError.invalidRule(String(localized: "Query parameters require a JSON object path.", bundle: .module)) }
                 }
             }
             if let rendering = extraction.rendering {
-                guard extraction.format.isRendered else { throw ReaderError.invalidRule("Rendering options require a rendered format.") }
+                guard extraction.format.isRendered else { throw ReaderError.invalidRule(String(localized: "Rendering options require a rendered format.", bundle: .module)) }
                 if let function = rendering.captureFunction {
                     guard function.count <= 256, function.range(of: #"^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*$"#, options: .regularExpression) != nil,
-                          !function.split(separator: ".").contains(where: { ["__proto__", "prototype", "constructor"].contains(String($0)) }) else { throw ReaderError.invalidRule("Capture must name a function using a simple dotted path.") }
+                          !function.split(separator: ".").contains(where: { ["__proto__", "prototype", "constructor"].contains(String($0)) }) else { throw ReaderError.invalidRule(String(localized: "Capture must name a function using a simple dotted path.", bundle: .module)) }
                 }
                 if let xpath = rendering.readyImageXPath {
-                    guard xpath.count <= 2048, let compiled = xmlXPathCompile(xpath) else { throw ReaderError.invalidRule("Invalid image readiness XPath.") }
+                    guard xpath.count <= 2048, let compiled = xmlXPathCompile(xpath) else { throw ReaderError.invalidRule(String(localized: "Invalid image readiness XPath.", bundle: .module)) }
                     xmlXPathFreeCompExpr(compiled)
                 }
             }
             if extraction.format == .renderedJSON {
-                guard extraction.rendering?.captureFunction != nil, extraction.rendering?.readyImageXPath != nil else { throw ReaderError.invalidRule("Rendered JSON needs a capture function and an image readiness XPath.") }
+                guard extraction.rendering?.captureFunction != nil, extraction.rendering?.readyImageXPath != nil else { throw ReaderError.invalidRule(String(localized: "Rendered JSON needs a capture function and an image readiness XPath.", bundle: .module)) }
             }
         }
-        guard (processors ?? []).allSatisfy({ ["identity", "marginAlign", "spreadDetect", "layout"].contains($0) }) else { throw ReaderError.invalidRule("Unknown page processor.") }
+        guard (processors ?? []).allSatisfy({ ["identity", "marginAlign", "spreadDetect", "layout"].contains($0) }) else { throw ReaderError.invalidRule(String(localized: "Unknown page processor.", bundle: .module)) }
         func isDirectory(_ url: URL) -> Bool {
             guard permits(url), let normalized = try? RuleRegistry.normalize(url) else { return false }
             let matches = matchers.filter { normalized.absoluteString.range(of: $0.pattern, options: .regularExpression) != nil }
@@ -126,10 +126,10 @@ public struct SiteRule: Codable, Sendable, Identifiable {
         let lists = browse ?? []
         guard lists.count <= 24, Set(try lists.map { try RuleRegistry.normalize($0.url) }).count == lists.count,
               lists.allSatisfy({ !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && isDirectory($0.url) }) else {
-            throw ReaderError.invalidRule("Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists).")
+            throw ReaderError.invalidRule(String(localized: "Browse lists need unique, allowed directory URLs and nonempty titles (at most 24 lists).", bundle: .module))
         }
         if let template = searchURLTemplate {
-            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), isDirectory(url) else { throw ReaderError.invalidRule("Search must use an allowed directory URL and {query}.") }
+            guard template.contains("{query}"), let url = URL(string: template.replacingOccurrences(of: "{query}", with: "test")), isDirectory(url) else { throw ReaderError.invalidRule(String(localized: "Search must use an allowed directory URL and {query}.", bundle: .module)) }
         }
     }
     public func searchURL(query: String) -> URL? {
@@ -142,17 +142,17 @@ public struct SiteRule: Codable, Sendable, Identifiable {
         // Unknown fields are rejected: secret-bearing headers/scripts cannot hide in an export.
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
         let supported: Set<String> = ["schemaVersion", "id", "name", "version", "allowedHosts", "matchers", "extractors", "searchURLTemplate", "browse", "processors"]
-        guard Set(json.keys).isSubset(of: supported) else { throw ReaderError.invalidRule("Unsupported fields (scripts and request credentials are not allowed).") }
+        guard Set(json.keys).isSubset(of: supported) else { throw ReaderError.invalidRule(String(localized: "Unsupported fields (scripts and request credentials are not allowed).", bundle: .module)) }
         for list in json["browse"] as? [[String: Any]] ?? [] {
-            guard Set(list.keys).isSubset(of: ["title", "url"]) else { throw ReaderError.invalidRule("Browse lists contain only a title and URL.") }
+            guard Set(list.keys).isSubset(of: ["title", "url"]) else { throw ReaderError.invalidRule(String(localized: "Browse lists contain only a title and URL.", bundle: .module)) }
         }
         for extractor in (json["extractors"] as? [String: [String: Any]] ?? [:]).values {
-            guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables"]) else { throw ReaderError.invalidRule("Unsupported extractor options.") }
+            guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)
             for field in fields {
-                guard Set(field.keys).isSubset(of: ["path", "read", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]) else { throw ReaderError.invalidRule("Unsupported field options.") }
+                guard Set(field.keys).isSubset(of: ["path", "read", "fallback", "urlTemplate", "queryPath", "regex", "group", "reverse"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported field options.", bundle: .module)) }
             }
-            if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "readyImageXPath"]) { throw ReaderError.invalidRule("Unsupported rendering options; scripts are not allowed.") }
+            if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "readyImageXPath"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
         }
         let rule = try JSONDecoder().decode(SiteRule.self, from: data); try rule.validate(); return rule
     }
@@ -166,7 +166,7 @@ public struct RuleRegistry: Sendable {
     public let rules: [SiteRule]
     public init(rules: [SiteRule]) throws {
         for rule in rules { try rule.validate() }
-        guard Set(rules.map(\.id)).count == rules.count else { throw ReaderError.invalidRule("Duplicate rule IDs.") }
+        guard Set(rules.map(\.id)).count == rules.count else { throw ReaderError.invalidRule(String(localized: "Duplicate rule IDs.", bundle: .module)) }
         self.rules = rules
     }
     public static func normalize(_ url: URL) throws -> URL {
