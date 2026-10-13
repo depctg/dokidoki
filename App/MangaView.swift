@@ -9,52 +9,12 @@ struct MangaView: View {
     @State private var cover: PageObject?
     @State private var readingState: MangaObject?
     @State private var reversedLists: Set<String> = []
+    @State private var reveal: ChapterListReveal?
     private var starred: Bool { model.saved.contains { $0.key == manga.key && $0.isStarred } }
     private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == manga.key } }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 16) {
-                        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
-                        layout {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-                                if let cover { PageImageView(page: cover, model: model) }
-                                else { Image(systemName: "book.closed").foregroundStyle(.secondary) }
-                            }
-                            .frame(width: min(170, coverWidth), height: min(170, coverWidth) * 1.5)
-                            .clipShape(.rect(cornerRadius: 8)).accessibilityHidden(true)
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
-                                if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                                MangaMetadataView(manga: manga)
-                            }.frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        if let summary = manga.summary {
-                            Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                                .accessibilityIdentifier("manga.summary")
-                        }
-                    }.padding(.vertical, 12)
-                    if position != nil {
-                        Button("Resume reading", systemImage: "play.fill") { model.resumeManga(manga.key) }
-                    } else if let first = manga.chapterRefs.first {
-                        Button("Start reading", systemImage: "play.fill") {
-                            model.openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
-                        }
-                    }
-                }
-                .sectionIndexLabel(Text(verbatim: "↑"))
-                ForEach(Array(manga.chapterLists.enumerated()), id: \.element.id) { offset, list in
-                    chapterSections(list, offset: offset)
-                }
-                if manga.chapterLists.isEmpty { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
-            }
-            #if !os(macOS)
-            .listSectionIndexVisibility(.visible)
-            #endif
-            .scrollIndicators(.visible)
+        chapterList
             .navigationTitle(manga.title)
             .toolbarTitleDisplayMode(.inline)
             .toolbar {
@@ -69,38 +29,90 @@ struct MangaView: View {
             }
             .onAppear { refreshReadingState() }
             .onChange(of: position?.updatedAt) { _, _ in refreshReadingState() }
-            .task(id: model.chapterToReveal) {
-                let explicit = model.chapterToReveal.flatMap { key in manga.chapterRefs.contains { $0.key == key } ? key : nil }
-                let target = explicit ?? (model.jumpToLastChapter ? position?.chapterKey : nil)
-                let listID = explicit != nil ? model.reader?.chapterListID : position?.chapterListID
-                if let key = target, let list = manga.chapterList(containing: key, preferredID: listID) {
-                    await Task.yield()
-                    guard !Task.isCancelled else { return }
-                    proxy.scrollTo(rowID(key, list: list), anchor: .center)
-                    if explicit != nil { model.chapterToReveal = nil }
+            .task { revealChapter(includeLastRead: true) }
+            .onChange(of: model.chapterToReveal) { _, key in
+                if key != nil { revealChapter(includeLastRead: false) }
+            }
+    }
+    @ViewBuilder private var chapterList: some View {
+        #if os(macOS)
+        ScrollViewReader { proxy in
+            List {
+                Section { details; readingButton }
+                ForEach(manga.chapterLists) { list in
+                    Section {
+                        ForEach(orderedChapters(list)) { chapterRow($0, list: list) }
+                        if list.chapters.isEmpty { emptyChapters }
+                    }
+                        header: { chapterHeader(list) }
                 }
+            }
+            .scrollIndicators(.visible)
+            .onChange(of: reveal?.id) { _, _ in
+                if let reveal { proxy.scrollTo(reveal.row, anchor: .center) }
             }
         }
-    }
-    @ViewBuilder private func chapterSections(_ list: ChapterList, offset: Int) -> some View {
-        let chapters = reversedLists.contains(list.id) ? Array(list.chapters.reversed()) : list.chapters
-        #if os(macOS)
-        let parts = 1 // The native scrollbar supports continuous scrubbing.
         #else
-        let parts = chapters.count >= 100 ? 4 : 1
+        let chapters = manga.chapterLists.flatMap { list in
+            orderedChapters(list).map { (id: rowID($0.key, list: list), chapter: $0, list: list) }
+        }
+        let rows = Dictionary(uniqueKeysWithValues: chapters.map { ($0.id, ($0.chapter, $0.list)) })
+        IndexedChapterList(sections: [
+            .init(id: "details", indexTitle: "↑", header: nil, rows: ["details", "reading"])
+        ] + manga.chapterLists.enumerated().map { offset, list in
+            .init(id: "group|\(list.id)", indexTitle: list.indexTitle.map { String($0.prefix(2)) } ?? String(offset + 1),
+                  header: AnyView(chapterHeader(list)), rows: list.chapters.isEmpty ? ["empty|\(list.id)"] : orderedChapters(list).map { rowID($0.key, list: list) })
+        }, row: { id in
+            if id == "details" { return AnyView(details) }
+            if id == "reading" { return AnyView(readingButton) }
+            if let (chapter, list) = rows[id] { return AnyView(chapterRow(chapter, list: list)) }
+            return AnyView(emptyChapters)
+        }, reveal: reveal)
         #endif
-        ForEach(0..<parts, id: \.self) { part in
-            Section {
-                ForEach(chapters[(part * chapters.count / parts)..<((part + 1) * chapters.count / parts)]) { chapter in
-                    chapterRow(chapter, list: list)
+    }
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
+            layout {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                    if let cover { PageImageView(page: cover, model: model) }
+                    else { Image(systemName: "book.closed").foregroundStyle(.secondary) }
                 }
-                if chapters.isEmpty { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
-            } header: {
-                if part == 0 { chapterHeader(list) }
+                .frame(width: min(170, coverWidth), height: min(170, coverWidth) * 1.5)
+                .clipShape(.rect(cornerRadius: 8)).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                    if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                    MangaMetadataView(manga: manga)
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }
-            .sectionIndexLabel(part == 0
-                ? (list.indexTitle.map { String($0.prefix(2)) } ?? String(offset + 1))
-                : ["¼", "½", "¾"][part - 1])
+            if let summary = manga.summary {
+                Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("manga.summary")
+            }
+        }.padding(.vertical, 12)
+    }
+    @ViewBuilder private var readingButton: some View {
+        if position != nil {
+            Button("Resume reading", systemImage: "play.fill") { model.resumeManga(manga.key) }
+        } else if let first = manga.chapterRefs.first {
+            Button("Start reading", systemImage: "play.fill") {
+                model.openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
+            }
+        } else { emptyChapters }
+    }
+    private var emptyChapters: some View { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
+    private func orderedChapters(_ list: ChapterList) -> [ContentReference] {
+        reversedLists.contains(list.id) ? Array(list.chapters.reversed()) : list.chapters
+    }
+    private func revealChapter(includeLastRead: Bool) {
+        let explicit = model.chapterToReveal.flatMap { key in manga.chapterRefs.contains { $0.key == key } ? key : nil }
+        let target = explicit ?? (includeLastRead && model.jumpToLastChapter ? position?.chapterKey : nil)
+        let listID = explicit != nil ? model.reader?.chapterListID : position?.chapterListID
+        if let key = target, let list = manga.chapterList(containing: key, preferredID: listID) {
+            reveal = ChapterListReveal(row: rowID(key, list: list))
+            if explicit != nil { model.chapterToReveal = nil }
         }
     }
     private func chapterHeader(_ list: ChapterList) -> some View {
@@ -140,7 +152,7 @@ struct MangaView: View {
         .id(rowID(chapter.key, list: list))
         .accessibilityLabel(chapter.title)
         .accessibilityValue(isCurrent ? String(localized: "Current chapter, \(statusTitle)") : statusTitle)
-        .listRowBackground(isCurrent ? Color.accentColor.opacity(0.15) : nil)
+        .background(isCurrent ? Color.accentColor.opacity(0.15) : nil)
     }
     private func rowID(_ key: ObjectKey, list: ChapterList) -> String { "\(list.id)|\(key.id)" }
     private func refreshReadingState() {
