@@ -16,7 +16,7 @@ import MangaCore
         .defaultSize(width: 1100, height: 800)
         .commands {
             CommandGroup(after: .newItem) {
-                Button("Open URL…") { model.path = []; model.section = "Browse"; model.openURLRequest += 1 }
+                Button("Open URL…") { model.section = .browse; model.path = []; model.openURLRequest += 1 }
                     .keyboardShortcut("o", modifiers: .command)
             }
         }

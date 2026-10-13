@@ -22,7 +22,9 @@ xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
 open build/Build/Products/Debug/MangaViewer.app
 ```
 
-Choose **Open the reading room** for a complete offline fixture. Open `https://www.manhuagui.com/` to browse the bundled live rule. Chapter availability depends on the source website. The app does not bypass site access restrictions.
+The app opens in **My Library**, with saved titles and recent reading. On iPhone, iPad, and visionOS, native floating tabs switch between **My Library**, **Browse**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own navigation history. macOS uses a sidebar. Reading history retains one chapter per manga; switching between two chapters of the same manga in different sections can reset the older chapter's page position.
+
+In **Browse**, choose **Open the reading room** for a complete offline fixture, or open `https://www.manhuagui.com/` to browse the bundled live rule. Chapter availability depends on the source website. The app does not bypass site access restrictions.
 
 The command-line engine probe also supports a live rendered chapter:
 

@@ -58,7 +58,7 @@ struct ReaderView: View {
         #if os(macOS)
         .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .windowToolbar)
         #else
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar)
+        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar, .tabBar)
         #endif
         .toolbar {
             ToolbarItem(placement: .principal) {

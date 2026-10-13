@@ -8,23 +8,30 @@ struct RootView: View {
     @State private var columns: NavigationSplitViewVisibility = .automatic
     @State private var previousColumns: NavigationSplitViewVisibility = .automatic
     var body: some View {
-        NavigationSplitView(columnVisibility: $columns) {
-            List(selection: Binding(get: { model.section }, set: { model.path = []; model.section = $0 })) {
-                Label("Browse", systemImage: "safari").tag("Browse")
-                Label("My Library", systemImage: "books.vertical").tag("My Library")
-                Label("Settings", systemImage: "gear").tag("Settings")
-            }
-            .navigationTitle("MangaViewer")
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210)
-        } detail: {
-            NavigationStack(path: $model.path) {
-                Group {
-                    if model.section == "Settings" { SettingsView(model: model) }
-                    else if model.section == "My Library" { LibraryView(model: model) }
-                    else { browse }
+        Group {
+            #if os(macOS)
+            NavigationSplitView(columnVisibility: $columns) {
+                List(selection: Binding<AppSection?>(get: { model.section }, set: { if let section = $0 { model.section = section } })) {
+                    ForEach(AppSection.allCases) { section in
+                        Label(section.rawValue, systemImage: section.symbol).tag(section)
+                    }
                 }
-                .navigationDestination(for: ObjectKey.self) { ObjectScreen(key: $0, model: model) }
+                .navigationTitle("MangaViewer")
+                .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            } detail: {
+                navigation(for: model.section)
+                    .id(model.section)
             }
+            #else
+            TabView(selection: $model.section) {
+                ForEach(AppSection.allCases) { section in
+                    Tab(section.rawValue, systemImage: section.symbol, value: section) {
+                        navigation(for: section)
+                    }
+                }
+            }
+            .tabViewStyle(.tabBarOnly)
+            #endif
         }
         .alert("MangaViewer", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
@@ -35,10 +42,26 @@ struct RootView: View {
             else { columns = previousColumns }
         }
         .onChange(of: model.path) { _, _ in model.readerImmersive = false }
+        .onChange(of: model.section) { _, _ in model.readerImmersive = false }
         #if os(macOS)
         .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .windowToolbar)
         #else
         .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar)
+        #endif
+    }
+    private func navigation(for section: AppSection) -> some View {
+        NavigationStack(path: Binding(get: { model.paths[section, default: []] }, set: { model.paths[section] = $0 })) {
+            Group {
+                switch section {
+                case .library: LibraryView(model: model)
+                case .browse: browse
+                case .settings: SettingsView(model: model)
+                }
+            }
+            .navigationDestination(for: ObjectKey.self) { ObjectScreen(key: $0, model: model) }
+        }
+        #if !os(macOS)
+        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .tabBar)
         #endif
     }
     private var browse: some View {

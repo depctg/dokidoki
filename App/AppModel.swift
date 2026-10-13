@@ -1,13 +1,29 @@
 import SwiftUI
 import MangaCore
 
+enum AppSection: String, CaseIterable, Identifiable {
+    case library = "My Library", browse = "Browse", settings = "Settings"
+    var id: Self { self }
+    var symbol: String {
+        switch self {
+        case .library: "books.vertical"
+        case .browse: "safari"
+        case .settings: "gear"
+        }
+    }
+}
+
 @MainActor @Observable final class AppModel {
     var repository: ObjectRepository?
     var store: ObjectStore?
     let images = ImageLoader()
     var rules: [SiteRule] = [] { didSet { ruleRevision += 1 } }
     var ruleRevision = 0
-    var path: [ObjectKey] = []
+    var paths: [AppSection: [ObjectKey]] = [:]
+    var path: [ObjectKey] {
+        get { paths[section, default: []] }
+        set { paths[section] = newValue }
+    }
     var error: String?
     var saved: [SavedManga] = []
     var recent: [ReadingPosition] = []
@@ -17,7 +33,7 @@ import MangaCore
             catch { self.error = error.localizedDescription }
         }
     }
-    var section: String? = "Browse"
+    var section: AppSection = .library
     var openURLRequest = 0
     var readerImmersive = false
     private var started = false
@@ -46,7 +62,7 @@ import MangaCore
     }
     func open(_ text: String) async {
         guard let repository, let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)) else { error = "Enter a supported HTTP or HTTPS URL."; return }
-        do { let key = try await repository.key(for: url); section = "Browse"; path = [key] }
+        do { let key = try await repository.key(for: url); section = .browse; path = [key] }
         catch { self.error = error.localizedDescription }
     }
     func reloadLibrary() {

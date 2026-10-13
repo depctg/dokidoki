@@ -1,6 +1,40 @@
 import XCTest
 
 @MainActor final class ReaderInteractionTests: XCTestCase {
+    func testLibraryLandingAndTabHistory() {
+        let app = XCUIApplication()
+        app.launch()
+        let tabs = app.tabBars.firstMatch
+        XCTAssertTrue(tabs.waitForExistence(timeout: 20))
+        XCTAssertTrue(tabs.buttons["My Library"].isSelected)
+        XCTAssertTrue(app.navigationBars["My Library"].exists)
+
+        tabs.buttons["Browse"].tap()
+        XCTAssertTrue(app.navigationBars["Browse"].waitForExistence(timeout: 5))
+        let url = app.textFields["Website URL"]
+        url.tap()
+        url.typeText("https://demo.mangaviewer.local/chapter/arrival")
+        app.buttons["Open"].tap()
+        let counter = app.staticTexts["reader.pageCounter"]
+        XCTAssertTrue(counter.waitForExistence(timeout: 20))
+        let position = counter.label
+
+        tabs.buttons["Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        tabs.buttons["My Library"].tap()
+        XCTAssertTrue(app.navigationBars["My Library"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["1 · Arrival"].exists)
+        tabs.buttons["Browse"].tap()
+        XCTAssertTrue(counter.waitForExistence(timeout: 20))
+        XCTAssertTrue(wait { counter.label == position })
+        XCTAssertEqual(app.staticTexts["reader.chapterTitle"].label, "1 · Arrival")
+
+        app.terminate()
+        app.launch()
+        XCTAssertTrue(app.navigationBars["My Library"].waitForExistence(timeout: 20))
+        XCTAssertTrue(tabs.buttons["My Library"].isSelected)
+    }
+
     func testSwipeImmersionAndResume() {
         let app = XCUIApplication()
         app.launchArguments = ["--open-url", "https://demo.mangaviewer.local/chapter/arrival"]
@@ -47,10 +81,12 @@ import XCTest
         let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
         XCTAssertTrue(wait { !counter.exists && !app.buttons["Reader options"].isHittable })
+        XCTAssertFalse(app.tabBars.firstMatch.isHittable)
         center.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 5))
         XCTAssertTrue(wait { counter.label == advanced })
         XCTAssertTrue(app.buttons["Reader options"].isHittable)
+        XCTAssertTrue(app.tabBars.buttons["Browse"].isHittable)
 
         // The compact title does not expand when touched.
         let title = app.staticTexts["reader.chapterTitle"]

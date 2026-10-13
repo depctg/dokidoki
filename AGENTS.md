@@ -5,6 +5,7 @@ Implement milestones sequentially, with a clean-session review subagent after ea
 
 - Swift 6, iOS/macOS/visionOS 26 minimum. One native SwiftUI application and one UI-independent MangaCore package.
 - Prefer native APIs and small cohesive files. No scraper logic in views, arbitrary imported scripts, custom navigation framework, or speculative services.
+- My Library is the landing section. Use native `TabView`/`Tab` with `.tabBarOnly` on iOS/iPadOS/visionOS so the system owns floating glass placement and accessibility; macOS keeps its sidebar. Keep a separate navigation path per section and hide the tab bar in immersive reading. Do not build a custom glass tab overlay.
 - HTML rules use XPath through system libxml2 (the design's expressed XPath preference supersedes its illustrative CSS/SwiftSoup choice). JSON uses dotted paths. GRDB owns SQLite persistence.
 - Object identity is rule-scoped; preserve identifying query parameters. Synthetic page keys must be recoverable through the owner. Reading state survives cache eviction.
 - External requests, redirects, and extracted URLs must respect exact allowed hosts. Never export credentials. Do not implement access-control workarounds.
