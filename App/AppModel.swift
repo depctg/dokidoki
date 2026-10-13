@@ -10,6 +10,12 @@ import MangaCore
     var error: String?
     var saved: [SavedManga] = []
     var recent: [ReadingPosition] = []
+    var preferences = ReaderPreferences() {
+        didSet {
+            do { try store?.setPreference("reader", value: preferences) }
+            catch { self.error = error.localizedDescription }
+        }
+    }
     var section: String? = "Browse"
     private var started = false
 
@@ -27,6 +33,7 @@ import MangaCore
                 if let installed = try store.rules().first(where: { $0.id == bundled.id }), installed.version < bundled.version { try store.saveRule(bundled) }
             }
             rules = try store.rules(); self.store = store
+            preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
             repository = try ObjectRepository(store: store, rules: rules, fetcher: RenderedSourceFetcher())
             reloadLibrary()
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {

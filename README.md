@@ -30,3 +30,7 @@ swift run --package-path Packages/MangaCore manga-probe --rendered https://www.m
 ```
 
 See [the rule format](docs/RULES.md) for XPath/JSON recipes. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
+
+Reader options include paged/vertical modes, reading direction, conservative margin trimming, spread detection, and facing pages in wide windows. You can keep, split, or pair the current original page manually. Arrow keys and edge taps turn pages; pinch or double-click/tap zooms in paged mode. Position is saved against original pages, including fractional scroll progress.
+
+Decoded images are limited to 96 MiB in memory and image bytes to 256 MiB on disk. Only visible pages and a small neighbor window are decoded. Source objects and reading state use separate SQLite tables.

@@ -4,7 +4,7 @@
 
 - M1 complete: models, validated XPath/JSON rules, bounded HTTP fetcher, SQLite snapshots/reading state, repository and fixture tests.
 - M2 complete: native app and basic reader, ephemeral WebKit adapter for Manhuagui.
-- M3: composable display plans, image analysis, memory/disk cache, prefetch.
+- M3 complete: composable display plans, image analysis, memory/disk cache, prefetch.
 - M4: library/settings, rule exchange/QR, portability and final walkthrough.
 
 ## Environment and decisions
@@ -38,4 +38,13 @@ Read AGENTS.md and design. Run core tests with `swift test --package-path Packag
 - Clean-session M2 review findings fixed: clear old image on resource changes; recreate content views after refresh; make optional parent/next-chapter fetch best-effort; use real zoomed layout dimensions; explicitly focus reader for keyboard navigation.
 - Screenshot inspection unavailable: macOS Screen Recording permission was denied by preflight. No screenshot saved. No simulator/device UI walkthrough was possible; SDK builds are not runtime walkthroughs.
 - Known M2 boundaries: cache/prefetch and refined crop/position planning are M3; full settings/rule exchange are M4. No simulator runtimes currently available.
+
+## M3 implementation and verification
+
+- `PagePipeline` composes compiled identity/margin/spread/layout processors. Analysis uses a 96-pixel-wide sample, conservative white-edge trim, wide-image gutter evidence, and non-flat adjacent-edge continuity. Manual keep/split/pair overrides are persisted per source key. Originals remain immutable.
+- `ImageLoader`: Image I/O downsampling, 96 MiB NSCache, 256 MiB disk LRU, request/resource-version-aware SHA256 filenames, cancellation and cache-clear generation guard. Reader prefetch is limited to up to three images from the two neighboring display units and cancelled on movement/exit.
+- Reader uses source key plus fractional offset; split halves map into source fractions. Replanning for direction/mode/window geometry keeps that position. Continuous mode tracks viewport frames and restores its source fraction. Actual gesture/resize walkthrough remains unverified due unavailable UI capture/runtime environment.
+- Core tests: 11 pass (rule/object seams plus spread order, adjacent pairing, manual overrides, source-progress mapping, image analysis/cropping, disk bounds/clear). macOS build passed before final review refinements.
+- Live image failure confirmed as HTTP 404 from Manhuagui's selected CDN for the tested chapter. Its 25 page references remain resolvable. No access workarounds added.
+- Clean-session M3 review fixes: manual pairing now takes precedence over automatic splitting (regression included); lazy rows release offscreen bitmaps and cancel resource tasks; cached/no-op prefetch does not replan, and scroll restoration waits until interaction ends.
 

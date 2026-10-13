@@ -22,7 +22,7 @@ for number in 1...4 {
     NSBezierPath(ovalIn: NSRect(x: width / 2 - 150, y: 290, width: 300, height: 300)).fill()
     NSColor(calibratedRed: 0.91, green: 0.77, blue: 0.44, alpha: 1).setFill()
     NSBezierPath(ovalIn: NSRect(x: width / 2 + 25, y: 620, width: 105, height: 105)).fill()
-    if number == 3 { NSColor(white: 0.98, alpha: 1).setFill(); NSRect(x: width / 2 - 10, y: 70, width: 20, height: height - 140).fill() }
+    if number == 3 { NSColor(white: 0.98, alpha: 1).setFill(); NSRect(x: width / 2 - 24, y: 70, width: 48, height: height - 140).fill() }
     let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 40, weight: .light), .foregroundColor: NSColor.white]
     ("THE OBSERVATORY" as NSString).draw(at: NSPoint(x: 85, y: 880), withAttributes: attributes)
     (["", "01 / ARRIVAL", "02 / THE QUIET SKY", "03 / A WIDER WORLD", "04 / STARLIGHT"][number] as NSString).draw(at: NSPoint(x: 85, y: 805), withAttributes: [.font: NSFont.monospacedSystemFont(ofSize: 19, weight: .medium), .foregroundColor: NSColor.white])

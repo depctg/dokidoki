@@ -12,4 +12,5 @@ Implement milestones sequentially, with a clean-session review subagent after ea
 - User requested https://www.manhuagui.com/ for live testing; deterministic bundled fixtures remain the offline baseline.
 - The Manhuagui WebKit adapter must observe normal site behavior. Require a site-created reader image before extracting page references; never manipulate access gates or cookies. Keep imported rules data-only.
 - SwiftUI image task identity must include resource URL, not just object key; clear stale image state before loading. Refresh must invalidate view data even when the chapter key is unchanged.
+- Lazy reader rows must release offscreen bitmap state; an NSCache limit alone does not bound retained SwiftUI state. Keep prefetch to a small cancelable neighbor window. Never restore scroll position during an active gesture.
 
