@@ -1,5 +1,12 @@
 # Development state
 
+## Manhuagui Browse connectivity investigation — 2026-10-13
+
+- Reproduced all three Browse shelves showing request timeouts in the preserved user iPhone preview (`/tmp/mangaviewer-browse-before.png`). Native errors are `loadContent: NSURLErrorDomain -1001 [www.manhuagui.com]` (`/tmp/mangaviewer-browse-connectivity-native.log`). Read-only inspection confirms bundled/current Manhuagui v7 is installed; no directory snapshots are cached in this preview.
+- The core live list probe also times out. Independent `curl` requests to the homepage and catalog fail while connecting to TCP 443, before TLS or HTML; port 80 also times out. System DNS and a public resolver agree, and an unrelated HTTPS control (`www.apple.com`) returns HTTP 200. This establishes a source reachability failure from this Mac/network, not its external cause or a global outage. Search-engine page snapshots do not establish live connectivity from the app.
+- No production code, JSON recipe, request policy, installed data or preview state changed. Reinstalling the same recipe would not repair the failing connection. The offline core probe resolves directory → manga → chapter → page, and all 40 tests in 12 suites pass (`/tmp/mangaviewer-browse-connectivity-core.log`). Clean-session review independently reproduced the TCP timeout, traced loading through the shared sender, and found no material production defect or site-specific Swift/bridge addition. Its documentation corrections are incorporated; `git diff --check` passes. Documentation now distinguishes historical live success from the current failure.
+- Remaining work: once the source is reachable from this network, retry Browse and verify all three shelves, covers, list navigation and search on iPhone/iPad. If a response then exposes an extraction failure, update only the JSON recipe and increment its version. Live browsing is **not fixed or verified** by this investigation. No platform rebuild or UI regression run is needed for documentation-only changes.
+
 ## Native error reports — 2026-10-13
 
 - Implemented MangaCore ErrorDiagnostics with Logger.error and current-process OSLogStore. Native reporting filters the app-owned category to error/fault entries, bounded to 200 within 24 hours. Core object/image loading logs failures (including prefetch/cover/WebKit failures); local app/storage/rule/cache/processor/report operations record at their own boundaries. Cancellations, successful operations and intentional cache misses are excluded. No telemetry backend or custom log storage.
@@ -57,7 +64,7 @@
 - Initial workspace contained only the design. Git initialized on `main`.
 - Xcode 27.0 / Swift 6.4, macOS/iOS/visionOS 27 SDKs available. No available simulator runtimes at initial inspection.
 - Deployment baselines remain 26. Use native libxml2 for XPath, GRDB for SQLite.
-- Manhuagui homepage and manga HTML are reachable with ordinary HTTPS. The bundled rule supports `/comic/` and `/book/`; chapter extraction uses the compiled WebKit observer described below. No third-party content fixtures are committed.
+- Manhuagui homepage and manga HTML were reachable with ordinary HTTPS during initial verification; see the latest connectivity investigation above for the current failure. The bundled rule supports `/comic/` and `/book/`; chapter extraction uses the compiled WebKit observer described below. No third-party content fixtures are committed.
 
 ## Resume
 

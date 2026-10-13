@@ -18,4 +18,6 @@ The native current-process scope means in-app reports cover the current launch, 
 
 ## Verification
 
+For source-loading failures, distinguish transport from extraction. `NSURLErrorDomain -1001` means the request timed out; it does not identify a parsing problem. Compare the core probe with a bounded independent request on the same machine, for example `curl -v --connect-timeout 8 --max-time 12 '<source URL>'`. Failure before TCP/TLS establishes a local reachability problem, not a selector mismatch. Retry after connectivity recovers; reinstalling an unchanged rule does not repair that connection. A failure from one network alone does not prove a global source outage.
+
 Core tests exercise real native log retrieval after failed object/image loads, severity filtering, cancellation suppression and sensitive-data exclusion. The existing shell UI journey opens a failing offline fixture, reviews its sanitized report and opens native export. Reader gesture coverage remains in its separate journey.
