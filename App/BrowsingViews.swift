@@ -73,6 +73,7 @@ struct RootView: View {
                 case .settings: SettingsView(model: model)
                 }
             }
+            .toolbarTitleDisplayMode(.inlineLarge)
             .navigationDestination(for: AppRoute.self) { route in
                 switch route {
                 case .object(let key):
@@ -150,55 +151,6 @@ struct ObjectScreen: View {
         }
         catch is CancellationError {} catch {
             if !Task.isCancelled, loadID == request, key == target { self.error = error.localizedDescription }
-        }
-    }
-}
-
-struct MangaView: View {
-    let manga: MangaObject
-    let model: AppModel
-    @State private var cover: PageObject?
-    var body: some View {
-        ScrollViewReader { proxy in
-            List {
-                Section {
-                    HStack(alignment: .top, spacing: 20) {
-                        if let cover { PageImageView(page: cover, model: model).frame(width: 120, height: 180).clipShape(.rect(cornerRadius: 8)) }
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(manga.title).font(.title2.bold())
-                            if let author = manga.author { Text(author).foregroundStyle(.secondary) }
-                            MangaMetadataView(manga: manga)
-                            if let summary = manga.summary { Text(summary).font(.callout).lineLimit(8) }
-                        }
-                    }.padding(.vertical, 12)
-                    if let position = model.readingPositions.first(where: { $0.mangaKey == manga.key }) {
-                        Button("Resume reading", systemImage: "play.fill") { model.openChapter(position.chapterKey) }
-                    } else if let first = manga.chapterRefs.first {
-                        Button("Start reading", systemImage: "play.fill") { model.openChapter(first.key) }
-                    }
-                }
-                Section("\(manga.chapterRefs.count) chapters") {
-                    ForEach(manga.chapterRefs) { chapter in
-                        Button(chapter.title) { model.openChapter(chapter.key) }
-                            .id(chapter.key)
-                            .accessibilityValue(model.reader?.chapter.key == chapter.key ? String(localized: "Current chapter") : "")
-                            .listRowBackground(model.reader?.chapter.key == chapter.key ? Color.accentColor.opacity(0.15) : nil)
-                    }
-                    if manga.chapterRefs.isEmpty { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
-                }
-            }.navigationTitle(manga.title)
-            .toolbar { ToolbarItem { Button(model.saved.contains { $0.key == manga.key } ? String(localized: "Unsave") : String(localized: "Save"), systemImage: "bookmark") { model.toggleSaved(manga) } } }
-            .task(id: manga.coverPageRef) {
-                if let repository = model.repository { cover = try? await manga.coverPage(using: repository) }
-            }
-            .task(id: model.chapterToReveal) {
-                if let key = model.chapterToReveal, manga.chapterRefs.contains(where: { $0.key == key }) {
-                    await Task.yield()
-                    guard !Task.isCancelled, model.chapterToReveal == key else { return }
-                    proxy.scrollTo(key, anchor: .center)
-                    model.chapterToReveal = nil
-                }
-            }
         }
     }
 }

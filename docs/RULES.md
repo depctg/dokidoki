@@ -24,7 +24,7 @@ URLs resolve against the final response URL and must still pass the exact-host p
 | chapter | title, pageImages | mangaLink, totalCount, pageNumber |
 | page | image | title |
 
-Manga may use `chapterLists` instead of a flat `chapterLinks`. It selects group containers, with relative `fields`: required `chapterLinks`, optional `title` and `id`. Omitted IDs use the group’s source index; explicit IDs must be unique and stable. JSON containers need no `url` property. Apply `reverse` to each group's chapterLinks when necessary, not to the flattened manga. Empty groups remain known empty. Avoid extracting an “All” tab alongside duplicate filtered tabs unless the overlap is intentional. Navigation stays within the chosen list; legacy links with no list context use the first matching list. Read status is local core knowledge, never a site-extracted field.
+Manga may use `chapterLists` instead of a flat `chapterLinks`. It selects group containers, with relative `fields`: required `chapterLinks`, optional `title`, `indexTitle` and `id`. `indexTitle` is an optional short source-derived label for the native chapter-group index (one or two characters); omit it for a numbered fallback. Full headings retain `title`. Omitted IDs use the group’s source index; explicit IDs must be unique and stable. JSON containers need no `url` property. Apply `reverse` to each group's chapterLinks when necessary, not to the flattened manga. Empty groups remain known empty. Avoid extracting an “All” tab alongside duplicate filtered tabs unless the overlap is intentional. Navigation stays within the chosen list; legacy links with no list context use the first matching list. Read status is local core knowledge, never a site-extracted field.
 
 ```json
 "chapterLists": {

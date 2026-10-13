@@ -215,7 +215,7 @@ public struct RuleExtractor: Sendable {
                 func text(_ name: String) throws -> String? { cleaned(try values(name, fields: fields, relativeTo: selection).map(\.0)).first }
                 let id = try text("id") ?? String(index)
                 guard seen.insert(id).inserted else { throw ReaderError.invalidResponse }
-                return ChapterList(id: id, title: try text("title"),
+                return ChapterList(id: id, title: try text("title"), indexTitle: try text("indexTitle"),
                     chapters: try refs("chapterLinks", expected: .chapter, fields: fields, relativeTo: selection))
             }
         }

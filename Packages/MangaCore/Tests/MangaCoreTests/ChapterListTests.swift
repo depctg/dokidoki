@@ -14,6 +14,7 @@ struct ChapterListTests {
         let html = "<h1>Series</h1><h4><span>单话</span></h4><div class='chapter-list cf' id='chapter-list-0'><a href='/comic/123/2.html'>Two</a><a href='/comic/123/1.html'>One</a></div><h4><span>番外篇</span></h4><div class='chapter-list cf' id='chapter-list-0'><a href='/comic/123/3.html'>Extra</a></div>"
         guard case .manga(let manga) = try RuleExtractor().extract(data: Data(html.utf8), responseURL: key.identityURL, key: key, kind: .manga, rule: rule)[0] else { throw ReaderError.invalidResponse }
         #expect(manga.chapterLists.map(\.title) == ["单话", "番外篇"])
+        #expect(manga.chapterLists.map(\.indexTitle) == ["单", "番"])
         #expect(manga.chapterRefs.map(\.title) == ["One", "Two", "Extra"])
         #expect(manga.nextChapter(after: manga.chapterRefs[1].key) == nil)
     }
@@ -23,6 +24,7 @@ struct ChapterListTests {
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: DefaultSourceFetcher()))
         guard case .manga(let manga) = try await mangaKey.load(using: repository) else { throw ReaderError.invalidResponse }
         #expect(manga.chapterLists.map(\.title) == ["Chapters", "Books", "Extras"])
+        #expect(manga.chapterLists.map(\.indexTitle) == ["C", "B", "E"])
         #expect(manga.chapterLists.map { $0.chapters.count } == [2, 1, 1])
         #expect(manga.nextChapter(after: manga.chapterRefs[0].key)?.key == manga.chapterRefs[1].key)
         #expect(manga.nextChapter(after: manga.chapterRefs[1].key) == nil)

@@ -40,7 +40,7 @@ or HTML links and evaluate metadata relative to each selected item. Known title
 and cover URL use one creation process; title falls back to the normal link
 label. Manga metadata stays scalar. A site page can use directoryLinks.fields
 with title/mangaLinks to create directory previews and nested manga metadata.
-Known preview metadata uses only this typed two-link chain; no arbitrary object recursion. Full manga extraction additionally accepts chapterLists with relative fields id/title/chapterLinks instead of flat chapterLinks. Inspect every group, including volumes/extras; preserve each group’s reading order, exclude redundant All tabs, and use stable unique group IDs. Native XPath scalar functions can assemble group labels. Read status is local data and is never scraped.
+Known preview metadata uses only this typed two-link chain; no arbitrary object recursion. Full manga extraction additionally accepts chapterLists with relative fields id/title/indexTitle/chapterLinks instead of flat chapterLinks. Inspect every group, including volumes/extras; preserve each group’s reading order, exclude redundant All tabs, and use stable unique group IDs. Native XPath scalar functions can assemble group labels; optional indexTitle supplies a one- or two-character group abbreviation. Read status is local data and is never scraped.
 Prefer observed homepage lists over redundant individual list requests. Browse
 entries may point to one or more matched site pages or legacy directories.
 Verify full-list URLs and keep homepage excerpts distinct from full lists. Do

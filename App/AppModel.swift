@@ -64,6 +64,12 @@ enum AppSection: String, CaseIterable, Identifiable {
             catch { report(error, operation: .storage) }
         }
     }
+    var jumpToLastChapter = true {
+        didSet {
+            do { try store?.setPreference("jumpToLastChapter", value: jumpToLastChapter) }
+            catch { report(error, operation: .storage) }
+        }
+    }
     var section: AppSection = .library
     private(set) var backgroundLoading = true
     var openURLRequest = 0
@@ -84,6 +90,7 @@ enum AppSection: String, CaseIterable, Identifiable {
             try store.applyBundledRules(DemoContent.bundledRules())
             rules = try store.rules(); self.store = store
             backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
+            jumpToLastChapter = try store.preference("jumpToLastChapter", as: Bool.self) ?? true
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
             repository = try ObjectRepository(store: store, rules: rules)
             reloadLibrary()
@@ -121,9 +128,9 @@ enum AppSection: String, CaseIterable, Identifiable {
             browseSiteID = nil; paths[.browse] = []
         } catch { report(error, operation: .storage) }
     }
-    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
         chapterRequest?.cancel()
-        if reader?.chapter.key == key, hint != .forceRefresh {
+        if reader?.chapter.key == key, hint != .forceRefresh, listID == nil || reader?.chapterListID == listID {
             openingChapter = false
             if expand { resumeReader() }
             return
@@ -144,16 +151,16 @@ enum AppSection: String, CaseIterable, Identifiable {
                 } while loaded == nil
                 guard case .chapter(let chapter) = loaded else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
                 try Task.checkCancellation()
-                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd)
+                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
             } catch is CancellationError {} catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
-    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false) {
+    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
         chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
         reader?.stop()
-        reader = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd)
+        reader = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd, listID: listID)
         if !preserveImmersion { readerImmersive = false }
         readerExpanded = expand
     }
@@ -181,7 +188,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         let key = reader.chapter.key
         reader.stop(); self.reader = nil
         guard rules.contains(where: { $0.id == key.ruleID }) else { readerExpanded = false; return }
-        openChapter(key, hint: .forceRefresh, expand: readerExpanded)
+        openChapter(key, hint: .forceRefresh, expand: readerExpanded, listID: reader.chapterListID)
     }
     func reloadLibrary() {
         do {
@@ -192,7 +199,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         catch { report(error, operation: .storage) }
     }
     func resumeManga(_ key: ObjectKey) {
-        if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey); return }
+        if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey, listID: position.chapterListID); return }
         chapterRequest?.cancel(); openingChapter = true
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
@@ -200,7 +207,7 @@ enum AppSection: String, CaseIterable, Identifiable {
                 guard let repository, case .manga(let manga) = try await key.load(using: repository, hint: .preferCache),
                       let first = manga.chapterRefs.first else { throw ReaderError.extraction(String(localized: "This manga has no chapters yet.")) }
                 try Task.checkCancellation()
-                openChapter(first.key)
+                openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
@@ -216,12 +223,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         do {
             if section == .recent { try store?.hideRecent(key) }
             else if let manga = saved.first(where: { $0.key == key }) { try store?.setSaved(manga, saved: false) }
-            reloadLibrary()
-        } catch { report(error, operation: .storage) }
-    }
-    func toggleSaved(_ manga: MangaObject) {
-        do {
-            try store?.setSaved(SavedManga(key: manga.key, title: manga.title), saved: !saved.contains { $0.key == manga.key })
             reloadLibrary()
         } catch { report(error, operation: .storage) }
     }

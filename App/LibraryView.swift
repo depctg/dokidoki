@@ -20,7 +20,7 @@ struct LibraryView: View {
                 if keys.isEmpty {
                     ContentUnavailableView(section == .recent ? String(localized: "Your next chapter awaits") : String(localized: "Make room for a story"),
                         systemImage: section.symbol,
-                        description: Text(section == .recent ? String(localized: "Manga you read appears here.") : String(localized: "Save manga while browsing, or star a title in Recent to add it here.")))
+                        description: Text(section == .recent ? String(localized: "Manga you read appears here.") : String(localized: "Star a manga to add it to your library.")))
                 }
             }
         }
@@ -57,37 +57,49 @@ private struct LibraryRow: View {
         return String(localized: "Last read \(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
     }
     var body: some View {
-        Button { model.resumeManga(key) } label: {
-            HStack(alignment: .center, spacing: 16) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 8).fill(.quaternary)
-                    if let cover { PageImageView(page: cover, model: model) }
-                    else { Image(systemName: "book.closed").font(.largeTitle).foregroundStyle(.secondary) }
-                }
-                .frame(width: 76, height: 108).clipShape(.rect(cornerRadius: 8))
-                .accessibilityHidden(true)
-                VStack(alignment: .leading, spacing: 6) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(title).font(.headline).lineLimit(2)
-                        if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
+        HStack(spacing: 12) {
+            NavigationLink(value: AppRoute.object(key)) {
+                HStack(alignment: .center, spacing: 16) {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 8).fill(.quaternary)
+                        if let cover { PageImageView(page: cover, model: model) }
+                        else { Image(systemName: "book.closed").font(.largeTitle).foregroundStyle(.secondary) }
                     }
-                    Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                    Text(progress).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    Text(lastRead).font(.caption).foregroundStyle(.secondary)
-                    if let manga { MangaMetadataView(manga: manga, compact: true) }
+                    .frame(width: 76, height: 108).clipShape(.rect(cornerRadius: 8))
+                    .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(title).font(.headline).lineLimit(2)
+                            if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
+                        }
+                        Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        Text(progress).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        Text(lastRead).font(.caption).foregroundStyle(.secondary)
+                        if let manga { MangaMetadataView(manga: manga, compact: true) }
+                    }
+                    Spacer(minLength: 0)
                 }
-                Spacer(minLength: 0)
+                .padding(.vertical, 6).contentShape(Rectangle())
             }
-            .padding(.vertical, 6).contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("library.item.\(key.id)")
+            .accessibilityHint("Manga details")
+            Button { model.resumeManga(key) } label: {
+                Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
+                    .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityIdentifier("library.resume.\(key.id)")
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("library.item.\(key.id)")
-        .accessibilityHint(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"))
         #if os(iOS)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions }
         #endif
         .contextMenu { actions }
-        .accessibilityAction(named: starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
+        .accessibilityActions {
+            if section == .recent {
+                Button(starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
+            }
+        }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
         .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(.object(key)) }
         .task(id: "\(key.id)|\(model.loadingRevision)") { await loadDetails() }
@@ -95,10 +107,10 @@ private struct LibraryRow: View {
     }
     @ViewBuilder private var actions: some View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
-        Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
-            .tint(.orange)
-        Button("Manga details", systemImage: "book.closed") { model.paths[section, default: []].append(.object(key)) }
-            .tint(.blue)
+        if section == .recent {
+            Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
+                .tint(.orange)
+        }
     }
     private func loadDetails() async {
         manga = nil; cover = nil; loadCachedChapter()

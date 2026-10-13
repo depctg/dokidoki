@@ -9,7 +9,7 @@ struct MangaMetadataView: View {
         VStack(alignment: .leading, spacing: 4) {
             if manga.rating != nil || manga.status != nil {
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) { rating; status }
+                    HStack(spacing: 8) { rating; status }.fixedSize()
                     VStack(alignment: .leading, spacing: 4) { rating; status }
                 }
             }
@@ -19,11 +19,13 @@ struct MangaMetadataView: View {
                     .accessibilityLabel("Tags: \(tags.joined(separator: ", "))")
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .font(.caption).foregroundStyle(.secondary)
     }
     @ViewBuilder private var rating: some View {
         if let rating = manga.rating {
-            Label(rating, systemImage: "star.fill").accessibilityLabel("Rating: \(rating)")
+            Label(rating, systemImage: "star.fill").labelStyle(.titleAndIcon)
+                .accessibilityLabel("Rating: \(rating)")
         }
     }
     @ViewBuilder private var status: some View {

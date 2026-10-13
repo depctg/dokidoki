@@ -145,7 +145,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                         else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }
                         let names: Set<String> = switch child {
                         case .directory: ["title", "mangaLinks"]
-                        case .chapter: ["id", "title", "chapterLinks"]
+                        case .chapter: ["id", "title", "indexTitle", "chapterLinks"]
                         default: ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
                         }
                         guard Set(nested.keys).isSubset(of: names) else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }

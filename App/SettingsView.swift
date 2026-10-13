@@ -35,6 +35,10 @@ struct SettingsView: View {
                 Toggle("Facing pages in wide windows", isOn: $model.preferences.facingPages)
             }
             .disabled(model.repository == nil)
+            Section("Manga details") {
+                Toggle("Jump to last-read chapter", isOn: $model.jumpToLastChapter)
+            }
+            .disabled(model.repository == nil)
             Section {
                 ForEach(model.rules) { rule in
                     VStack(alignment: .leading, spacing: 8) {

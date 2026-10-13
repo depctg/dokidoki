@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 7,
+  "version": 9,
   "allowedHosts": [
     "s0.mangafunb.fun",
     "s3.mangafunb.fun",
@@ -110,7 +110,7 @@
           "path": "//h6[@title]"
         },
         "author": {
-          "path": "//span[contains(@class,'comicParticulars-right-txt')][a[contains(@href,'/author/')]]"
+          "path": "normalize-space(//span[contains(@class,'comicParticulars-right-txt')][a[contains(@href,'/author/')]])"
         },
         "coverImage": {
           "path": "//div[contains(@class,'comicParticulars-left-img')]/img",
@@ -141,6 +141,9 @@
             "chapterLinks": {
               "path": ".//a[contains(@href,'/chapter/')]",
               "read": "attr:href"
+            },
+            "indexTitle": {
+              "path": "substring(concat(ancestor::div[@class='table-default']/preceding-sibling::span[1][starts-with(., '其他')], translate(@id, 'abcdefghijklmnopqrstuvwxyz_0123456789', '')), 1, 1)"
             }
           }
         }

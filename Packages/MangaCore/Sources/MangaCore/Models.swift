@@ -71,9 +71,11 @@ public struct DirectoryObject: Codable, Sendable, Identifiable {
 public struct ChapterList: Codable, Sendable, Identifiable {
     public let id: String
     public let title: String?
+    /// Optional compact index label supplied by the source rule.
+    public let indexTitle: String?
     public let chapters: [ContentReference]
-    public init(id: String, title: String? = nil, chapters: [ContentReference]) {
-        self.id = id; self.title = title; self.chapters = chapters
+    public init(id: String, title: String? = nil, indexTitle: String? = nil, chapters: [ContentReference]) {
+        self.id = id; self.title = title; self.indexTitle = indexTitle; self.chapters = chapters
     }
 }
 public enum ChapterReadingStatus: String, Codable, Sendable { case unread, reading, read }

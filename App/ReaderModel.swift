@@ -19,6 +19,11 @@ struct ChapterPreview {
     var fraction = 0.0
     var previousChapter: ContentReference?
     var nextChapter: ContentReference?
+    private(set) var chapterListID: String?
+    private var completed = false
+    var finalPageReady: Bool {
+        plans.last.map { $0.sourcePageKeys.allSatisfy { analysis[$0] != nil } } ?? false
+    }
     var mangaTitle: String?
     var mangaCover: PageObject?
     var previews: [ChapterDirection: ChapterPreview] = [:]
@@ -46,8 +51,9 @@ struct ChapterPreview {
     private var prefetch: [ObjectKey: Task<Void, Never>] = [:]
     private var rule: SiteRule?
 
-    init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false) {
+    init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false, listID: String? = nil) {
         self.chapter = chapter; self.app = app; self.startAtEnd = startAtEnd
+        chapterListID = listID ?? app.readingPositions.first { $0.chapterKey == chapter.key }?.chapterListID
         mangaTitle = app.saved.first { $0.key == chapter.mangaRef }?.title
             ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle
     }
@@ -95,8 +101,9 @@ struct ChapterPreview {
             guard let manga = try await chapter.manga(using: repository) else { return }
             try Task.checkCancellation()
             mangaTitle = manga.title
-            previousChapter = manga.previousChapter(before: chapter.key)
-            nextChapter = manga.nextChapter(after: chapter.key)
+            chapterListID = manga.chapterList(containing: chapter.key, preferredID: chapterListID)?.id
+            previousChapter = manga.previousChapter(before: chapter.key, in: chapterListID)
+            nextChapter = manga.nextChapter(after: chapter.key, in: chapterListID)
             mangaCover = try? await manga.coverPage(using: repository)
             try Task.checkCancellation()
             metadataLoaded = true
@@ -119,7 +126,7 @@ struct ChapterPreview {
     }
     func openAdjacent(_ reference: ContentReference?, fromEnd: Bool = false) {
         guard app.reader?.id == id, let reference else { return }
-        app.openChapter(reference.key, preserveImmersion: true, fromEnd: fromEnd)
+        app.openChapter(reference.key, preserveImmersion: true, fromEnd: fromEnd, listID: chapterListID)
     }
     func replan(restore: Bool = false) {
         guard active else { return }
@@ -177,13 +184,18 @@ struct ChapterPreview {
         do { try app.store?.setPreference("overrides:" + chapter.key.id, value: overrides) }
         catch { app.report(error, operation: .storage) }; replan(restore: true)
     }
+    func finishReading() {
+        guard active, app.reader?.id == id, !completed, finalPageReady else { return }
+        completed = true
+        save()
+    }
     func save() {
         // An outgoing view may settle during the chapter crossfade after stop().
         guard active, app.reader?.id == id, let source else { return }
         do {
             try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
                 sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,
-                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count))
+                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count, chapterListID: chapterListID), completed: completed)
         }
         catch { app.report(error, operation: .storage) }
     }

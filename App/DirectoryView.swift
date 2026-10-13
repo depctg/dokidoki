@@ -29,6 +29,7 @@ struct DirectoryView: View {
             else { list.searchable(text: $query, prompt: "Filter titles") }
         }
         .navigationTitle(title)
+        .toolbarTitleDisplayMode(.inline)
         .toolbar {
             if !(directory.sortBy ?? []).isEmpty || !(directory.sortOrder ?? []).isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -46,26 +47,31 @@ struct DirectoryView: View {
         }
     }
     private var list: some View {
-        List {
-            ForEach(references) { ref in
-                NavigationLink(value: AppRoute.object(ref.key)) { MangaPreview(reference: ref, model: model) }
-                    .accessibilityIdentifier("manga.item.\(ref.key.id)")
-            }
-            if hasMore || loadingMore {
-                HStack {
-                    Spacer()
-                    if loadingMore { ProgressView("Loading more…") }
-                    else {
-                        Button(action: requestMore) {
-                            Label(pull >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"), systemImage: "arrow.up")
-                        }.accessibilityLabel("Load more")
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(references) { ref in
+                    NavigationLink(value: AppRoute.object(ref.key)) {
+                        HStack(spacing: 12) {
+                            MangaPreview(reference: ref, model: model)
+                            Spacer(minLength: 0)
+                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
+                        }
+                        .padding(.vertical, 10).contentShape(Rectangle())
                     }
-                    Spacer()
-                }.frame(minHeight: 44).listRowSeparator(.hidden)
-                    .accessibilityIdentifier("directory.loadMore")
-            } else if accumulated != nil {
-                Text("No more titles").foregroundStyle(.secondary).frame(maxWidth: .infinity)
-            }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("manga.item.\(ref.key.id)")
+                    Divider().accessibilityHidden(true)
+                }
+            }.padding(.horizontal, 20)
+            Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles")
+                 : pull >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"))
+                .font(.footnote).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity).padding(.vertical, 24)
+                .accessibilityIdentifier("directory.loadMore")
+                .accessibilityActions {
+                    if hasMore, !loadingMore { Button("Load more", action: requestMore) }
+                }
+                .contextMenu { if hasMore, !loadingMore { Button("Load more", action: requestMore) } }
         }
         .accessibilityIdentifier("directory.list")
         .scrollBounceBehavior(.always)

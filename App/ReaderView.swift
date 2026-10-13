@@ -131,6 +131,9 @@ struct ReaderView: View {
             if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
             reader.replan(restore: true)
         }
+        .onChange(of: model.preferences.mode == .paged && reader.index == reader.plans.count - 1 && reader.finalPageReady, initial: true) { _, finished in
+            if finished { reader.finishReading() }
+        }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; chapterPull = 0 } }
         .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; chapterPull = 0 } }
@@ -167,7 +170,7 @@ struct ReaderView: View {
                 }.disabled(reader.source == nil)
             }
             Divider()
-            Button("Refresh", systemImage: "arrow.clockwise") { model.openChapter(chapter.key, hint: .forceRefresh, preserveImmersion: true) }
+            Button("Refresh", systemImage: "arrow.clockwise") { model.openChapter(chapter.key, hint: .forceRefresh, preserveImmersion: true, listID: reader.chapterListID) }
             Link(destination: chapter.sourceURL) { Label("Source website", systemImage: "safari") }
         } label: { Label("Reader options", systemImage: "gearshape") }
     }
@@ -241,6 +244,7 @@ struct ReaderView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(reader.plans) { plan in
+                    let finalReady = reader.finalPageReady && plan.id == reader.plans.last?.id
                     DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
                         .frame(width: max(1, size.width - 24), height: reader.height(plan, width: max(1, size.width - 24)))
                         // The scroll target occupies the whole viewport; artwork insets
@@ -248,6 +252,12 @@ struct ReaderView: View {
                         .frame(width: size.width)
                         .contentShape(Rectangle()).onTapGesture { toggleChrome() }
                         .id(plan.id)
+                        // Completion uses the final row's laid-out bottom, after its image
+                        // dimensions are known, rather than a stale placeholder offset.
+                        .onGeometryChange(for: Bool.self) { geometry in
+                            let bottom = geometry.frame(in: .named("readerViewport")).maxY
+                            return finalReady && bottom > 0 && bottom <= size.height + 1
+                        } action: { finished in if finished { reader.finishReading() } }
                         .background(GeometryReader { geometry in
                             Color.clear.preference(key: ReaderFrames.self, value: [plan.id: geometry.frame(in: .named("readerViewport"))])
                         })
