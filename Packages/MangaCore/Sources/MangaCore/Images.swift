@@ -21,9 +21,9 @@ public actor ImageLoader {
     }
     public func image(for page: PageObject, rule: SiteRule, maxPixel: Int = 1800, refresh: Bool = false) async throws -> CGImage {
         try Task.checkCancellation()
-        guard rule.permits(page.imageURL) else { throw ReaderError.blockedHost }
+        guard let imageURL = page.imageURL, rule.permits(imageURL) else { throw ReaderError.blockedHost }
         let maxPixel = min(page.role == .cover ? 768 : 4096, max(64, maxPixel))
-        let digest = SHA256.hash(data: Data("\(rule.id)|\(rule.version)|\(page.imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")".utf8)).map { String(format: "%02x", $0) }.joined()
+        let digest = SHA256.hash(data: Data("\(rule.id)|\(rule.version)|\(imageURL.absoluteString)|\(page.refererURL?.absoluteString ?? "")".utf8)).map { String(format: "%02x", $0) }.joined()
         let memoryKey = "\(digest)-\(maxPixel)" as NSString
         let file = directory.appendingPathComponent((page.role == .cover ? "cover-" : "") + digest).appendingPathExtension("cache")
         let memory = page.role == .cover ? covers : memory

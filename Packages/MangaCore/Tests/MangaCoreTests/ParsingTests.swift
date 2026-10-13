@@ -19,7 +19,7 @@ struct ParsingTests {
         }
     }
 
-    @Test func secondLiveRecipeParsesDOMAndObservedResultWithoutSiteCode() throws {
+    @Test func secondLiveRecipeParsesPartialDOMWithoutSiteCode() throws {
         let rule = try #require(DemoContent.bundledRules().first { $0.id == "mangacopy" })
         let mangaKey = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.mangacopy.com/comic/example")!)
         // Original synthetic markup matching the observed DOM shape; no downloaded artwork/content.
@@ -35,13 +35,13 @@ struct ParsingTests {
         #expect(manga.chapterRefs.map(\.title) == ["One", "Two"])
         #expect(manga.status == "連載中"); #expect(manga.tags == ["Adventure"])
         let chapterKey = manga.chapterRefs[0].key
-        let snapshot: [String: Any] = ["title": "Example - One - Site", "url": chapterKey.identityURL.absoluteString,
-            "imageURL": "https://s3.mangafunb.fun/loading.png", "data": [["url": "https://sy.mangafunb.fun/1.png"], ["url": "https://sy.mangafunb.fun/2.webp"]]]
-        let result = try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: snapshot), responseURL: chapterKey.identityURL, key: chapterKey, kind: .chapter, rule: rule)
+        let snapshot = "<title>Example - One - Site</title><span class='comicCount'>2</span><div class='comicContent-prev list'><a href='/comic/example'>Series</a></div><ul class='comicContent-list'><li><img data-src='https://sy.mangafunb.fun/1.png'></li><li><img data-src='https://sy.mangafunb.fun/2.webp'></li></ul>"
+        let result = try RuleExtractor().extract(data: Data(snapshot.utf8), responseURL: chapterKey.identityURL, key: chapterKey, kind: .chapter, rule: rule)
         guard case .chapter(let chapter) = result[0], case .page(let first) = result[1] else { Issue.record("Missing chapter"); return }
         #expect(chapter.title == "One"); #expect(chapter.mangaRef == manga.key); #expect(chapter.pageRefs.count == 2)
-        #expect(first.imageURL.absoluteString == "https://sy.mangafunb.fun/1.png")
-        #expect(rule.extractors["chapter"]?.rendering?.captureResult == true)
+        #expect(first.imageURL?.absoluteString == "https://sy.mangafunb.fun/1.png")
+        #expect(rule.extractors["chapter"]?.format == .renderedHTML)
+        #expect(rule.extractors["chapter"]?.session?.mode == .scroll)
         for container in ["class='exemptComic-box'", "id='comic'"] {
             let listKey = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.mangacopy.com/comics")!)
             let listHTML = "<title>List</title><div \(container)><a href='/comic/example'><img src='/cover'></a><a href='/comic/example'><p>Readable title</p></a></div>"
@@ -82,9 +82,9 @@ struct ParsingTests {
         guard case .chapter(let chapter) = objects[0], case .page(let first) = objects[1], case .page(let second) = objects[2] else { Issue.record("Missing graph"); return }
         #expect(chapter.title == "第2话")
         #expect(chapter.mangaRef?.identityURL.absoluteString == "https://www.manhuagui.com/comic/123/")
-        #expect(first.imageURL.path == "/chapter/first.jpg")
-        #expect(second.imageURL.path == "/chapter/second.png.webp")
-        #expect(URLComponents(url: first.imageURL, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "m" }?.value == "a&b=c")
+        #expect(first.imageURL?.path == "/chapter/first.jpg")
+        #expect(second.imageURL?.path == "/chapter/second.png.webp")
+        #expect(URLComponents(url: first.imageURL!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "m" }?.value == "a&b=c")
         var blocked = input; blocked["imageURL"] = "https://undeclared.example/chapter/first.jpg"
         #expect(throws: ReaderError.self) { try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: blocked), responseURL: key.identityURL, key: key, kind: .chapter, rule: rule) }
     }
@@ -100,7 +100,7 @@ struct ParsingTests {
         guard case .chapter(let chapter) = objects[0], case .page(let page) = objects[1] else { Issue.record("Missing graph"); return }
         #expect(chapter.title == "Chapter 12")
         #expect(chapter.pageRefs.count == 1)
-        #expect(page.imageURL.absoluteString == "https://demo.mangaviewer.local/images/1.png")
+        #expect(page.imageURL?.absoluteString == "https://demo.mangaviewer.local/images/1.png")
     }
     @Test func invalidParsingInstructionsAreRejected() throws {
         let base = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "manhuagui" }!.exported()) as! [String: Any]

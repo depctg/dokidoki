@@ -9,21 +9,23 @@ public struct SourceLoad: Sendable, Hashable {
     public var range: Range<Int>?
     public var refresh: Bool
     public var sessionURL: URL?
-    public init(range: Range<Int>? = nil, refresh: Bool = false, sessionURL: URL? = nil) {
-        self.range = range; self.refresh = refresh; self.sessionURL = sessionURL
+    /// Cached directory identities let a recreated browser replay to unseen items.
+    public var knownItems: Set<ObjectKey>
+    public init(range: Range<Int>? = nil, refresh: Bool = false, sessionURL: URL? = nil, knownItems: Set<ObjectKey> = []) {
+        self.range = range; self.refresh = refresh; self.sessionURL = sessionURL; self.knownItems = knownItems
     }
 }
 public protocol SourceFetcher: Sendable {
     func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse
     func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool, load: SourceLoad) async throws -> SourceResponse
-    func cachedResource(_ url: URL, rule: SiteRule) async -> SourceResponse?
+    func cachedResource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) async -> SourceResponse?
     func invalidate() async
 }
 extension SourceFetcher {
     public func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool, load: SourceLoad) async throws -> SourceResponse {
         try await fetch(url, rule: rule, kind: kind, backgroundLoading: backgroundLoading)
     }
-    public func cachedResource(_ url: URL, rule: SiteRule) async -> SourceResponse? { nil }
+    public func cachedResource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) async -> SourceResponse? { nil }
     public func invalidate() async {}
 }
 

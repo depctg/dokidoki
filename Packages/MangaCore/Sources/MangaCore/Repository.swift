@@ -58,7 +58,7 @@ public actor ObjectRepository {
         await sender.invalidateResources()
     }
     public func clearContent() async throws { await invalidate(); try store.clearContent() }
-    public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale) async throws -> ContentObject {
+    public func resolve(_ key: ObjectKey, hint: CacheHint = .refreshIfStale, sessionURL: URL? = nil) async throws -> ContentObject {
         try Task.checkCancellation()
         if hint == .forceRefresh, let old = directoryFlights.removeValue(forKey: key) { old.task.cancel(); old.consumers.values.forEach { $0.resume(throwing: CancellationError()) } }
         let rule = try rule(for: key)
@@ -67,18 +67,27 @@ public actor ObjectRepository {
            hint == .offlineOnly || hint == .preferCache || (hint == .refreshIfStale && cached.expiresAt > Date()) { return cached.object }
         if hint == .offlineOnly { throw ReaderError.cacheMiss }
         if let owner = key.owner {
-            _ = try await resolve(owner, hint: hint == .forceRefresh ? .forceRefresh : .refreshIfStale)
-            if let child = try store.snapshot(key), child.ruleVersion == rule.version { return child.object }
-            // A parent can outlive an individually missing child; rebuild the complete snapshot.
-            _ = try await resolve(owner, hint: .forceRefresh)
-            guard let child = try store.snapshot(key) else { throw ReaderError.cacheMiss }; return child.object
+            let parent = try await resolve(owner, hint: hint == .forceRefresh ? .forceRefresh : .refreshIfStale)
+            if let child = try store.snapshot(key), child.ruleVersion == rule.version, child.expiresAt > Date() { return child.object }
+            // A rendered chapter can declare all page identities before their URLs exist.
+            if case .chapter(let chapter) = parent {
+                guard let index = Int(key.identityURL.lastPathComponent), chapter.pageRefs.indices.contains(index), chapter.pageRefs[index] == key else { throw ReaderError.cacheMiss }
+                let epoch = generation
+                let response = try await sender.send(.source(owner, kind: .chapter, rule: rule, backgroundLoading: backgroundLoading,
+                    load: SourceLoad(range: index..<(index + 1), refresh: hint == .forceRefresh)))
+                try Task.checkCancellation()
+                guard epoch == generation else { throw CancellationError() }
+                let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: owner, kind: .chapter, rule: rule)
+                try store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(.chapter), replacingChildren: false)
+            } else { _ = try await resolve(owner, hint: .forceRefresh) }
+            guard let child = try store.snapshot(key), child.ruleVersion == rule.version else { throw ReaderError.cacheMiss }; return child.object
         }
         if let request = inFlight[key] { return try await consume(request, key: key) }
         let (_, kind, canonical) = try registry.match(key.identityURL, ruleID: key.ruleID)
         guard canonical == key else { return try await resolve(canonical, hint: hint) }
         let currentGeneration = generation, backgroundLoading = backgroundLoading
         let task = Task<ContentObject, Error> { [sender] in
-            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(refresh: hint == .forceRefresh)))
+            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(refresh: hint == .forceRefresh, sessionURL: sessionURL)))
             try Task.checkCancellation()
             let objects = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: kind, rule: rule)
             try Task.checkCancellation()
@@ -90,6 +99,13 @@ public actor ObjectRepository {
         inFlight[key] = request
         return try await consume(request, key: key)
     }
+    func pageDescriptors(for chapter: ChapterObject) throws -> [PageObject] {
+        let rule = try rule(for: chapter.key)
+        return try chapter.pageRefs.enumerated().map { index, key in
+            if let cached = try store.snapshot(key), cached.ruleVersion == rule.version, cached.expiresAt > Date(), case .page(let page) = cached.object { return page }
+            return PageObject(key: key, ownerRef: chapter.key, sourceIndex: index, imageURL: nil, refererURL: chapter.sourceURL)
+        }
+    }
     /// Range assembly is session state, never view/object mutation. Overlapping callers
     /// share one advancing job; a larger caller resumes after the smaller range completes.
     public func directory(_ key: ObjectKey, range: Range<Int>) async throws -> DirectoryObject {
@@ -100,19 +116,30 @@ public actor ObjectRepository {
         }
         guard case .directory(let initial) = try await resolve(key) else { throw ReaderError.invalidResponse }
         if directoryFlights[key] != nil { return try await directory(key, range: range) }
-        guard initial.mangaRefs.count < range.upperBound, initial.nextPage != nil else { return initial }
+        guard initial.mangaRefs.count < range.upperBound, initial.hasMore != false else { return initial }
         let epoch = generation
         let task = Task<ContentObject, Error> {
-            var current = initial, visited: Set<ObjectKey> = [key], stalled = 0
-            while current.mangaRefs.count < range.upperBound, let next = current.nextPage {
-                guard visited.count < 100, visited.insert(next.key).inserted else { throw ReaderError.invalidResponse }
-                guard case .directory(let batch) = try await self.resolve(next.key) else { throw ReaderError.invalidResponse }
+            var current = initial, visited: Set<ObjectKey> = [key], stalled = 0, batches = 0
+            while current.mangaRefs.count < range.upperBound, current.hasMore != false {
+                guard batches < 100 else { throw ReaderError.invalidResponse }; batches += 1
+                let batch: DirectoryObject
+                if let next = current.nextPage {
+                    guard visited.count < 100, visited.insert(next.key).inserted else { throw ReaderError.invalidResponse }
+                    guard case .directory(let result) = try await self.resolve(next.key, sessionURL: key.identityURL) else { throw ReaderError.invalidResponse }
+                    batch = result
+                } else {
+                    let rule = try self.rule(for: key)
+                    let response = try await self.sender.send(.source(key, kind: .directory, rule: rule, backgroundLoading: self.backgroundLoading,
+                        load: SourceLoad(range: current.mangaRefs.count..<range.upperBound, knownItems: Set(current.mangaRefs.map(\.key)))))
+                    guard case .directory(let result) = try RuleExtractor().extract(data: response.data, responseURL: response.url, key: key, kind: .directory, rule: rule).first else { throw ReaderError.invalidResponse }
+                    batch = result
+                }
                 try Task.checkCancellation()
                 guard epoch == self.generation else { throw CancellationError() }
                 let previousCount = current.mangaRefs.count
                 var seen = Set(current.mangaRefs.map(\.key))
                 current = DirectoryObject(key: key, sourceURL: initial.sourceURL, title: initial.title,
-                    mangaRefs: current.mangaRefs + batch.mangaRefs.filter { seen.insert($0.key).inserted }, nextURL: batch.nextURL,
+                    mangaRefs: current.mangaRefs + batch.mangaRefs.filter { seen.insert($0.key).inserted }, nextURL: batch.nextURL, endReached: batch.endReached, totalCount: batch.totalCount ?? current.totalCount,
                     sortBy: initial.sortBy, sortOrder: initial.sortOrder, selectedSortBy: initial.selectedSortBy, selectedSortOrder: initial.selectedSortOrder)
                 stalled = current.mangaRefs.count == previousCount ? stalled + 1 : 0
                 guard stalled < 3 else { throw ReaderError.invalidResponse }

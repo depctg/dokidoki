@@ -60,7 +60,7 @@ struct CoreTests {
         #expect(try await manga.coverPage(using: repository)?.role == .cover)
         #expect(try await chapter.page(at: -1, using: repository) == nil)
         #expect(chapter.pageRefs.count == 4)
-        #expect(page.imageURL.absoluteString == "https://demo.mangaviewer.local/images/1.png")
+        #expect(page.imageURL?.absoluteString == "https://demo.mangaviewer.local/images/1.png")
         #expect(page.key.owner == chapter.key)
         #expect(chapter.mangaRef == manga.key)
         try store.savePosition(ReadingPosition(mangaKey: manga.key, chapterKey: chapter.key, sourcePageKey: page.key, fractionalOffset: 0.4, title: manga.title))
@@ -82,7 +82,7 @@ struct CoreTests {
         let objects = try RuleExtractor().extract(data: html, responseURL: key.identityURL, key: key, kind: .manga, rule: rule)
         guard case .manga(let manga) = objects[0], case .page(let cover) = objects[1] else { Issue.record("Missing manga"); return }
         #expect(manga.title == "Test & title"); #expect(manga.chapterRefs.count == 1)
-        #expect(cover.imageURL.path == "/images/1.png")
+        #expect(cover.imageURL?.path == "/images/1.png")
         #expect(throws: ReaderError.self) { try RuleExtractor().extract(data: Data("<h1>T</h1><img src='https://evil.test/a.jpg'>".utf8), responseURL: key.identityURL, key: key, kind: .manga, rule: rule) }
     }
 

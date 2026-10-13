@@ -21,7 +21,8 @@ public enum DemoContent {
             let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
             let byTitle = query.contains(URLQueryItem(name: "sort", value: "title"))
             let descending = query.contains(URLQueryItem(name: "order", value: "descending"))
-            if query.contains(URLQueryItem(name: "q", value: "story")) {
+            if query.contains(URLQueryItem(name: "browser", value: "page")) { name = "browser-page" }
+            else if query.contains(URLQueryItem(name: "q", value: "story")) {
                 name = query.contains(URLQueryItem(name: "offset", value: "1")) ? "search-second" : "search-first"
             } else { name = byTitle ? (descending ? "catalog-descending" : "catalog-title") : "catalog" }
             ext = "html"
@@ -30,6 +31,9 @@ public enum DemoContent {
         case "/chapter/arrival": name = "arrival"; ext = "json"
         case "/chapter/starlight": name = "starlight"; ext = "json"
         case "/chapter/rejoined": name = "rejoined"; ext = "json"
+        case "/chapter/lazy": name = "browser-scroll"; ext = "html"
+        case "/chapter/paged": name = "browser-page"; ext = "html"
+        case "/chapter/capture": name = "browser-capture"; ext = "html"
         case let path where path.hasPrefix("/images/"): name = url.deletingPathExtension().lastPathComponent; ext = "png"
         default: throw ReaderError.unsupportedURL
         }

@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Lazy chapter fixture</title>
+<body><h1>Lazy chapter</h1><span id="total">4</span>
+<div id="pages"><img data-src="/images/1.png"></div>
+<div id="end" style="margin-top:2000px">More pages</div>
+<script>
+const pages = document.getElementById('pages');
+window.addEventListener('scroll', () => {
+  if (pages.children.length >= 4) return;
+  const image = document.createElement('img');
+  image.setAttribute('data-src', '/images/' + (pages.children.length + 1) + '.png');
+  pages.append(image);
+});
+</script></body></html>

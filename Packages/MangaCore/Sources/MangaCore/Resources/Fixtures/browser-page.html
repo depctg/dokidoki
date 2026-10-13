@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Selectable chapter fixture</title>
+<body><h1>Selectable chapter</h1><span id="total">4</span><span id="current">1</span>
+<select id="page"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option></select>
+<button id="next">Next</button><div id="pages"><img data-src="/images/1.png"></div><a class="manga" href="/series/item1">Item 1</a>
+<script>
+const select = document.getElementById('page');
+const total = location.search.includes('browser=page') ? 8 : 4;
+document.getElementById('total').textContent = total;
+for (let i = 5; i <= total; i++) select.add(new Option(i, i));
+function show(index) {
+  document.getElementById('current').textContent = index;
+  document.querySelector('#pages img').setAttribute('data-src', '/images/' + index + '.png');
+  select.value = index;
+  document.getElementById('next').disabled = Number(index) === total;
+  const link = document.querySelector('.manga');
+  link.href = '/series/item' + index; link.textContent = 'Item ' + index;
+}
+select.addEventListener('change', () => show(select.value));
+document.getElementById('next').addEventListener('click', () => show(Math.min(total, Number(select.value) + 1)));
+</script></body></html>

@@ -71,9 +71,9 @@ public final class ObjectStore: Sendable {
             return ObjectSnapshot(object: try JSONDecoder().decode(ContentObject.self, from: row["payload"]), ruleVersion: row["ruleVersion"], expiresAt: Date(timeIntervalSince1970: row["expiresAt"]))
         }
     }
-    public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval) throws {
+    public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval, replacingChildren: Bool = true) throws {
         try db.write { db in
-            if let root = objects.first, root.kind != .page {
+            if replacingChildren, let root = objects.first, root.kind != .page {
                 try db.execute(sql: "DELETE FROM objects WHERE ownerKey = ?", arguments: [root.key.id])
             }
             for object in objects {

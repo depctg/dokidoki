@@ -46,17 +46,22 @@ extension ChapterObject {
         guard pageRefs.indices.contains(index), case .page(let page) = try await pageRefs[index].load(using: repository) else { return nil }
         return page
     }
+    public func load(_ range: Range<Int>, using repository: ObjectRepository) async throws -> [PageObject] {
+        guard range.lowerBound >= 0 else { throw ReaderError.invalidResponse }
+        var result: [PageObject] = []
+        for index in range.clamped(to: 0..<pageRefs.count) { if let page = try await page(at: index, using: repository) { result.append(page) } }
+        return result
+    }
+    /// Cached descriptors preserve all source identities without eagerly resolving URLs.
     public func pages(using repository: ObjectRepository) async throws -> [PageObject] {
-        var pages: [PageObject] = []
-        for index in pageRefs.indices { if let page = try await page(at: index, using: repository) { pages.append(page) } }
-        return pages
+        try await repository.pageDescriptors(for: self)
     }
 }
 extension PageObject {
     public func image(using repository: ObjectRepository, refresh: Bool = false, maxPixel: Int = 1800) async throws -> CGImage {
         let page: PageObject
-        if refresh {
-            guard case .page(let fresh) = try await key.load(using: repository, hint: .forceRefresh) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
+        if refresh || imageURL == nil {
+            guard case .page(let fresh) = try await key.load(using: repository, hint: refresh ? .forceRefresh : .refreshIfStale) else { throw ReaderError.extraction(String(localized: "This reference does not contain a page.", bundle: .module)) }
             page = fresh
         } else { page = self }
         do {

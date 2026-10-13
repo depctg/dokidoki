@@ -59,3 +59,8 @@
 "Invalid JSON link title path." = "Invalid JSON link title path.";
 "Offset pagination needs JSON counters, a query parameter, and no next-link selector." = "Offset pagination needs JSON counters, a query parameter, and no next-link selector.";
 "Invalid pagination counters." = "Invalid pagination counters.";
+
+"Session actions need rendered HTML and an XPath target." = "Session actions need rendered HTML and an XPath target.";
+"The source did not advance to the requested items. Retry or refresh." = "The source did not advance to the requested items. Retry or refresh.";
+
+"Indexed session targets are only supported for chapter pages." = "Indexed session targets are only supported for chapter pages.";

@@ -95,6 +95,31 @@ import os
         #expect(try await sender.send(source("after-error", rule: rule)).data == Data("okay".utf8))
     }
 
+    @Test func browserResourceLookupReusesOnlyExistingBytesAndMissesUseHTTP() async throws {
+        SenderFixture.reset()
+        let rule = try rule(), owner = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://a.sender.test/owner")!)
+        let resource = URL(string: "https://a.sender.test/loaded-image")!
+        let fetcher = PassiveFixtureFetcher(resource: resource, owner: owner.identityURL)
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [SenderFixture.self]
+        let sender = RequestSender(fetcher: fetcher, client: HTTPClient(configuration: config))
+        func request(_ url: URL, context: ObjectKey? = nil) -> ContentRequest {
+            let context = context ?? owner
+            return .image(PageObject(key: .page(owner: context, index: 0), ownerRef: context, sourceIndex: 0,
+                                     imageURL: url, refererURL: context.identityURL), rule: rule)
+        }
+        for _ in 0..<2 { #expect(try await sender.send(request(resource)).data == Data("already loaded".utf8)) }
+        #expect(await fetcher.lookups == 1) // Second lookup uses the native per-session buffer.
+        #expect(SenderFixture.state.withLock { $0.paths.isEmpty })
+        _ = try await sender.send(request(resource.appendingPathComponent("missing")))
+        let other = ObjectKey(ruleID: owner.ruleID, identityURL: owner.identityURL.appendingPathComponent("other"))
+        _ = try await sender.send(request(resource, context: other))
+        #expect(SenderFixture.state.withLock { $0.paths.count } == 2)
+        await sender.invalidateResources()
+        _ = try await sender.send(request(resource))
+        #expect(SenderFixture.state.withLock { $0.paths.count } == 3)
+        #expect(await fetcher.sourceFetches == 0) // A miss never starts a fetch inside the browser.
+    }
+
     @Test func corruptImageBytesAreDiscardedBeforeRetry() async throws {
         SenderFixture.reset()
         let rule = try rule(), sender = sender()
@@ -191,6 +216,21 @@ private struct FixtureFetcher: SourceFetcher {
     func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
         try await client.download(url, rule: rule)
     }
+}
+
+private actor PassiveFixtureFetcher: SourceFetcher {
+    let resource: URL, owner: URL
+    var available = true, lookups = 0, sourceFetches = 0
+    init(resource: URL, owner: URL) { self.resource = resource; self.owner = owner }
+    func fetch(_ url: URL, rule: SiteRule, kind: ContentKind, backgroundLoading: Bool) async throws -> SourceResponse {
+        sourceFetches += 1; throw ReaderError.invalidResponse
+    }
+    func cachedResource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) -> SourceResponse? {
+        lookups += 1
+        guard available, url == resource, owner == self.owner, referer == self.owner else { return nil }
+        return SourceResponse(data: Data("already loaded".utf8), url: url)
+    }
+    func invalidate() { available = false }
 }
 
 /// Delayed URLProtocol records actual transport overlap, including images and cancellation.

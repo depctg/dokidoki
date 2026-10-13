@@ -337,7 +337,7 @@ struct DisplayImageView: View {
         let numbers = resources.compactMap { $0.sourceIndex.map { String($0 + 1) } }
         return numbers.isEmpty ? String(localized: "Comic page") : String(localized: "Comic page \(numbers.joined(separator: ", "))")
     }
-    private var requestID: String { plan.id + resources.map { $0.imageURL.absoluteString + ($0.refererURL?.absoluteString ?? "") }.joined() + "-\(attempt)" }
+    private var requestID: String { plan.id + resources.map { ($0.imageURL?.absoluteString ?? $0.key.id) + ($0.refererURL?.absoluteString ?? "") }.joined() + "-\(attempt)" }
     var body: some View {
         Group {
             if let image { Image(decorative: image, scale: 1).resizable().scaledToFit().accessibilityLabel(imageLabel).accessibilityIdentifier("reader.pageImage") }

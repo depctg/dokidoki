@@ -12,6 +12,13 @@ private final class HTMLDocument {
         document = doc
     }
     deinit { xmlFreeDoc(document) }
+    func contains(_ xpath: String) throws -> Bool {
+        guard let context = xmlXPathNewContext(document) else { throw ReaderError.invalidResponse }
+        defer { xmlXPathFreeContext(context) }
+        guard let result = xmlXPathEvalExpression(xpath, context) else { throw ReaderError.invalidResponse }
+        defer { xmlXPathFreeObject(result) }
+        return (result.pointee.nodesetval?.pointee.nodeNr ?? 0) > 0
+    }
     func values(_ field: Field) throws -> [(String, String)] {
         guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction(String(localized: "Could not create XPath context.", bundle: .module)) }
         defer { xmlXPathFreeContext(context) }
@@ -117,6 +124,11 @@ public struct RuleExtractor: Sendable {
             return try extract(field)
         }
         func first(_ name: String) throws -> String? { try values(name).first?.0 }
+        func counter(_ name: String, minimum: Int = 0) throws -> Int? {
+            guard spec.fields[name] != nil else { return nil }
+            guard let value = try first(name).flatMap(Int.init), (minimum...100_000).contains(value) else { throw ReaderError.invalidResponse }
+            return value
+        }
         func metadata(_ name: String) throws -> [String] {
             var seen: Set<String> = []
             return try values(name).compactMap { value, _ in
@@ -157,10 +169,15 @@ public struct RuleExtractor: Sendable {
         switch kind {
         case .directory:
             let title = rule.browse?.first(where: { (try? RuleRegistry.normalize($0.url)) == key.identityURL })?.title ?? title
+            let items = try refs("mangaLinks", expected: .manga)
+            let total = try counter("totalCount")
+            let end: Bool? = if let strategy = spec.session, strategy.mode != .load {
+                try (total.map { items.count >= $0 } ?? false) || (strategy.endXPath.map { try html?.contains($0) ?? false } ?? false)
+            } else { nil }
             let by = try refs("sortByLinks", expected: .directory)
             let order = try refs("sortOrderLinks", expected: .directory)
             return [.directory(DirectoryObject(key: key, sourceURL: responseURL, title: title,
-                mangaRefs: try refs("mangaLinks", expected: .manga), nextURL: try nextPageURL(),
+                mangaRefs: items, nextURL: try nextPageURL(), endReached: end, totalCount: total,
                 sortBy: by.isEmpty ? nil : by, sortOrder: order.isEmpty ? nil : order,
                 selectedSortBy: try refs("selectedSortBy", expected: .directory).first?.key,
                 selectedSortOrder: try refs("selectedSortOrder", expected: .directory).first?.key))]
@@ -172,11 +189,16 @@ public struct RuleExtractor: Sendable {
             let manga = MangaObject(key: key, sourceURL: responseURL, title: title, author: try first("author"), summary: try first("summary"), coverPageRef: cover?.key, chapterRefs: try refs("chapterLinks", expected: .chapter), rating: try metadata("rating").first, status: try metadata("status").first, tags: tags.isEmpty ? nil : tags)
             return [.manga(manga)] + (cover.map { [.page($0)] } ?? [])
         case .chapter:
-            let pages = try values("pageImages").enumerated().map { index, entry in
-                PageObject(key: .page(owner: key, index: index), ownerRef: key, sourceIndex: index, imageURL: try url(entry.0), refererURL: responseURL)
+            let offset = (try counter("pageNumber", minimum: 1) ?? 1) - 1
+            let pages = try values("pageImages").enumerated().map { position, entry in
+                let index = offset + position
+                return PageObject(key: .page(owner: key, index: index), ownerRef: key, sourceIndex: index, imageURL: try url(entry.0), refererURL: responseURL)
             }
             let parent = try refs("mangaLink", expected: .manga).first?.key
-            return [.chapter(ChapterObject(key: key, sourceURL: responseURL, title: title, mangaRef: parent, pageRefs: pages.map(\.key)))] + pages.map(ContentObject.page)
+            let count = try counter("totalCount") ?? (offset + pages.count)
+            guard count >= offset + pages.count, count <= 100_000 else { throw ReaderError.invalidResponse }
+            return [.chapter(ChapterObject(key: key, sourceURL: responseURL, title: title, mangaRef: parent,
+                pageRefs: (0..<count).map { .page(owner: key, index: $0) }))] + pages.map(ContentObject.page)
         case .page:
             guard let image = try first("image") else { throw ReaderError.extraction(String(localized: "Missing image URL.", bundle: .module)) }
             return [.page(PageObject(key: key, ownerRef: nil, sourceIndex: nil, imageURL: try url(image), refererURL: responseURL))]

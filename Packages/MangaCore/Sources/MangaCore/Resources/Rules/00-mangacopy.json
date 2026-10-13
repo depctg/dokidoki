@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 3,
+  "version": 4,
   "allowedHosts": [
     "www.mangacopy.com",
     "s0.mangafunb.fun",
@@ -110,26 +110,30 @@
       }
     },
     "chapter": {
-      "format": "renderedJSON",
       "rendering": {
-        "captureFunction": "JSON.parse",
-        "captureResult": true,
-        "readyImageXPath": "//ul[contains(@class,'comicContent-list')]//img[@data-src]",
-        "contentMode": "desktop"
+        "contentMode": "desktop",
+        "readyXPath": "//span[@class='comicCount' and number(.) > 0]"
+      },
+      "session": {
+        "mode": "scroll",
+        "actionXPath": "//ul[contains(@class,'comicContent-list')]/li[1]"
       },
       "fields": {
         "title": {
-          "path": "title",
+          "path": "//title",
           "regex": "^.*? - (.*?) - ",
           "group": 1
         },
         "mangaLink": {
-          "path": "url",
-          "regex": "^(.*)/chapter/",
-          "group": 1
+          "path": "//div[contains(@class,'comicContent-prev') and contains(@class,'list')]/a",
+          "read": "attr:href"
+        },
+        "totalCount": {
+          "path": "//span[@class='comicCount']"
         },
         "pageImages": {
-          "path": "data.*.url"
+          "path": "//ul[contains(@class,'comicContent-list')]//img",
+          "read": "attr:data-src"
         }
       }
     },

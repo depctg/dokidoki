@@ -8,7 +8,7 @@ public enum ContentRequest: Sendable {
         switch self { case .source(_, _, let rule, _, _), .image(_, let rule): rule }
     }
     fileprivate var url: URL {
-        switch self { case .source(let key, _, _, _, _): key.identityURL; case .image(let page, _): page.imageURL }
+        switch self { case .source(let key, _, _, _, _): key.identityURL; case .image(let page, _): page.imageURL ?? page.key.identityURL }
     }
     fileprivate var referer: URL? { if case .image(let page, _) = self { return page.refererURL }; return nil }
     fileprivate var rendered: Bool {
@@ -26,6 +26,7 @@ public actor RequestSender {
         let purpose: String
         let referer: URL?
         let backgroundLoading: Bool
+        let load: SourceLoad?
     }
     private struct ResourceKey: Hashable { let policy: Data; let url: URL }
     private var resources: [ResourceKey: SessionResources] = [:]
@@ -35,13 +36,13 @@ public actor RequestSender {
         let owner: URL
         switch request {
         case .source(let key, _, _, _, let load): owner = load.sessionURL ?? key.identityURL
-        case .image(let page, _): owner = page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL
+        case .image(let page, _): owner = page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL ?? page.key.identityURL
         }
         return ResourceKey(policy: try request.rule.exported(), url: owner)
     }
     func discardResource(_ page: PageObject, rule: SiteRule) {
         let request = ContentRequest.image(page, rule: rule)
-        if let key = try? resourceKey(request) { resources[key]?.remove(page.imageURL, referer: page.refererURL) }
+        if let key = try? resourceKey(request) { resources[key]?.remove(request.url, referer: page.refererURL) }
     }
     private func remember(_ response: SourceResponse, request: ContentRequest) {
         guard let key = try? resourceKey(request) else { return }
@@ -82,13 +83,14 @@ public actor RequestSender {
         let purpose: String
         let referer: URL?
         let backgroundLoading: Bool
+        let load: SourceLoad?
         switch request {
-        case .source(_, let kind, _, let background, let load): purpose = "\(kind.rawValue)|\(String(describing: load.range))|\(load.refresh)"; referer = nil; backgroundLoading = background
-        case .image(let page, _): purpose = "image"; referer = page.refererURL; backgroundLoading = false
+        case .source(_, let kind, _, let background, let intent): purpose = kind.rawValue; referer = nil; backgroundLoading = background; load = intent
+        case .image(let page, _): purpose = "image"; referer = page.refererURL; backgroundLoading = false; load = nil
         }
         // Images can reuse bytes acquired by this logical session before admission.
         if case .image = request, let context = try? resourceKey(request), let cached = resources[context]?.response(for: request.url, referer: request.referer) { return cached }
-        let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer, backgroundLoading: backgroundLoading)
+        let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer, backgroundLoading: backgroundLoading, load: load)
         let consumer = UUID()
         let response: SourceResponse = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SourceResponse, Error>) in
@@ -141,9 +143,10 @@ public actor RequestSender {
                     case .source(let object, let kind, let rule, let backgroundLoading, let load):
                         response = try await fetcher.fetch(object.identityURL, rule: rule, kind: kind, backgroundLoading: backgroundLoading, load: load)
                     case .image(let page, let rule):
-                        if let cached = await fetcher.cachedResource(page.imageURL, rule: rule) { response = cached }
-                        else if let fixture = try DemoContent.response(for: page.imageURL) { response = fixture }
-                        else { response = try await client.download(page.imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024) }
+                        guard let imageURL = page.imageURL else { throw ReaderError.invalidResponse }
+                        if let cached = await fetcher.cachedResource(imageURL, rule: rule, owner: page.ownerRef?.identityURL, referer: page.refererURL) { response = cached }
+                        else if let fixture = try DemoContent.response(for: imageURL) { response = fixture }
+                        else { response = try await client.download(imageURL, rule: rule, referer: page.refererURL, limit: 24 * 1024 * 1024) }
                     }
                     try Task.checkCancellation()
                     if resourceEpoch == resourceGeneration { remember(response, request: request) }; result = .success(response)

@@ -4,7 +4,7 @@ The bundled JSON in `Packages/MangaCore/Sources/MangaCore/Resources/Rules` is th
 
 `allowedHosts` contains exact lowercase hosts, including image CDNs. Requests, redirects, and extracted URLs use HTTP(S), without user info, and default web ports. Apple's default App Transport Security policy still applies. Matchers are anchored regular expressions with integer `priority`; ties are errors. Matching preserves query parameters and strips fragments. A matcher may name an `extractor` key; omission selects its kind name. This supports, for example, an HTML catalog and a JSON search endpoint that both produce directories. Transport, rendered admission and parsing all use that same selection.
 
-Each extractor has `format` and `fields`:
+Each extractor has `fields` and an optional `format` (default `renderedHTML`):
 
 - `html` / `renderedHTML`: XPath `path`; `read` is `text` (default) or `attr:name`, with optional `fallback` reader.
 - `json` / `renderedJSON`: dotted `path`, numeric array indices, and `*` for ordered array traversal. Values are strings/numbers or `{ "url": "…", "title": "…" }` link objects. For differently shaped link objects, `read: "attr:property"` selects their value property and optional `titlePath` selects a relative dotted label path (default `title`). `fallback` can read an alternative property. URL templates apply to the selected value.
@@ -18,9 +18,9 @@ URLs resolve against the final response URL and must still pass the exact-host p
 
 | Kind | Required fields | Optional fields |
 | --- | --- | --- |
-| directory | title, mangaLinks | next, sortByLinks, sortOrderLinks, selectedSortBy, selectedSortOrder |
+| directory | title, mangaLinks | next, totalCount, sortByLinks, sortOrderLinks, selectedSortBy, selectedSortOrder |
 | manga | title, chapterLinks | author, summary, coverImage, rating, status, tags |
-| chapter | title, pageImages | mangaLink |
+| chapter | title, pageImages | mangaLink, totalCount, pageNumber |
 | page | image | title |
 
 Manga `rating` and `status` use the first nonblank selected value; `tags` uses all nonblank selected values, deduplicated in source order. They use the existing XPath/JSON path and regex options. Rating and status remain source text (for example `4.5 / 5`, `Ongoing`, or `已完结`); Swift does not invent a scale, translate source labels, or infer a status. Omitted fields and unmatched selectors produce no metadata UI. Exclude site placeholders with a rule regex when necessary. Older manga snapshots without these keys remain readable.
@@ -52,9 +52,43 @@ The first three values are scalar JSON paths; `parameter` names the URL query it
 
 Rendered formats run the website's own scripts in an ephemeral, hidden WebKit session, admitted by the same core request sender. Optional `rendering.contentMode` is `recommended`, `desktop`, or `mobile`. `renderedHTML` returns the DOM for XPath extraction. Optional `rendering.readyXPath` waits for a site-created DOM node, including an explicit empty-result marker, before taking a snapshot. It must select nodes, not return a scalar. Without it, HTML waits for navigation completion; asynchronous lists usually need it. Waiting is bounded to 30 seconds and snapshots to 8 MiB.
 
-Background resource loading defaults to **on**. Every rendered object-kind extractor can set `rendering.loadAds: false` to block images/media/fonts within its hidden metadata session. Omitted/true allows normal loads to the exact declared hosts; Settings → Website loading → Background resource loading can disable them globally and takes precedence. This setting does not block native manga image downloads, scripts or documents. Changing it cancels old object requests; cached content remains usable and future rendered loads use the new policy. No ad view is presented, no clicks or other ad interactions are synthesized, automatic media playback/popups are disabled, and sessions stop after extraction/cancellation. There is no persistent background task. Hosts, redirects and final URLs remain restricted in either mode; WebKit manages subresources inside its one admitted session.
+Background resource loading defaults to **on**. Every rendered object-kind extractor can set `rendering.loadAds: false` to block images/media/fonts within its hidden metadata session. Omitted/true allows normal loads to the exact declared hosts; Settings → Website loading → Background resource loading can disable them globally and takes precedence. This setting does not block native manga image downloads, scripts or documents. Changing it cancels old object requests; cached content remains usable and future rendered loads use the new policy. No ad view is presented, no clicks or other ad interactions are synthesized, automatic media playback/popups are disabled, and sessions close on cancellation, refresh, invalidation or idle expiry. There is no persistent background task. Hosts, redirects and final URLs remain restricted in either mode; WebKit manages subresources in up to four retained contexts; the sender admits one rendered operation at a time.
 
-For `renderedJSON`, `rendering.captureFunction` names a simple dotted function path. A fixed generic observer preserves that function's normal calls and captures the first argument, or its return value with `captureResult: true`. `rendering.readyImageXPath` must select an image the website created. Only after that image has a `src` does the adapter return `{ "data": <captured value>, "imageURL": <rendered image URL>, "title": <document title>, "url": <document URL> }` for normal JSON extraction. An optional `readyXPath` adds another readiness condition. The observer never invokes the named function, changes access gates/cookies, decrypts payloads itself, or executes rule-supplied code. Unsupported scripts/options and prototype-path components are rejected. Prefer a specific site function; when observing a shared function, verify that its last completed call at readiness contains the intended data.
+### Persistent session actions and partial chapters
+
+The manager indexes hidden sessions by logical URL (including query), full rule policy, selected extractor and background preference. It retains up to four contexts with a 60-second idle expiry. Directory link continuation may reuse the original list context. Cookies and browser state are ephemeral and never serialized into content objects. Cached content survives browser disposal.
+
+An optional `session` object supports three strategies:
+
+| mode | Behavior | Required options |
+| --- | --- | --- |
+| `load` (also the behavior when omitted) | Load/read the document; no continuation action | none |
+| `page` | Click the selected page/next/load button, or select an OPTION and dispatch its change event | `actionXPath` |
+| `scroll` | Scroll the selected element into view and notify scroll listeners | `actionXPath` |
+
+Page/scroll strategies require rendered HTML and a chapter or directory extractor. `actionXPath` and optional `endXPath` select DOM nodes; no imported scripts or arbitrary expressions execute. For chapter targets only, `{index}` substitutes the requested one-based source page (for example `//select/option[@value='{index}']`). Directories use an ordinary next/load control, not indexed targets. A sequential chapter next button can replay from the initial document for an uncached backward request.
+
+For lazy chapters, `fields.totalCount` selects the full nonnegative integer page count, up to 100,000. Core creates identities for all pages while caching only image URLs actually present. `fields.pageNumber` optionally selects the one-based index of the first image currently in the DOM (default 1); following images are consecutive. Unknown URLs are never guessed. `ChapterObject.pages` returns descriptors, `load(range)` resolves a zero-based range, and each page's image method resolves its own missing URL. Resolved siblings remain cached when another range arrives. Declare a total for a partial chapter: otherwise the currently extracted images are the entire chapter.
+
+Directories return a cumulative known prefix. The manager replays normal actions past cached item keys when its browser was disposed; no cursor lives in the object or UI. `totalCount` compares against that merged prefix, while `endXPath` can identify a source end marker (including an empty element). No declared end means the next unsuccessful action reports an error rather than falsely declaring completion. Traversal is bounded to 100 returned batches, 1,000 browser actions, 30 seconds per rendered read and five seconds without changed items. Hidden views do not wait for animation frames.
+
+Example lazy chapter extractor (all selectors are illustrative):
+
+```json
+{
+  "rendering": { "readyXPath": "//*[@id='count']" },
+  "session": { "mode": "scroll", "actionXPath": "//*[@id='load-target']" },
+  "fields": {
+    "title": { "path": "//h1" },
+    "totalCount": { "path": "//*[@id='count']" },
+    "pageImages": { "path": "//main/img", "read": "attr:data-src", "fallback": "attr:src" }
+  }
+}
+```
+
+Session resource lookup is passive: first reuse already acquired bytes or readable pixels of already-loaded browser images. A miss uses a normal centralized HTTP/rendered request according to the rule, never a new fetch inside the old document. Native WebKit does not expose all cross-origin response bytes; tainted canvas/absent images fall back to HTTP. Buffers are bounded to four logical contexts × 24 MiB, isolated by rule, owner URL and referer, and backed by the shared durable image cache.
+
+For the explicit compatibility format `renderedJSON`, `rendering.captureFunction` names a simple dotted function path. A fixed generic observer preserves that function's normal calls and captures the first argument, or its return value with `captureResult: true`. `rendering.readyImageXPath` must select an image the website created. Only after that image has a `src` does the adapter return `{ "data": <captured value>, "imageURL": <rendered image URL>, "title": <document title>, "url": <document URL> }` for normal JSON extraction. An optional `readyXPath` adds another readiness condition. The observer never invokes the named function, changes access gates/cookies, decrypts payloads itself, or executes rule-supplied code. Unsupported scripts/options and prototype-path components are rejected. Prefer a specific site function; when observing a shared function, verify that its last completed call at readiness contains the intended data.
 
 Manhuagui's chapter recipe is an example of these generic capabilities:
 
@@ -77,9 +111,9 @@ Manhuagui's chapter recipe is an example of these generic capabilities:
 }
 ```
 
-MangaCopy's second bundled recipe requests desktop content, uses rendered DOM lists and metadata, waits for asynchronous results, and observes a normal `JSON.parse` result for chapter image URLs. An iPhone user agent redirects to `/h5`, whose structure differs; this choice is entirely JSON. Its initial chapter DOM contains only three lazy pages; the captured site result contains the full chapter. Chapter ordering excludes the separate latest-chapter shortcut. Search uses the website's public JSON endpoint, selected by a named extractor; its declared offset/limit/total counters supply subsequent 12-item pages. Valid first/second and empty responses passed core live probes. Native pull gesture verification is deferred; see DEV_STATE. Catalogs expose real next/sort links. Selectors, observation paths, hosts, URLs and metadata mapping are exclusively in `00-mangacopy.json`.
+MangaCopy v4 requests desktop content and uses rendered DOM lists, metadata and chapters. Its initial chapter DOM contains three lazy images; the DOM supplies the complete count, and the JSON scroll target exposes later image URLs as requested. No chapter JavaScript capture is needed. The iPhone `/h5` redirect, desktop choice, chapter order and all selectors remain JSON-only. Search retains its named public JSON extractor with offset/limit/total counters; catalogs expose real next/sort links. Native pull gesture verification remains deferred; see DEV_STATE. Manhuagui retains its explicit rendered-JSON compatibility recipe until live connectivity permits a verified DOM migration; do not invent selectors from a failed connection.
 
-Use `swift run --package-path Packages/MangaCore manga-probe --rendered <URL>` for WebKit sources. Without `--rendered`, the probe reports the adapter requirement. `--rule /path/rule.json` validates and uses an unbundled recipe (replacing the same ID for this process). `--no-background` tests the global off policy. `--references` prints manga chapter titles/URLs for order checks. `--diagnostics` fetches once and lists hosts found in source text; they can include unrelated links, so this is not an allowlist generator. `--snapshot /tmp/source.html` instead/also saves that source response for local inspection and returns without extraction. Snapshots may contain private/signed data or copyrighted content; keep them temporary and out of commits/log reports. See the external [authoring guide](../rule-authoring/GUIDE.md) and [AI prompt](../rule-authoring/PROMPT.md); neither is an app/package resource.
+Use `swift run --package-path Packages/MangaCore manga-probe --rendered <URL>` for WebKit sources. Without `--rendered`, the probe reports the adapter requirement. `--rule /path/rule.json` validates and uses an unbundled recipe (replacing the same ID for this process). `--range start:count` resolves a zero-based chapter range (or requests it before a diagnostic snapshot); test a late page, not only the initial lazy images. `--no-background` tests the global off policy. `--references` prints manga chapter titles/URLs for order checks. `--diagnostics` fetches once and lists hosts found in source text; they can include unrelated links, so this is not an allowlist generator. `--snapshot /tmp/source.html` instead/also saves that source response for local inspection and returns without extraction. Snapshots may contain private/signed data or copyrighted content; keep them temporary and out of commits/log reports. See the external [authoring guide](../rule-authoring/GUIDE.md) and [AI prompt](../rule-authoring/PROMPT.md); neither is an app/package resource.
 
 ## Exchange and identity
 

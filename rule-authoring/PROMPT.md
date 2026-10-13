@@ -22,7 +22,15 @@ selectors, captures, filename/URL construction, metadata, chapter order,
 readiness, browse shelves, search and sorting. No Swift/bridge exceptions,
 imported executable code, arbitrary expressions, credential exports, access
 gate changes, custom decryption, wildcard hosts or fabricated endpoints.
-Use native HTML/JSON first, normal hidden WebKit behavior when necessary.
+Default to normal rendered DOM for chapters (omitted format means renderedHTML).
+For lazy content, declare totalCount, optional one-based pageNumber, and minimal
+session load/page/scroll options with actionXPath/endXPath. Chapter targets can
+use {index}; directories use ordinary next/load controls. Core managers retain
+URL-indexed sessions and resolve ranges; Codable objects own no browser state.
+Keep explicit HTML/JSON for static responses/public APIs and renderedJSON only
+for compatibility where DOM actions cannot expose the content. Resource reuse
+is passive: an unavailable resource uses central HTTP/rendered transport, never
+an arbitrary fetch inside an existing session to fill its cache.
 A matcher can select a named extractor for a public JSON search API alongside
 HTML catalogs; JSON link read/titlePath and offset/limit/total pagination are
 available. Only declare endpoints and counters observed in normal requests.
@@ -40,7 +48,8 @@ Deliver an importable schema-1 JSON recipe, a short evidence/verification report
 and explicit unsupported cases. Validate with SiteRule.decode via manga-probe
 --rule; exercise list -> manga -> chapter -> decoded image, search including an
 empty result, actual next/sort links, JSON page two/end counters if declared,
-and background on/off. Keep downloaded
+late chapter ranges (--range start:count), session reuse/disposal, and background
+on/off. Keep downloaded
 pages/images/signed URLs in temporary files, never in the app/package or git.
 Use only original synthetic fixture content in regression tests. Update
 docs/RULES.md and this guide/prompt whenever the language or authoring workflow

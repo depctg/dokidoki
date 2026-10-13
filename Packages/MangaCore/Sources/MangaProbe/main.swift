@@ -11,6 +11,13 @@ import AppKit
     }
     @MainActor static func run() async throws {
         var arguments = Array(CommandLine.arguments.dropFirst())
+        var itemRange: Range<Int>?
+        if let index = arguments.firstIndex(of: "--range") {
+            guard arguments.indices.contains(index + 1) else { throw ReaderError.invalidResponse }
+            let parts = arguments[index + 1].split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2, parts[0] >= 0, parts[1] > 0, parts[0] <= 100_000 - parts[1] else { throw ReaderError.invalidResponse }
+            itemRange = parts[0]..<(parts[0] + parts[1]); arguments.removeSubrange(index...index + 1)
+        }
         var snapshotPath: String?
         if let index = arguments.firstIndex(of: "--snapshot") {
             guard arguments.indices.contains(index + 1) else { throw ReaderError.invalidRule("--snapshot requires an output file") }
@@ -38,7 +45,7 @@ import AppKit
         if arguments.contains("--diagnostics") || snapshotPath != nil {
             let rule = try await repository.rule(for: key)
             let kind = try RuleRegistry(rules: [rule]).match(url).1
-            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading))
+            let response = try await sender.send(.source(key, kind: kind, rule: rule, backgroundLoading: backgroundLoading, load: SourceLoad(range: itemRange)))
             if let snapshotPath {
                 try response.data.write(to: URL(fileURLWithPath: snapshotPath), options: .atomic)
                 print("Saved source snapshot (\(response.data.count) bytes)")
@@ -63,7 +70,7 @@ import AppKit
                case .manga(let manga) = try await ref.load(using: repository), let chapter = manga.chapterRefs.first,
                case .chapter(let chapter) = try await chapter.load(using: repository), let page = chapter.pageRefs.first,
                case .page(let page) = try await page.load(using: repository) {
-                print("\(manga.title) → \(chapter.title) → \(chapter.pageRefs.count) pages; first image: \(page.imageURL.lastPathComponent)")
+                print("\(manga.title) → \(chapter.title) → \(chapter.pageRefs.count) pages; first image: \(page.imageURL?.lastPathComponent ?? "unresolved")")
             }
         }
         if case .manga(let manga) = object {
@@ -76,6 +83,15 @@ import AppKit
             }
         }
         if case .chapter(let chapter) = object {
+            if let itemRange {
+                let pages = try await chapter.load(itemRange, using: repository)
+                print("Requested range: \(itemRange); resolved \(pages.count) pages")
+                for page in pages { print("Page \((page.sourceIndex ?? 0) + 1): \(page.imageURL?.lastPathComponent ?? "unresolved")") }
+                if let page = pages.last {
+                    let image = try await page.image(using: repository)
+                    print("Requested image decoded: \(image.width) × \(image.height)")
+                }
+            }
             print("\(chapter.pageRefs.count) pages")
             if let key = chapter.pageRefs.first, case .page(let page) = try await key.load(using: repository) {
                 let image = try await page.image(using: repository)

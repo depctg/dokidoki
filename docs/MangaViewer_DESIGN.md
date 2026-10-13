@@ -1,6 +1,6 @@
 # Manga Viewer — Design Specification (V1)
 
-**Status:** implementation-ready proposal  
+**Status:** maintained implementation design
 **Platforms:** iOS, macOS, visionOS; adaptive layout for iPhone Duo (closed and unfolded)  
 **UI:** native SwiftUI  
 **Primary goal:** a small, extensible URL-to-object engine with an excellent manga-reading view.
@@ -59,10 +59,10 @@ Each object contains `key`, `sourceURL` if applicable, basic metadata, and typed
 | Object | Required role | Main fields |
 | --- | --- | --- |
 | `SiteObject` | Browse root for one installed rule | `id`, `name`, `version`, normalized `directoryRefs`, `supportsSearch`, `search(query)` returning a directory reference |
-| `DirectoryObject` | A single listing of manga | `title`, ordered `mangaRefs`, optional `nextURL`, sort-by/order references and selected keys |
+| `DirectoryObject` | A single listing of manga | `title`, optional known `items` (`mangaRefs` compatibility view), `hasMore`, optional total/end/`nextURL`, sort-by/order references and selected keys |
 | `MangaObject` | A series and its chapters | `title`, optional author/summary/rating/status/tags, `coverPageRef`, ordered `chapterRefs` |
 | `ChapterObject` | A navigable chapter | `title`, parent `mangaRef`, ordered `pageRefs`, optional chapter number |
-| `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, `imageURL`, optional `refererURL`, dimensions/analysis |
+| `PageObject` | One original image (cover or chapter page) | `ownerRef` (manga/chapter), `role` (cover/content), optional `sourceIndex`, optional resolved `imageURL`, optional `refererURL`, dimensions/analysis |
 
 Use `ObjectKey` references, not embedded recursive object graphs. Lists retain the extracted order; selecting a source-provided sort link loads a distinct directory object. DirectoryObject.load(_:using:) asks the shared core context for a zero-based range. Core loads enough source pages, deduplicates keys and keeps the first page identity/sorting; objects remain immutable snapshots with optional known items. JSON APIs may declare offset/limit/total paths plus a query parameter instead of a next-link selector. Matchers can select named extractors so one site can use HTML catalogs and JSON search without transport exceptions. The accessible Load more action accompanies native bottom-pull handling; that gesture’s verification/fix is deferred to the next version (DEV_STATE).
 
@@ -96,10 +96,10 @@ External URL / ObjectKey
 
 - `RuleRegistry`: installed rules; match by host, URL pattern, object type, and explicit priority. Return an `unsupportedURL` result if no rule matches. Ambiguous matches are errors, not arbitrary choices.
 - SiteObject creates normalized directory/search references and validates the actual encoded query against its own rule. Core objects/references expose loading methods; callers supply a shared repository without persisting service references inside Codable values. Chapters load their pages/parent manga, manga load their covers, and pages determine their image requests. `MangaObject` decides adjacent chapters using its rule-supplied reference order.
-- `RequestSender` (`actor`): one admission queue for documents, images and rendered sessions, with native async result/error delivery. Share identical requests by URL, purpose, complete rule policy and image referer; each caller can cancel independently. Last-consumer cancellation removes queued work or cancels active transport, retaining capacity until that transport exits. FIFO among eligible requests allows four active total, two per initial host, and one rendered session. A rolling one-second start budget allows eight total and four per initial host, regardless of how quickly requests finish. Rate-delayed work occupies no active slot and uses one cancellable native [ContinuousClock deadline](https://developer.apple.com/documentation/swift/task/sleep(until:tolerance:clock:)); other eligible hosts proceed. Deduplicated waiters and canceled queued requests spend no extra budget. Admitted attempts count even if they fail or are canceled. Browser-internal subresources remain WebKit-managed.
+- `RequestSender` (`actor`): one admission queue for documents, images and rendered sessions, with native async result/error delivery. Share identical requests by URL, purpose, complete rule policy and image referer; each caller can cancel independently. Last-consumer cancellation removes queued work or cancels active transport, retaining capacity until that transport exits. FIFO among eligible requests allows four active total, two per initial host, and one rendered operation. A rolling one-second start budget allows eight total and four per initial host, regardless of how quickly requests finish. Rate-delayed work occupies no active slot and uses one cancellable native [ContinuousClock deadline](https://developer.apple.com/documentation/swift/task/sleep(until:tolerance:clock:)); other eligible hosts proceed. Deduplicated waiters and canceled queued requests spend no extra budget. Admitted attempts count even if they fail or are canceled. Browser-internal subresources remain WebKit-managed.
 - `SourceFetcher`: HTTP(S) transport, redirects, timeouts and limited request headers; rendered sources use the generic WebKit adapter. Admission belongs to the shared sender. No UI dependency.
-- Rendered metadata sessions are hidden and ephemeral. Normal declared-host resource loading, including ads, defaults on; a persisted global Settings toggle or per-kind JSON `rendering.loadAds: false` blocks hidden images/media/fonts. Native reader images remain available. Policy changes cancel old object requests and participate in sender identity. No ad UI/interactions, autoplay, persistent background task or relaxed host checks. `readyXPath` waits for asynchronous DOM completion; rendered JSON observes a normal function argument or return value (`captureResult`) and a site-created readiness image. Full syntax lives in RULES.md; AI authoring guidance stays outside the app/package in rule-authoring/.
-- `RuleExtractor`: XPath-select HTML or traverse JSON; resolve relative links against the response URL; preserve item order; create child `PageObject`s while parsing a chapter.
+- Rendered sessions persist in a core manager indexed by logical URL (query included), full rule/extractor policy and background preference. At most four browser contexts are retained, with a 60-second idle expiry; refresh, cancellation and invalidation close affected contexts. One rendered operation is admitted at a time; retained browser timers/subresources remain WebKit-managed. Sessions are hidden, use ephemeral browser storage and never become object state or an iOS background service. Minimal JSON load/page/scroll strategies translate range intents into ordinary DOM actions, preserving existing resolved siblings. Directory requests supply known item identities so a recreated session can replay to unseen items without treating cached batches as stalled progress. Normal declared-host resource loading, including ads, defaults on; a persisted global Settings toggle or per-kind JSON `rendering.loadAds: false` blocks hidden images/media/fonts. Native reader images remain available. Policy changes cancel old object requests and participate in sender identity. No ad UI/interactions, autoplay, persistent background task or relaxed host checks. `readyXPath` waits for asynchronous DOM completion; rendered JSON observes a normal function argument or return value (`captureResult`) and a site-created readiness image. Full syntax lives in RULES.md; AI authoring guidance stays outside the app/package in rule-authoring/.
+- `RuleExtractor`: XPath-select HTML or traverse JSON; resolve relative links against the response URL; preserve item order; create known child `PageObject`s plus all chapter page identities from a declared total. Unresolved descriptors retain identity/index with no guessed image URL; page image loads request only missing ranges.
 - `ObjectRepository` (`actor`): shared context for object loading, cache decisions, deduplicated complete object resolutions, atomic storage of parent/child snapshots, and ownership of the shared sender/image cache.
 - `ObjectStore`: local SQLite store of keyed, versioned `Codable` snapshots. Use GRDB as a small SQLite wrapper. Keep a storage protocol only where it supports a real fixture/in-memory implementation.
 - `ReadingStateStore`: a separate small table for saved manga, chapter/page progress, and preferences. Reading state must survive content cache eviction.
@@ -108,60 +108,23 @@ External URL / ObjectKey
 
 ### Cache policy
 
-The **object/repository layer owns freshness**. Views can send `preferCache`, `refreshIfStale`, `forceRefresh`, or `offlineOnly` hints; they cannot directly manage HTTP or database lifetimes. Start with overridable defaults (e.g., shorter TTL for directories, longer TTL for published chapters). Stale cached objects may remain visible while a refresh runs.
+The **object/repository layer owns freshness**. Views can send `preferCache`, `refreshIfStale`, `forceRefresh`, or `offlineOnly` hints; they cannot directly manage HTTP or database lifetimes. Shared defaults are fifteen minutes for directories and seven days for manga/chapters. Stale cached objects may remain visible while a refresh runs.
 
-Image *bytes* are a separate resource cache with memory eviction and bounded on-disk LRU. `PageObject.image(using:)` determines its resource identity/request; the repository-owned image loader checks caches, asks the same sender for missing bytes, and decodes images. Never persist credentials or cookies in exported rules. Decode/display only visible images and a small neighbor window; cancel irrelevant prefetches when the user jumps chapters.
+Cover and chapter images share core image policy/storage: 96 MiB decoded memory (16 MiB reserved for 768px covers), 256 MiB disk, with covers retained ahead of content. Passive session buffers retain already-acquired responses (four logical contexts, 24 MiB each), isolated by full rule, owner URL and referer. They may reuse accessible pixels from images already loaded by WebKit; no extra browser fetch fills a miss. Public WebKit APIs cannot expose every cross-origin resource, so unavailable bytes fall back to central HTTP. Cache/rule/policy invalidation discards old generations. `PageObject.image(using:)` determines its resource identity/request; the repository-owned image loader checks caches, asks the same sender for missing bytes, and decodes images. Never persist credentials or cookies in exported rules. Decode/display only visible images and a small neighbor window; cancel irrelevant prefetches when the user jumps chapters.
 
 ## 6. Site rules (JSON)
 
-again, the rules described here is non-final; I'd prefer a xpath selector to seelect the elements.
-
-A rule is a portable, **data-only** recipe. it need to be compact to be fit into a QR code. site rules contains url match  Its initial schema supports:
+A rule is a portable, **data-only** recipe. Keep it compact enough for file/QR sharing. The supported schema includes:
 
 - `schemaVersion`, stable rule `id`, display name, version, and allowed hosts.
 - URL matchers for `directory`, `manga`, and `chapter` (page objects may be synthesized from chapter extraction).
-- Fetch format: `html` or `json`.
-- Extraction fields: CSS selector + text/attribute for HTML; a minimal dotted key path for JSON. Relative URL resolution is automatic.
+- Fetch format defaults to `renderedHTML`; explicit `html`/`json` and legacy `renderedJSON` remain supported. Prefer DOM extraction and normal session actions for chapters.
+- Extraction fields: XPath + text/attribute for HTML; a minimal dotted key path for JSON. Relative URL resolution is automatic.
 - Optional search URL template, listing pagination, image source attribute fallback, and reader defaults.
 
-Illustrative rule (not a real manga website):
+The canonical schema, examples, action semantics and bounds are in [RULES.md](RULES.md). Session `load` reads a document, `page` activates a next/load control or chapter page option, and `scroll` reveals a rule-selected target. Chapter `totalCount` and optional one-based `pageNumber` preserve complete identities across partial DOM snapshots. Directories accumulate known items and compare declared totals against that aggregate. These capabilities remain data-only; no general expression language, imported scripts, credentials or arbitrary host access.
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "example-reader",
-  "name": "Example Reader",
-  "version": 1,
-  "allowedHosts": ["reader.example", "img.reader.example"],
-  "matchers": [
-    {"kind": "directory", "pattern": "^https://reader\\.example/catalog.*$"},
-    {"kind": "manga", "pattern": "^https://reader\\.example/series/[^/]+/?$"},
-    {"kind": "chapter", "pattern": "^https://reader\\.example/chapter/[^/]+/?$"}
-  ],
-  "extractors": {
-    "directory": {
-      "format": "html",
-      "title": {"selector": "h1", "read": "text"},
-      "mangaLinks": {"selector": ".series-card a", "read": "attr:href"}
-    },
-    "manga": {
-      "format": "html",
-      "title": {"selector": "h1.series-title", "read": "text"},
-      "coverImage": {"selector": "img.cover", "read": "attr:src"},
-      "chapterLinks": {"selector": ".chapter-list a", "read": "attr:href"}
-    },
-    "chapter": {
-      "format": "html",
-      "title": {"selector": "h1.chapter-title", "read": "text"},
-      "pageImages": {"selector": ".reader img", "read": "attr:data-src", "fallback": "attr:src"}
-    }
-  },
-}
-```
-
-Implement one real rule plus bundled, deterministic HTML/JSON fixtures first. Avoid inventing a general transformation language. Rule import validates supported schema, known processors, URL patterns, host restrictions, and required extraction fields. Imported rules cannot supply executable code or arbitrary network destinations outside approved hosts.
-
-For dynamic JavaScript-heavy sites, keep `SourceFetcher` extensible for a WebKit-based rendered-DOM adapter. Implement it only once a chosen supported site requires it; ordinary HTTP/HTML/JSON extraction comes first.
+Use original offline HTML/JSON/browser fixtures for deterministic regressions, plus bounded live probes of the requested sources. A source connection failure is not evidence for changing selectors. Full-rendered chapter loading is the default; older explicit capture recipes can remain until a verified DOM migration is possible.
 
 ## 7. Chapter reader and image pipeline
 
@@ -242,7 +205,7 @@ QR codes: use Core Image's QR generator for small rule payloads. If the JSON exc
 - **Language/concurrency:** Swift, async/await, actors for repositories and shared loaders. Prefer modern OS baselines (proposed: iOS 26+, macOS 26+, visionOS 26+) to avoid compatibility scaffolding; validate against the available Xcode SDK.
 - **UI:** SwiftUI only, with small platform-specific code where required.
 - **Networking:** Foundation `URLSession`.
-- **HTML extraction:** SwiftSoup. **JSON:** Foundation `Codable` / `JSONSerialization`.
+- **HTML extraction:** system libxml2 (XPath). **JSON:** Foundation `Codable` / `JSONSerialization`.
 - **Persistence:** SQLite through GRDB, storing typed-object JSON snapshots behind a small repository interface.
 - **Images:** Image I/O, Core Graphics, Core Image; `NSCache` and an app-managed disk LRU.
 - **Sharing:** `fileImporter`, `fileExporter`/`ShareLink`, Core Image QR generation.

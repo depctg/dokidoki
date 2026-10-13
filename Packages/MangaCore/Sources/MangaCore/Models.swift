@@ -34,14 +34,19 @@ public struct DirectoryObject: Codable, Sendable {
     public let title: String
     public let items: [ContentReference]?
     public var mangaRefs: [ContentReference] { items ?? [] }
-    public var hasMore: Bool? { items == nil ? nil : nextURL != nil }
+    public var hasMore: Bool? {
+        if let totalCount, let items, items.count >= totalCount { return false }
+        return endReached.map { !$0 } ?? (items == nil ? nil : nextURL != nil)
+    }
+    public var endReached: Bool? = nil
+    public var totalCount: Int? = nil
     private enum CodingKeys: String, CodingKey {
-        case key, sourceURL, title, nextURL, sortBy, sortOrder, selectedSortBy, selectedSortOrder
+        case key, sourceURL, title, nextURL, endReached, totalCount, sortBy, sortOrder, selectedSortBy, selectedSortOrder
         case items = "mangaRefs"
     }
-    public init(key: ObjectKey, sourceURL: URL, title: String, mangaRefs: [ContentReference]? = nil, nextURL: URL? = nil,
+    public init(key: ObjectKey, sourceURL: URL, title: String, mangaRefs: [ContentReference]? = nil, nextURL: URL? = nil, endReached: Bool? = nil, totalCount: Int? = nil,
                 sortBy: [ContentReference]? = nil, sortOrder: [ContentReference]? = nil, selectedSortBy: ObjectKey? = nil, selectedSortOrder: ObjectKey? = nil) {
-        self.key = key; self.sourceURL = sourceURL; self.title = title; items = mangaRefs; self.nextURL = nextURL
+        self.key = key; self.sourceURL = sourceURL; self.title = title; items = mangaRefs; self.nextURL = nextURL; self.endReached = endReached; self.totalCount = totalCount
         self.sortBy = sortBy; self.sortOrder = sortOrder; self.selectedSortBy = selectedSortBy; self.selectedSortOrder = selectedSortOrder
     }
     public let nextURL: URL?
@@ -88,10 +93,11 @@ public struct PageObject: Codable, Sendable, Identifiable {
     public let ownerRef: ObjectKey?
     public let role: Role
     public let sourceIndex: Int?
-    public let imageURL: URL
+    /// Nil until a partial chapter's normal DOM actions expose this resource.
+    public let imageURL: URL?
     public let refererURL: URL?
     public var id: ObjectKey { key }
-    public init(key: ObjectKey, ownerRef: ObjectKey?, role: Role = .content, sourceIndex: Int?, imageURL: URL, refererURL: URL?) {
+    public init(key: ObjectKey, ownerRef: ObjectKey?, role: Role = .content, sourceIndex: Int?, imageURL: URL?, refererURL: URL?) {
         self.key = key; self.ownerRef = ownerRef; self.role = role; self.sourceIndex = sourceIndex
         self.imageURL = imageURL; self.refererURL = refererURL
     }

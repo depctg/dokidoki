@@ -27,6 +27,12 @@ public struct RenderingRule: Codable, Sendable {
     /// The global background-loading setting can always disable it.
     public var loadAds: Bool? = nil
 }
+public struct SessionRule: Codable, Sendable {
+    public enum Mode: String, Codable, Sendable { case load, page, scroll }
+    public let mode: Mode
+    public var actionXPath: String? = nil
+    public var endXPath: String? = nil
+}
 public struct ExtractionRule: Codable, Sendable {
     public enum Format: String, Codable, Sendable {
         case html, json, renderedHTML, renderedJSON
@@ -38,6 +44,19 @@ public struct ExtractionRule: Codable, Sendable {
     public var rendering: RenderingRule? = nil
     public var variables: [String: Field]? = nil
     public var pagination: OffsetPagination? = nil
+    public var session: SessionRule? = nil
+}
+extension ExtractionRule {
+    private enum CodingKeys: String, CodingKey { case format, fields, rendering, variables, pagination, session }
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        format = try c.decodeIfPresent(Format.self, forKey: .format) ?? .renderedHTML
+        fields = try c.decode([String: Field].self, forKey: .fields)
+        rendering = try c.decodeIfPresent(RenderingRule.self, forKey: .rendering)
+        variables = try c.decodeIfPresent([String: Field].self, forKey: .variables)
+        pagination = try c.decodeIfPresent(OffsetPagination.self, forKey: .pagination)
+        session = try c.decodeIfPresent(SessionRule.self, forKey: .session)
+    }
 }
 /// JSON response counters and the URL query parameter advanced by one page.
 public struct OffsetPagination: Codable, Sendable {
@@ -149,6 +168,16 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                     xmlXPathFreeCompExpr(compiled)
                 }
             }
+            if let session = extraction.session {
+                if session.mode != .load {
+                    guard [.chapter, .directory].contains(matcher.kind), extraction.format == .renderedHTML, session.actionXPath != nil else { throw ReaderError.invalidRule(String(localized: "Session actions need rendered HTML and an XPath target.", bundle: .module)) }
+                }
+                if matcher.kind != .chapter, session.actionXPath?.contains("{index}") == true { throw ReaderError.invalidRule(String(localized: "Indexed session targets are only supported for chapter pages.", bundle: .module)) }
+                for xpath in [session.actionXPath, session.endXPath].compactMap({ $0 }) {
+                    guard xpath.count <= 2048, let compiled = xmlXPathCompile(xpath.replacingOccurrences(of: "{index}", with: "1")) else { throw ReaderError.invalidRule(String(localized: "Invalid XPath selector.", bundle: .module)) }
+                    xmlXPathFreeCompExpr(compiled)
+                }
+            }
             if extraction.format == .renderedJSON {
                 guard extraction.rendering?.captureFunction != nil, extraction.rendering?.readyImageXPath != nil else { throw ReaderError.invalidRule(String(localized: "Rendered JSON needs a capture function and an image readiness XPath.", bundle: .module)) }
             }
@@ -185,7 +214,8 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             guard Set(matcher.keys).isSubset(of: ["kind", "pattern", "priority", "extractor"]) else { throw ReaderError.invalidRule(String(localized: "Invalid URL matcher or missing extractor.", bundle: .module)) }
         }
         for extractor in (json["extractors"] as? [String: [String: Any]] ?? [:]).values {
-            guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables", "pagination"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
+            guard Set(extractor.keys).isSubset(of: ["format", "fields", "rendering", "variables", "pagination", "session"]) else { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
+            if let session = extractor["session"] as? [String: Any], !Set(session.keys).isSubset(of: ["mode", "actionXPath", "endXPath"]) { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             if let pagination = extractor["pagination"] as? [String: Any], !Set(pagination.keys).isSubset(of: ["offset", "limit", "total", "parameter"]) { throw ReaderError.invalidRule(String(localized: "Unsupported extractor options.", bundle: .module)) }
             let fields = Array((extractor["fields"] as? [String: [String: Any]] ?? [:]).values) + Array((extractor["variables"] as? [String: [String: Any]] ?? [:]).values)
             for field in fields {
