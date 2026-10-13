@@ -232,7 +232,6 @@ import XCTest
             for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { from.press(forDuration: 0.05, thenDragTo: to) }
             XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
             XCTAssertEqual(title.label, "1 · Arrival", "Reaching the last page must not open the next chapter")
-            XCTAssertFalse(app.staticTexts["reader.continuationTitle"].exists)
             from.press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: leftward ? 0.7 : 0.35, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
             XCTAssertEqual(title.label, "1 · Arrival")
             XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" })
@@ -262,12 +261,10 @@ import XCTest
             XCTAssertEqual(title.label, "1 · Arrival", "Scrolling to the bottom must not switch chapters")
         }
         XCTAssertTrue(lastPage.exists && lastPage.frame.maxY <= app.frame.maxY + 2)
-        XCTAssertFalse(app.staticTexts["reader.continuationTitle"].exists)
         // A short flick may bounce farther after release; momentum must never arm continuation.
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.75))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65)), withVelocity: .fast, thenHoldForDuration: 0)
         XCTAssertEqual(title.label, "1 · Arrival")
-        XCTAssertTrue(wait { !app.staticTexts["reader.continuationTitle"].exists })
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.1)), withVelocity: .slow, thenHoldForDuration: 0.3)
         XCTAssertTrue(wait { title.label == "2 · Starlight" })
@@ -275,8 +272,14 @@ import XCTest
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.35))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.45)), withVelocity: .fast, thenHoldForDuration: 0)
         XCTAssertEqual(title.label, "2 · Starlight")
+        // Start inside the first page: crossing the boundary while still dragging must
+        // reveal/commit the same previous-chapter pull, without a separate arming swipe.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        let firstPage = app.images.matching(identifier: "reader.pageImage").matching(NSPredicate(format: "label == %@", "Comic page 1")).firstMatch
+        XCTAssertTrue(wait { firstPage.frame.minY < -5 })
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)), withVelocity: .slow, thenHoldForDuration: 0.3)
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.95)), withVelocity: .slow, thenHoldForDuration: 0.3)
         XCTAssertTrue(wait { title.label == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
         XCTAssertTrue(wait { lastPage.exists && abs(lastPage.frame.maxY - app.frame.maxY) < 3 })
         // Missing adjacent chapters stay on the boundary even after a long pull.
