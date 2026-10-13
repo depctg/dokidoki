@@ -16,11 +16,13 @@ public struct ReadingPosition: Codable, Sendable {
     public let mangaTitle: String?
     public let pageNumber: Int?
     public let totalPages: Int?
+    public let chapterListID: String?
     public init(mangaKey: ObjectKey, chapterKey: ObjectKey, sourcePageKey: ObjectKey, fractionalOffset: Double = 0, title: String,
-                mangaTitle: String? = nil, pageNumber: Int? = nil, totalPages: Int? = nil, updatedAt: Date = Date()) {
+                mangaTitle: String? = nil, pageNumber: Int? = nil, totalPages: Int? = nil, chapterListID: String? = nil, updatedAt: Date = Date()) {
         self.mangaKey = mangaKey; self.chapterKey = chapterKey; self.sourcePageKey = sourcePageKey
         self.fractionalOffset = min(1, max(0, fractionalOffset.isFinite ? fractionalOffset : 0)); self.title = title; self.updatedAt = updatedAt
         self.mangaTitle = mangaTitle; self.pageNumber = pageNumber; self.totalPages = totalPages
+        self.chapterListID = chapterListID
     }
 }
 public struct SavedManga: Codable, Sendable, Identifiable {
@@ -63,12 +65,22 @@ public final class ObjectStore: Sendable {
         migration.registerMigration("v3RecentVisibility") { db in
             try db.execute(sql: "ALTER TABLE readingState ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0")
         }
+        migration.registerMigration("v4ChapterReadingStatus") { db in
+            try db.execute(sql: "CREATE TABLE mangaReadingState (mangaKey TEXT PRIMARY KEY, payload BLOB NOT NULL)")
+            for data in try Data.fetchAll(db, sql: "SELECT payload FROM readingState") {
+                let position = try JSONDecoder().decode(ReadingPosition.self, from: data)
+                let statuses = [position.chapterKey: ChapterReadingStatus.reading]
+                try db.execute(sql: "INSERT INTO mangaReadingState VALUES (?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(statuses)])
+            }
+        }
         try migration.migrate(db)
     }
     public func snapshot(_ key: ObjectKey) throws -> ObjectSnapshot? {
         try db.read { db in
             guard let row = try Row.fetchOne(db, sql: "SELECT * FROM objects WHERE key = ?", arguments: [key.id]) else { return nil }
-            return ObjectSnapshot(object: try JSONDecoder().decode(ContentObject.self, from: row["payload"]), ruleVersion: row["ruleVersion"], expiresAt: Date(timeIntervalSince1970: row["expiresAt"]))
+            var object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
+            if case .manga(var manga) = object { manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); object = .manga(manga) }
+            return ObjectSnapshot(object: object, ruleVersion: row["ruleVersion"], expiresAt: Date(timeIntervalSince1970: row["expiresAt"]))
         }
     }
     public func upsert(_ objects: [ContentObject], version: Int, ttl: TimeInterval, replacingChildren: Bool = true) throws {
@@ -145,8 +157,25 @@ public final class ObjectStore: Sendable {
         }
     }
     public func clearContent() throws { try db.write { try $0.execute(sql: "DELETE FROM objects") } }
-    public func savePosition(_ position: ReadingPosition) throws {
-        try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO readingState (mangaKey, payload, updatedAt, hidden) VALUES (?, ?, ?, 0)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970]) }
+    public func savePosition(_ position: ReadingPosition, completed: Bool = false) throws {
+        try db.write { db in
+            try db.execute(sql: "INSERT OR REPLACE INTO readingState (mangaKey, payload, updatedAt, hidden) VALUES (?, ?, ?, 0)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970])
+            var statuses = try Self.chapterStatuses(position.mangaKey, db: db)
+            let status: ChapterReadingStatus = completed || statuses[position.chapterKey] == .read ? .read : .reading
+            if statuses[position.chapterKey] != status {
+                statuses[position.chapterKey] = status
+                try db.execute(sql: "INSERT OR REPLACE INTO mangaReadingState VALUES (?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(statuses)])
+            }
+        }
+    }
+    func readingState(for manga: MangaObject) throws -> MangaObject {
+        try db.read { db in
+            var manga = manga; manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); return manga
+        }
+    }
+    private static func chapterStatuses(_ key: ObjectKey, db: Database) throws -> [ObjectKey: ChapterReadingStatus] {
+        guard let data = try Data.fetchOne(db, sql: "SELECT payload FROM mangaReadingState WHERE mangaKey = ?", arguments: [key.id]) else { return [:] }
+        return try JSONDecoder().decode([ObjectKey: ChapterReadingStatus].self, from: data)
     }
     public func positions(includeHidden: Bool = true) throws -> [ReadingPosition] {
         try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM readingState" + (includeHidden ? "" : " WHERE hidden = 0") + " ORDER BY updatedAt DESC").map { try JSONDecoder().decode(ReadingPosition.self, from: $0) } }

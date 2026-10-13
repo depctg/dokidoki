@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "mangacopy",
   "name": "拷貝漫畫 · MangaCopy",
-  "version": 6,
+  "version": 7,
   "allowedHosts": [
     "s0.mangafunb.fun",
     "s3.mangafunb.fun",
@@ -128,9 +128,21 @@
           "regex": "^#?(.*)$",
           "group": 1
         },
-        "chapterLinks": {
-          "path": "//div[contains(@class,'upLoop')]//div[contains(@class,'tab-content')]//a[contains(@href,'/chapter/')]",
-          "read": "attr:href"
+        "chapterLists": {
+          "path": "//div[contains(@class,'upLoop')]//div[@role='tabpanel'][not(contains(@id,'全部'))][.//a[contains(@href,'/chapter/')]]",
+          "fields": {
+            "id": {
+              "path": ".",
+              "read": "attr:id"
+            },
+            "title": {
+              "path": "concat(ancestor::div[@class='table-default']/preceding-sibling::span[1], ' · ', translate(@id, 'abcdefghijklmnopqrstuvwxyz_0123456789', ''))"
+            },
+            "chapterLinks": {
+              "path": ".//a[contains(@href,'/chapter/')]",
+              "read": "attr:href"
+            }
+          }
         }
       }
     },

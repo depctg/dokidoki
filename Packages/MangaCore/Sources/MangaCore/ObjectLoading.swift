@@ -40,6 +40,10 @@ extension DirectoryObject {
 }
 
 extension MangaObject {
+    /// Refresh local chapter status without a document request or extending cache freshness.
+    public func readingState(using repository: ObjectRepository) throws -> MangaObject {
+        try repository.store.readingState(for: self)
+    }
     public func coverPage(using repository: ObjectRepository, hint: CacheHint = .refreshIfStale) async throws -> PageObject? {
         guard let coverPageRef, case .page(let page) = try await coverPageRef.load(using: repository, hint: hint) else { return nil }
         return page

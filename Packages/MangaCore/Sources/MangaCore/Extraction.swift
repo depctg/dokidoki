@@ -26,17 +26,21 @@ private final class HTMLDocument {
         defer { xmlXPathFreeObject(result) }
         return (result.pointee.nodesetval?.pointee.nodeNr ?? 0) > 0
     }
-    func values(_ field: Field, relativeTo node: xmlNodePtr? = nil) throws -> [Selection] {
+    func values(_ field: Field, relativeTo node: xmlNodePtr? = nil, container: Bool = false) throws -> [Selection] {
         guard let context = xmlXPathNewContext(document) else { throw ReaderError.extraction(String(localized: "Could not create XPath context.", bundle: .module)) }
         defer { xmlXPathFreeContext(context) }
         if let node { context.pointee.node = node }
         guard let result = xmlXPathEvalExpression(field.path, context) else { throw ReaderError.extraction(String(localized: "Invalid XPath.", bundle: .module)) }
         defer { xmlXPathFreeObject(result) }
-        guard let set = result.pointee.nodesetval, set.pointee.nodeNr > 0 else { return [] }
         func string(_ pointer: UnsafeMutablePointer<xmlChar>?) -> String {
             guard let pointer else { return "" }; defer { xmlFree(pointer) }
             return String(cString: pointer).trimmingCharacters(in: .whitespacesAndNewlines)
         }
+        if result.pointee.type != XPATH_NODESET {
+            let value = string(xmlXPathCastToString(result))
+            return value.isEmpty ? [] : [Selection(value: value, title: value, node: node)]
+        }
+        guard let set = result.pointee.nodesetval, set.pointee.nodeNr > 0 else { return [] }
         return (0..<Int(set.pointee.nodeNr)).compactMap { index in
             guard let node = set.pointee.nodeTab[index] else { return nil }
             let title = string(xmlGetProp(node, "title"))
@@ -46,7 +50,7 @@ private final class HTMLDocument {
             }
             var value = read(field.read ?? "text")
             if value.isEmpty, let fallback = field.fallback { value = read(fallback) }
-            return value.isEmpty ? nil : Selection(value: value, title: title.isEmpty ? text : title, node: node)
+            return value.isEmpty && !container ? nil : Selection(value: value, title: title.isEmpty ? text : title, node: node)
         }
     }
 }
@@ -75,9 +79,9 @@ public struct RuleExtractor: Sendable {
             return nil
         }
         var variables: [String: String] = [:]
-        func extract(_ field: Field, relativeTo selection: Selection? = nil) throws -> [Selection] {
+        func extract(_ field: Field, relativeTo selection: Selection? = nil, container: Bool = false) throws -> [Selection] {
             var entries: [Selection]
-            if let html { entries = try html.values(field, relativeTo: selection?.node) }
+            if let html { entries = try html.values(field, relativeTo: selection?.node, container: container) }
             else {
                 entries = nodes(at: field.path, from: selection?.json).compactMap { node in
                     if let text = scalar(node) { return Selection(value: text, title: text, json: node) }
@@ -85,7 +89,7 @@ public struct RuleExtractor: Sendable {
                         func read(_ mode: String?) -> String? {
                             scalar(dict[mode?.hasPrefix("attr:") == true ? String(mode!.dropFirst(5)) : "url"])
                         }
-                        guard let value = read(field.read) ?? field.fallback.flatMap({ read($0) }) else { return nil }
+                        guard let value = read(field.read) ?? field.fallback.flatMap({ read($0) }) ?? (container ? "" : nil) else { return nil }
                         let title = scalar(nodes(at: field.titlePath ?? "title", from: node).first)
                         return Selection(value: value, title: title ?? value, json: node)
                     }
@@ -166,7 +170,8 @@ public struct RuleExtractor: Sendable {
                 let object = MangaObject(key: childKey, sourceURL: sourceURL, title: title,
                     author: try text("author"), summary: try text("summary"), coverPageRef: cover?.key,
                     chapterRefs: selection == nil ? try refs("chapterLinks", expected: .chapter) : nil,
-                    rating: try text("rating"), status: try text("status"), tags: tags.isEmpty ? nil : tags)
+                    rating: try text("rating"), status: try text("status"), tags: tags.isEmpty ? nil : tags,
+                    chapterLists: selection == nil ? try chapterLists() : nil)
                 return [.manga(object)] + (cover.map { [.page($0)] } ?? [])
             case .directory:
                 let items = try fields["mangaLinks"].map { _ in try refs("mangaLinks", expected: .manga, fields: fields, relativeTo: selection) }
@@ -201,6 +206,17 @@ public struct RuleExtractor: Sendable {
                     children += objects; label = objects[0].title
                 }
                 return ContentReference(key: childKey, title: label)
+            }
+        }
+        func chapterLists() throws -> [ChapterList]? {
+            guard let field = spec.fields["chapterLists"], let fields = field.fields else { return nil }
+            var seen: Set<String> = []
+            return try extract(field, container: true).enumerated().map { index, selection in
+                func text(_ name: String) throws -> String? { cleaned(try values(name, fields: fields, relativeTo: selection).map(\.0)).first }
+                let id = try text("id") ?? String(index)
+                guard seen.insert(id).inserted else { throw ReaderError.invalidResponse }
+                return ChapterList(id: id, title: try text("title"),
+                    chapters: try refs("chapterLinks", expected: .chapter, fields: fields, relativeTo: selection))
             }
         }
         func nextPageURL() throws -> URL? {

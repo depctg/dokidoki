@@ -32,6 +32,8 @@ public enum DemoContent {
         case "/chapter/arrival": name = "arrival"; ext = "json"
         case "/chapter/starlight": name = "starlight"; ext = "json"
         case "/chapter/rejoined": name = "rejoined"; ext = "json"
+        case "/chapter/collected": name = "collected"; ext = "json"
+        case "/chapter/sketches": name = "sketches"; ext = "json"
         case "/chapter/lazy": name = "browser-scroll"; ext = "html"
         case "/chapter/paged": name = "browser-page"; ext = "html"
         case "/chapter/capture": name = "browser-capture"; ext = "html"

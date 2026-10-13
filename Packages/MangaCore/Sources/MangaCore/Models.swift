@@ -68,6 +68,16 @@ public struct DirectoryObject: Codable, Sendable, Identifiable {
     public var selectedSortBy: ObjectKey? = nil
     public var selectedSortOrder: ObjectKey? = nil
 }
+public struct ChapterList: Codable, Sendable, Identifiable {
+    public let id: String
+    public let title: String?
+    public let chapters: [ContentReference]
+    public init(id: String, title: String? = nil, chapters: [ContentReference]) {
+        self.id = id; self.title = title; self.chapters = chapters
+    }
+}
+public enum ChapterReadingStatus: String, Codable, Sendable { case unread, reading, read }
+
 public struct MangaObject: Codable, Sendable {
     public let key: ObjectKey
     public let sourceURL: URL
@@ -78,15 +88,25 @@ public struct MangaObject: Codable, Sendable {
     /// Reading order supplied by the parsing rule; this object owns chapter navigation.
     public let chapters: [ContentReference]?
     public var chapterRefs: [ContentReference] { chapters ?? [] }
+    /// Named source lists; older snapshots expose their flat chapters as one list.
+    public var chapterLists: [ChapterList] { lists ?? (chapters.map { [ChapterList(id: "chapters", chapters: $0)] } ?? []) }
+    private let lists: [ChapterList]?
+    /// Local reading knowledge, hydrated by core independently of source-cache freshness.
+    public internal(set) var chapterStatuses: [ObjectKey: ChapterReadingStatus]? = nil
+    public func readingStatus(for chapter: ObjectKey) -> ChapterReadingStatus { chapterStatuses?[chapter] ?? .unread }
     private enum CodingKeys: String, CodingKey {
-        case key, sourceURL, title, author, summary, coverPageRef, rating, status, tags
+        case key, sourceURL, title, author, summary, coverPageRef, rating, status, tags, chapterStatuses
         case chapters = "chapterRefs"
+        case lists = "chapterLists"
     }
     public init(key: ObjectKey, sourceURL: URL, title: String, author: String? = nil, summary: String? = nil,
                 coverPageRef: ObjectKey? = nil, chapterRefs: [ContentReference]? = nil,
-                rating: String? = nil, status: String? = nil, tags: [String]? = nil) {
+                rating: String? = nil, status: String? = nil, tags: [String]? = nil, chapterLists: [ChapterList]? = nil) {
         self.key = key; self.sourceURL = sourceURL; self.title = title; self.author = author; self.summary = summary
-        self.coverPageRef = coverPageRef; chapters = chapterRefs; self.rating = rating; self.status = status; self.tags = tags
+        self.coverPageRef = coverPageRef; lists = chapterLists
+        var seen: Set<ObjectKey> = []
+        chapters = chapterLists.map { $0.flatMap(\.chapters).filter { seen.insert($0.key).inserted } } ?? chapterRefs
+        self.rating = rating; self.status = status; self.tags = tags
     }
     /// Optional source text, including its own rating scale and publication-status wording.
     /// Missing keys decode as nil in snapshots written before metadata support.
@@ -94,13 +114,19 @@ public struct MangaObject: Codable, Sendable {
     public var status: String? = nil
     public var tags: [String]? = nil
 
-    public func nextChapter(after chapter: ObjectKey) -> ContentReference? {
-        guard let index = chapterRefs.firstIndex(where: { $0.key == chapter }), index + 1 < chapterRefs.count else { return nil }
-        return chapterRefs[index + 1]
+    public func nextChapter(after chapter: ObjectKey, in listID: String? = nil) -> ContentReference? {
+        guard let list = chapterList(containing: chapter, preferredID: listID),
+              let index = list.chapters.firstIndex(where: { $0.key == chapter }), index + 1 < list.chapters.count else { return nil }
+        return list.chapters[index + 1]
     }
-    public func previousChapter(before chapter: ObjectKey) -> ContentReference? {
-        guard let index = chapterRefs.firstIndex(where: { $0.key == chapter }), index > 0 else { return nil }
-        return chapterRefs[index - 1]
+    public func previousChapter(before chapter: ObjectKey, in listID: String? = nil) -> ContentReference? {
+        guard let list = chapterList(containing: chapter, preferredID: listID),
+              let index = list.chapters.firstIndex(where: { $0.key == chapter }), index > 0 else { return nil }
+        return list.chapters[index - 1]
+    }
+    public func chapterList(containing chapter: ObjectKey, preferredID: String? = nil) -> ChapterList? {
+        let candidates = chapterLists.filter { $0.chapters.contains { $0.key == chapter } }
+        return candidates.first { $0.id == preferredID } ?? candidates.first
     }
 }
 public struct ChapterObject: Codable, Sendable {

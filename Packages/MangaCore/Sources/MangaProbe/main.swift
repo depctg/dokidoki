@@ -99,6 +99,7 @@ import AppKit
         }
         if case .manga(let manga) = object {
             print("\(manga.chapterRefs.count) chapters; cover: \(manga.coverPageRef != nil)")
+            for list in manga.chapterLists { print("List \(list.id) — \(list.title ?? "Chapters"): \(list.chapters.count) chapters") }
             if let rating = manga.rating { print("Rating: \(rating)") }
             if let status = manga.status { print("Status: \(status)") }
             if let tags = manga.tags { print("Tags: \(tags.joined(separator: ", "))") }

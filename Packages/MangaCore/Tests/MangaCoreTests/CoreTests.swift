@@ -78,7 +78,7 @@ struct CoreTests {
     @Test func htmlFallbackRelativeLinksAndHostEnforcement() throws {
         let rule = try DemoContent.bundledRules().first { $0.id == "demo" }!
         let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/series/test")!)
-        let html = Data("<h1>Test &amp; title</h1><img src='../images/1.png'><a href='../chapter/arrival'>One</a><a href='../chapter/arrival'>Duplicate</a>".utf8)
+        let html = Data("<h1>Test &amp; title</h1><img src='../images/1.png'><section class='chapter-group' id='chapters'><a href='../chapter/arrival'>One</a><a href='../chapter/arrival'>Duplicate</a></section>".utf8)
         let objects = try RuleExtractor().extract(data: html, responseURL: key.identityURL, key: key, kind: .manga, rule: rule)
         guard case .manga(let manga) = objects[0], case .page(let cover) = objects[1] else { Issue.record("Missing manga"); return }
         #expect(manga.title == "Test & title"); #expect(manga.chapterRefs.count == 1)

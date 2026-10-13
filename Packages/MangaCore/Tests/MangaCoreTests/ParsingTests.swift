@@ -28,7 +28,7 @@ struct ParsingTests {
         <li><span>狀態</span><span class="comicParticulars-right-txt">連載中</span></li>
         <span class="comicParticulars-tag"><a>#Adventure</a></span>
         <div class="upLoop"><a href="/comic/example/chapter/2">Latest shortcut</a>
-        <div class="tab-content"><ul><a href="/comic/example/chapter/1">One</a><a href="/comic/example/chapter/2">Two</a></ul></div></div>
+        <span>Default</span><div class="table-default"><div class="tab-content"><div role="tabpanel" id="default話"><ul><a href="/comic/example/chapter/1">One</a><a href="/comic/example/chapter/2">Two</a></ul></div></div></div></div>
         """
         let objects = try RuleExtractor().extract(data: Data(html.utf8), responseURL: mangaKey.identityURL, key: mangaKey, kind: .manga, rule: rule)
         guard case .manga(let manga) = objects[0] else { Issue.record("Missing manga"); return }

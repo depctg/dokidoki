@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 7,
+  "version": 8,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -74,11 +74,6 @@
           "path": "//div[contains(@class,\"book-cover\")]//img",
           "read": "attr:src"
         },
-        "chapterLinks": {
-          "path": "//div[contains(@class,\"chapter-list\")]//a",
-          "read": "attr:href",
-          "reverse": true
-        },
         "rating": {
           "path": "//div[@id=\"scoreRes\"]//p[@class=\"score-avg\"]/em",
           "regex": "^\\d+(?:\\.\\d+)?$",
@@ -89,6 +84,19 @@
         },
         "tags": {
           "path": "//ul[contains(@class,\"detail-list\")]//span[strong[contains(.,\"漫画剧情\")]]/a"
+        },
+        "chapterLists": {
+          "path": "//div[contains(concat(' ',normalize-space(@class),' '),' chapter-list ')]",
+          "fields": {
+            "title": {
+              "path": "preceding-sibling::h4[1]/span"
+            },
+            "chapterLinks": {
+              "path": ".//a",
+              "read": "attr:href",
+              "reverse": true
+            }
+          }
         }
       }
     },

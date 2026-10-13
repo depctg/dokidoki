@@ -6,7 +6,7 @@ The bundled JSON in `Packages/MangaCore/Sources/MangaCore/Resources/Rules` is th
 
 Each extractor has `fields` and an optional `format` (default `renderedHTML`):
 
-- `html` / `renderedHTML`: XPath `path`; `read` is `text` (default) or `attr:name`, with optional `fallback` reader.
+- `html` / `renderedHTML`: XPath `path` selects nodes or uses native XPath 1.0 scalar functions (for example `concat` for a group label); `read` is `text` (default) or `attr:name`, with optional `fallback` reader.
 - `json` / `renderedJSON`: dotted `path`, numeric array indices, and `*` for ordered array traversal. Values are strings/numbers or `{ "url": "…", "title": "…" }` link objects. For differently shaped link objects, `read: "attr:property"` selects their value property and optional `titlePath` selects a relative dotted label path (default `title`). `fallback` can read an alternative property. URL templates apply to the selected value.
 - Optional field `reverse: true` reverses selected entries before transformations; omitted/false preserves source order. Use it when a site's chapter list is newest first so `chapterLinks` follows reading order. The reversal decision belongs in JSON.
 - Optional `regex` selects the first match from each extracted value. `group` selects a capture (default 1, or 0 when there are no captures). No match omits that value.
@@ -20,9 +20,22 @@ URLs resolve against the final response URL and must still pass the exact-host p
 | --- | --- | --- |
 | site | title, directoryLinks | none |
 | directory | title, mangaLinks | next, totalCount, sortByLinks, sortOrderLinks, selectedSortBy, selectedSortOrder |
-| manga | title, chapterLinks | author, summary, coverImage, rating, status, tags |
+| manga | title, exactly one of chapterLinks / chapterLists | author, summary, coverImage, rating, status, tags |
 | chapter | title, pageImages | mangaLink, totalCount, pageNumber |
 | page | image | title |
+
+Manga may use `chapterLists` instead of a flat `chapterLinks`. It selects group containers, with relative `fields`: required `chapterLinks`, optional `title` and `id`. Omitted IDs use the group’s source index; explicit IDs must be unique and stable. JSON containers need no `url` property. Apply `reverse` to each group's chapterLinks when necessary, not to the flattened manga. Empty groups remain known empty. Avoid extracting an “All” tab alongside duplicate filtered tabs unless the overlap is intentional. Navigation stays within the chosen list; legacy links with no list context use the first matching list. Read status is local core knowledge, never a site-extracted field.
+
+```json
+"chapterLists": {
+  "path": "//section[@class='chapters']",
+  "fields": {
+    "id": { "path": ".", "read": "attr:id" },
+    "title": { "path": "./h2" },
+    "chapterLinks": { "path": ".//a", "read": "attr:href", "reverse": true }
+  }
+}
+```
 
 Manga `rating` and `status` use the first nonblank selected value; `tags` uses all nonblank selected values, deduplicated in source order. They use the existing XPath/JSON path and regex options. Rating and status remain source text (for example `4.5 / 5`, `Ongoing`, or `已完结`); Swift does not invent a scale, translate source labels, or infer a status. Omitted fields and unmatched selectors produce no metadata UI. Exclude site placeholders with a rule regex when necessary. Older manga snapshots without these keys remain readable.
 

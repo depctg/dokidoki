@@ -93,7 +93,7 @@ public actor ObjectRepository {
             try Task.checkCancellation()
             guard currentGeneration == self.generation else { throw CancellationError() }
             try self.store.upsert(objects, version: rule.version, ttl: CachePolicy.lifetime(kind))
-            guard let object = objects.first else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
+            guard let object = try self.store.snapshot(key)?.object else { throw ReaderError.extraction(String(localized: "No content was found.", bundle: .module)) }; return object
         }
         let request = Request(task: task)
         inFlight[key] = request

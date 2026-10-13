@@ -118,11 +118,17 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             let required: [String] = switch matcher.kind {
             case .site: ["title", "directoryLinks"]
             case .directory: ["title", "mangaLinks"]
-            case .manga: ["title", "chapterLinks"]
+            case .manga: ["title"]
             case .chapter: ["title", "pageImages"]
             case .page: ["image"]
             }
             guard required.allSatisfy({ extraction.fields[$0] != nil }) else { throw ReaderError.invalidRule(String(localized: "Missing required extraction fields for \(matcher.kind.rawValue).", bundle: .module)) }
+            if matcher.kind == .manga {
+                guard (extraction.fields["chapterLinks"] != nil) != (extraction.fields["chapterLists"] != nil),
+                      extraction.fields["chapterLists"].map({ $0.fields?["chapterLinks"] != nil }) ?? true else {
+                    throw ReaderError.invalidRule(String(localized: "Missing required extraction fields for \(matcher.kind.rawValue).", bundle: .module))
+                }
+            }
             for (name, field) in extraction.variables ?? [:] {
                 guard name.range(of: #"^[A-Za-z][A-Za-z0-9_]*$"#, options: .regularExpression) != nil,
                       field.urlTemplate == nil, field.queryPath == nil, field.fields == nil else { throw ReaderError.invalidRule(String(localized: "Variables have simple names and select values without URL templates.", bundle: .module)) }
@@ -135,8 +141,13 @@ public struct SiteRule: Codable, Sendable, Identifiable {
                         let child: ContentKind
                         if kind == .site && name == "directoryLinks" { child = .directory }
                         else if kind == .directory && name == "mangaLinks" { child = .manga }
+                        else if kind == .manga && name == "chapterLists" { child = .chapter }
                         else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }
-                        let names: Set<String> = child == .directory ? ["title", "mangaLinks"] : ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
+                        let names: Set<String> = switch child {
+                        case .directory: ["title", "mangaLinks"]
+                        case .chapter: ["id", "title", "chapterLinks"]
+                        default: ["title", "coverImage", "author", "summary", "rating", "status", "tags"]
+                        }
                         guard Set(nested.keys).isSubset(of: names) else { throw ReaderError.invalidRule(String(localized: "Known metadata fields must match the linked object type.", bundle: .module)) }
                         result += try knownFields(nested, kind: child)
                     }

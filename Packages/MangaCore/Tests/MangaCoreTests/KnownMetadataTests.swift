@@ -74,22 +74,22 @@ struct KnownMetadataTests {
         let ref = try #require(list.mangaRefs.first)
         await #expect(throws: ReaderError.self) { try await ref.load(using: repository, hint: .offlineOnly) }
         guard case .manga(let full) = try await ref.load(using: repository) else { throw ReaderError.invalidResponse }
-        #expect(full.chapters?.count == 2 && full.tags == ["Science fiction", "Adventure"])
+        #expect(full.chapters?.count == 4 && full.tags == ["Science fiction", "Adventure"])
         #expect(await fetcher.kinds == [.directory, .manga])
         let before = try #require(try store.snapshot(full.key))
         let originalCover = try #require(try await full.coverPage(using: repository))
         _ = try await key.load(using: repository, hint: .forceRefresh)
         guard case .manga(let kept) = try await ref.load(using: repository, hint: .offlineOnly) else { throw ReaderError.invalidResponse }
-        #expect(kept.chapters?.count == 2 && kept.tags == full.tags)
+        #expect(kept.chapters?.count == 4 && kept.tags == full.tags)
         #expect(try store.snapshot(full.key)?.expiresAt == before.expiresAt)
         let keptCover = try #require(try await kept.coverPage(using: repository))
         #expect(keptCover.refererURL == originalCover.refererURL && keptCover.sessionURL == originalCover.sessionURL)
         // A fresh repository/process sees the same complete snapshot, including old serialized chapterRefs.
         let reopened = try ObjectRepository(store: store, rules: rules)
         guard case .manga(let reopenedManga) = try await ref.preview(using: reopened) else { throw ReaderError.invalidResponse }
-        #expect(reopenedManga.chapters?.count == 2)
+        #expect(reopenedManga.chapters?.count == 4)
         let decoded = try JSONDecoder().decode(MangaObject.self, from: JSONEncoder().encode(full))
-        #expect(decoded.chapters?.count == 2)
+        #expect(decoded.chapters?.count == 4)
         // Partial updates merge optional knowledge, but a changed rule cannot inherit old metadata.
         let partialKey = list.mangaRefs[1].key
         let empty = MangaObject(key: partialKey, sourceURL: partialKey.identityURL, title: "Updated label")
