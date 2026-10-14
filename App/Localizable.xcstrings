@@ -904,22 +904,6 @@
         }
       }
     },
-    "MangaViewer 1.0": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer 1.0"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer 1.0"
-          }
-        }
-      }
-    },
     "Mode": {
       "localizations": {
         "en": {
@@ -2980,6 +2964,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "已读完"
+          }
+        }
+      }
+    },
+    "Version": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本"
           }
         }
       }

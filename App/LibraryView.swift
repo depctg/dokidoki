@@ -69,12 +69,12 @@ private struct LibraryRow: View {
     }
     var body: some View {
         NavigationLink(value: AppRoute.object(key)) {
-                HStack(alignment: .center, spacing: 16) {
-                    CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 76, height: 140), hint: manga == nil ? .offlineOnly : .preferCache)
-                        .frame(width: 76)
+                HStack(alignment: .center, spacing: 8) {
+                    CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 64, height: 128), hint: manga == nil ? .offlineOnly : .preferCache)
+                        .frame(width: 64)
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(title).font(.headline).lineLimit(2)
-                        Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
+                        Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
+                        Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Label(progress, systemImage: progressIcon).font(.caption).foregroundStyle(.secondary)
                             .labelStyle(.titleAndIcon)
                         HStack(spacing: 6) {
@@ -83,13 +83,15 @@ private struct LibraryRow: View {
                         }.font(.caption)
                         if let manga { MangaMetadataView(manga: manga, compact: true) }
                     }
-                    Spacer(minLength: 0)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     Button { model.resumeManga(key) } label: {
                         Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
-                            .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                            .labelStyle(.iconOnly)
+                            .font(.body)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
-                    .buttonStyle(.bordered)
-                    .buttonBorderShape(.circle)
+                    .buttonStyle(.borderless)
                     .accessibilityIdentifier("library.resume.\(key.id)")
                 }
                 .padding(.vertical, 6).contentShape(Rectangle())

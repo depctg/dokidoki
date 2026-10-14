@@ -1,5 +1,11 @@
 # Development state
 
+## Compact library rows and preview version — completed 2026-10-13
+
+- Library/Recent share compact native borderless play controls, narrower cover bounds/spacing, and full-width flexible metadata. Manga and chapter titles wrap without line limits; the play control retains a 44-point minimum tappable label. No request/core behavior changed.
+- About uses bundle display name and native release/build values; preview build incremented to 1.0 (2). Full test suite explicitly skipped at user request. Signed iOS build passed; built Info.plist confirms 1.0 / 2. Installed and launched on Zhiyuan iPhone without resetting data (`/tmp/mangaviewer-version2-{build,install,launch}-final.*`). Clean reviewer `review_compact_version` closed with no material findings after moving the 44-point frame/hit shape inside the native borderless button label. No device interaction automation was run.
+- Next: change display branding to literal `dokidoki"` and add an Icon Composer icon based on the user-supplied `docs/icon-reference/`. Keep bundle ID and personal data stable.
+
 ## Native UI and personal-library batch — completed 2026-10-13
 
 - Scope: eight UI fixes, durable per-chapter read/ignored state and whole-manga progress on a separate icon/text line. User confirmed **Tap to load more**, whole-manga percentages excluding ignored chapters, and **skip iCloud entirely for this patch**. Local storage and Personal Team signing remain the scope.

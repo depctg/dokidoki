@@ -85,7 +85,11 @@ struct SettingsView: View {
             .disabled(model.repository == nil)
             Section { Button("Error report", systemImage: "exclamationmark.bubble") { showingErrors = true } }
             if let status { Section { Text(status).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) } }
-            Section("About") { Text("MangaViewer 1.0"); Text("Native reading for iPhone, iPad, Mac, and Apple Vision Pro.").foregroundStyle(.secondary) }
+            Section("About") {
+                Text(verbatim: AppInfo.name)
+                LabeledContent("Version", value: AppInfo.version)
+                Text("Native reading for iPhone, iPad, Mac, and Apple Vision Pro.").foregroundStyle(.secondary)
+            }
         }
         .navigationTitle("Settings")
         #if !os(macOS)
