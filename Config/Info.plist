@@ -18,11 +18,15 @@
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>
+#if READER_WINDOW_SCENE
+        <true/>
+#else
         <false/>
+#endif
         <key>UISceneConfigurations</key>
         <dict/>
     </dict>
     <key>CFBundleDisplayName</key>
-    <string>dokidoki"</string>
+    <string>dokidoki&quot;</string>
 </dict>
 </plist>

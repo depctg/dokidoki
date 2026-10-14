@@ -4,6 +4,9 @@ import MangaCore
 struct RootView: View {
     @Bindable var model: AppModel
     @State private var columns: NavigationSplitViewVisibility = .automatic
+    #if os(visionOS)
+    @Environment(\.pushWindow) private var pushWindow
+    #endif
     var body: some View {
         Group {
             #if os(macOS)
@@ -55,9 +58,13 @@ struct RootView: View {
         .fullScreenCover(isPresented: $model.readerExpanded) {
             ReaderPresentation(model: model).presentationBackground(.clear)
         }
-        #else
+        #elseif os(macOS)
         .sheet(isPresented: $model.readerExpanded) {
             ReaderPresentation(model: model).frame(minWidth: 600, idealWidth: 1000, minHeight: 600, idealHeight: 800)
+        }
+        #elseif os(visionOS)
+        .onChange(of: model.readerExpanded) { _, expanded in
+            if expanded { pushWindow(id: "reader") }
         }
         #endif
         .alert(Text(verbatim: AppInfo.name), isPresented: Binding(get: { model.error != nil && !model.readerExpanded }, set: { if !$0 { model.error = nil } })) {

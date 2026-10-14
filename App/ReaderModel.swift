@@ -151,7 +151,7 @@ struct ChapterPreview {
             preparePages()
         }
     }
-    private var processorIDs: [String] { rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"] }
+    var processorIDs: [String] { rule?.processors ?? ["identity", "marginAlign", "spreadDetect", "layout"] }
     func setInteracting(_ value: Bool) {
         interacting = value
         if !value, pendingReplan { pendingReplan = false; replan() }
@@ -202,11 +202,7 @@ struct ChapterPreview {
         planning?.cancel(); cancelPrefetch(); app.reloadLibrary()
     }
     func height(_ plan: DisplayPage, width: Double) -> Double {
-        let aspect = plan.regions.reduce(0.0) { total, region in
-            let ratio = analysis[region.sourcePage]?.aspectRatio ?? 0.727
-            return total + ratio * Double(region.normalizedCrop.width / region.normalizedCrop.height)
-        }
-        return width / max(0.1, aspect)
+        width / max(0.1, plan.aspectRatio(analysis: analysis))
     }
     func preparePages() {
         guard active, let repository = app.repository, !plans.isEmpty else { return }

@@ -26,6 +26,12 @@ public struct DisplayPage: Codable, Sendable, Equatable, Identifiable {
     public var id: String { regions.map { "\($0.sourcePage.id):\($0.normalizedCrop)" }.joined(separator: ";") }
     public var sourcePageKeys: [ObjectKey] { regions.map(\.sourcePage) }
     public init(regions: [PageRegion], intentionalSpread: Bool = false) { self.regions = regions; self.intentionalSpread = intentionalSpread }
+    public func aspectRatio(analysis: [ObjectKey: ImageAnalysis]) -> Double {
+        regions.reduce(0.0) { total, region in
+            let ratio = analysis[region.sourcePage]?.aspectRatio ?? 0.727
+            return total + ratio * Double(region.normalizedCrop.width / region.normalizedCrop.height)
+        }
+    }
 }
 public struct ImageAnalysis: Codable, Sendable {
     public let width: Int
@@ -80,6 +86,32 @@ public struct PagePipeline: Sendable {
             catch { ErrorDiagnostics.record(error, operation: .processImage); return original }
         }
         return result.isEmpty && !sources.isEmpty ? original : result
+    }
+    /// Fit the visible artwork inside the proposed bounds, growing only to meet minimums.
+    /// Replan before returning: fitting can change whether pages are paired or split.
+    /// Missing dimensions defer the fit; this method never fetches images.
+    public func fittedSize(_ sources: [ObjectKey], source: ObjectKey?, fraction: Double,
+                           context: ReaderContext, minimum: CGSize) async -> CGSize? {
+        let bounds = context.size
+        guard bounds.width > 0, bounds.height > 0 else { return nil }
+        var context = context
+        var visited = Set<Bool>()
+        // Wide/narrow is the pipeline's only geometry-dependent decision. Do not
+        // return a size whose layout differs, or loop if future processors oscillate.
+        while visited.insert(context.wide).inserted {
+            let pages = await plan(sources, context: context)
+            guard !Task.isCancelled, !pages.isEmpty else { return nil }
+            let page = pages[Self.index(for: source, fraction: fraction, in: pages)]
+            guard page.sourcePageKeys.allSatisfy({ context.analysis[$0] != nil }) else { return nil }
+            let ratio = page.aspectRatio(analysis: context.analysis)
+            guard ratio.isFinite, ratio > 0 else { return nil }
+            let height = max(min(bounds.height, bounds.width / ratio), minimum.height, minimum.width / ratio)
+            let size = CGSize(width: height * ratio, height: height)
+            let wasWide = context.wide
+            context.size = size
+            if context.wide == wasWide { return size }
+        }
+        return nil
     }
     /// Fraction is relative to the original source, so split halves remain addressable across replans.
     public static func index(for source: ObjectKey?, fraction: Double, in pages: [DisplayPage]) -> Int {

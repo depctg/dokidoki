@@ -7,6 +7,29 @@ struct PlanningTests {
     private let owner = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
     private var keys: [ObjectKey] { (0..<4).map { .page(owner: owner, index: $0) } }
 
+    @Test(arguments: [0.5, 0.7, 3.0])
+    func initialFitMatchesFinalLayoutAndMinimums(ratio: Double) async throws {
+        let pipeline = try PagePipeline(), sources = Array(keys.prefix(2))
+        let minimum = CGSize(width: 320, height: 420)
+        var context = ReaderContext(size: CGSize(width: 1100, height: 800))
+        #expect(await pipeline.fittedSize(sources, source: keys[0], fraction: 0, context: context, minimum: minimum) == nil)
+        context.analysis = Dictionary(uniqueKeysWithValues: sources.map { ($0, ImageAnalysis(width: Int(ratio * 1000), height: 1000)) })
+        let size = try #require(await pipeline.fittedSize(sources, source: keys[0], fraction: 0, context: context, minimum: minimum))
+        #expect(size.width >= minimum.width && size.height >= minimum.height)
+        context.size = size
+        let displayed = try #require(await pipeline.plan(sources, context: context).first)
+        #expect(abs(size.width / size.height - displayed.aspectRatio(analysis: context.analysis)) < 0.0001)
+        // Ordinary portraits retain the default facing pair; very tall artwork
+        // settles into a single page. Very wide artwork meets the minimum height.
+        #expect(displayed.regions.count == (ratio == 0.7 ? 2 : 1))
+
+        context.size = CGSize(width: 600, height: 900)
+        context.preferences.facingPages = false
+        context.overrides[keys[0]] = .split
+        let splitSize = try #require(await pipeline.fittedSize(sources, source: keys[0], fraction: 0.7, context: context, minimum: minimum))
+        #expect(abs(splitSize.width / splitSize.height - ratio / 2) < 0.0001)
+    }
+
     @Test func wideSpreadEvidenceAndReadingOrder() async throws {
         let key = keys[0]; let pipeline = try PagePipeline()
         var context = ReaderContext(size: CGSize(width: 390, height: 800), analysis: [key: ImageAnalysis(width: 1600, height: 1000, centerGutter: true)])

@@ -12,6 +12,17 @@ import MangaCore
                     .keyboardShortcut("o", modifiers: .command)
             }
         }
+        #if os(visionOS)
+        Window(Text(verbatim: AppInfo.name), id: "reader") {
+            ReaderWindow(model: model)
+                .frame(minWidth: 320, minHeight: 420)
+                .controlSize(.large)
+        }
+        .defaultSize(width: 1100, height: 800)
+        .windowResizability(.contentMinSize)
+        .defaultLaunchBehavior(.suppressed)
+        .restorationBehavior(.disabled)
+        #endif
         #if os(macOS)
         Settings {
             SettingsView(model: model).frame(width: 550, height: 500)
