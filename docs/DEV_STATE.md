@@ -1,5 +1,11 @@
 # Development state
 
+## Library control and spacing follow-up — completed 2026-10-13
+
+- Restored the native bordered circle for Resume/Start in Library and Recent, using native [flexible button sizing](https://developer.apple.com/documentation/swiftui/view/buttonsizing(_:)) at 44 points (scaled with Dynamic Type) and a larger play symbol. This sits between the former oversized padded circle and the recent borderless glyph.
+- Metadata lines now share caption typography and 4-point vertical spacing; manga titles keep headline styling and both titles still wrap fully. Relative ages omit Last read / 上次阅读于, with exact Chinese “不到一小时前” for the first hour and native plural variants for hours/days. Existing journey assertion updated, no new test cases.
+- Preview build incremented to 1.0 (4). Signed iOS build passed (`/tmp/dokidoki-library4-build.log`), with build 4 verified in the built Info.plist. English/Chinese catalog/plural audit and diff checks pass. Clean-session reviewer `review_library_spacing` found no material issues. Installed and launched on Zhiyuan iPhone without clearing data (`/tmp/dokidoki-library4-{install,launch}.json`). No test suites were run at user request; visual sizing remains available for hands-on device review. Core, requests, site rules and icons are unchanged. No implementation work remains.
+
 ## dokidoki" branding and native icon — completed 2026-10-13
 
 - User clarified exact display name includes a trailing quotation mark. Bundle display/localized name, windows, alerts, About and exported report branding now use native metadata. Xcode target/bundle ID/database path/log subsystem stay stable. Branded preview build is 1.0 (3); pre-branding 1.0 (2) was installed first as requested.

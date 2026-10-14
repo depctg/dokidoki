@@ -109,7 +109,7 @@ import XCTest
         XCTAssertTrue(row.label.contains("1 · Arrival"))
         XCTAssertTrue(row.label.contains("Reading ("))
         XCTAssertFalse(row.label.contains("/ 4"), "Library progress summarizes the manga, not source page counts")
-        XCTAssertTrue(row.label.contains("Last read <1 hr ago"))
+        XCTAssertTrue(row.label.contains("<1 hr ago"))
         row.swipeLeft()
         if app.buttons["Unstar"].exists { app.buttons["Unstar"].tap(); row.swipeLeft() }
         app.buttons["Star"].tap()

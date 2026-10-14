@@ -36,6 +36,7 @@ private struct LibraryRow: View {
     let now: Date
     @State private var manga: MangaObject?
     @State private var cachedChapter: ChapterObject?
+    @ScaledMetric(relativeTo: .body) private var resumeButtonSize = 44.0
     private var saved: SavedManga? { model.saved.first { $0.key == key } }
     private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == key } }
     private var title: String { manga?.title ?? saved?.title ?? position?.mangaTitle ?? position?.title ?? String(localized: "Untitled manga") }
@@ -62,19 +63,19 @@ private struct LibraryRow: View {
     private var lastRead: String {
         guard let date = position?.updatedAt else { return String(localized: "Not read yet") }
         let hours = max(0, Int(now.timeIntervalSince(date) / 3600))
-        if hours < 1 { return String(localized: "Last read <1 hr ago") }
-        if hours < 24 { return String(localized: "Last read \(hours) hr ago") }
+        if hours < 1 { return String(localized: "<1 hr ago") }
+        if hours < 24 { return String(localized: "\(hours) hr ago") }
         let days = hours / 24
-        return String(localized: "Last read \(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
+        return String(localized: "\(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
     }
     var body: some View {
         NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 8) {
                     CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 64, height: 128), hint: manga == nil ? .offlineOnly : .preferCache)
                         .frame(width: 64)
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
-                        Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        Text(chapterTitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                         Label(progress, systemImage: progressIcon).font(.caption).foregroundStyle(.secondary)
                             .labelStyle(.titleAndIcon)
                         HStack(spacing: 6) {
@@ -87,11 +88,12 @@ private struct LibraryRow: View {
                     Button { model.resumeManga(key) } label: {
                         Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
                             .labelStyle(.iconOnly)
-                            .font(.body)
-                            .frame(minWidth: 44, minHeight: 44)
-                            .contentShape(Rectangle())
+                            .font(.title3)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .buttonSizing(.flexible)
+                    .frame(width: resumeButtonSize, height: resumeButtonSize)
                     .accessibilityIdentifier("library.resume.\(key.id)")
                 }
                 .padding(.vertical, 6).contentShape(Rectangle())

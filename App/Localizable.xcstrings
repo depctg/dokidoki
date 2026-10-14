@@ -707,7 +707,7 @@
         }
       }
     },
-    "Last read %lld days ago": {
+    "%lld days ago": {
       "comment": "Whole days since the last reading session; varies by plural.",
       "localizations": {
         "en": {
@@ -716,13 +716,13 @@
               "one": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Last read %lld day ago"
+                  "value": "%lld day ago"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Last read %lld days ago"
+                  "value": "%lld days ago"
                 }
               }
             }
@@ -734,7 +734,7 @@
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "上次阅读于 %lld 天前"
+                  "value": "%lld 天前"
                 }
               }
             }
@@ -742,7 +742,7 @@
         }
       }
     },
-    "Last read %lld hr ago": {
+    "%lld hr ago": {
       "localizations": {
         "en": {
           "variations": {
@@ -750,13 +750,13 @@
               "one": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Last read %lld hr ago"
+                  "value": "%lld hr ago"
                 }
               },
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "Last read %lld hr ago"
+                  "value": "%lld hr ago"
                 }
               }
             }
@@ -768,7 +768,7 @@
               "other": {
                 "stringUnit": {
                   "state": "translated",
-                  "value": "上次阅读于 %lld 小时前"
+                  "value": "%lld 小时前"
                 }
               }
             }
@@ -776,18 +776,18 @@
         }
       }
     },
-    "Last read <1 hr ago": {
+    "<1 hr ago": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Last read <1 hr ago"
+            "value": "<1 hr ago"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "上次阅读于 1 小时内"
+            "value": "不到一小时前"
           }
         }
       }
