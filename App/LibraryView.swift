@@ -41,12 +41,24 @@ private struct LibraryRow: View {
     private var title: String { manga?.title ?? saved?.title ?? position?.mangaTitle ?? position?.title ?? String(localized: "Untitled manga") }
     private var starred: Bool { saved?.isStarred == true }
     private var chapterTitle: String { position?.title ?? manga?.chapterRefs.first?.title ?? String(localized: "Not started") }
-    private var pageNumber: Int? {
-        guard let position else { return 0 }
-        return position.pageNumber ?? cachedChapter?.pageRefs.firstIndex(of: position.sourcePageKey).map { $0 + 1 }
+    private var readingProgress: MangaProgress? { model.personalManga[key]?.personalState?.progress ?? manga?.personalState?.progress }
+    private var progress: String {
+        let progress = readingProgress
+        guard let progress, let fraction = progress.fraction else { return String(localized: "Reading") }
+        let percent = fraction.formatted(.percent.precision(.fractionLength(0)))
+        return switch progress.state {
+        case .reading: String(localized: "Reading (\(percent))")
+        case .finished: String(localized: "Finished")
+        case .new: String(localized: "New (\(percent))")
+        }
     }
-    private var totalPages: Int? { position?.totalPages ?? cachedChapter?.pageRefs.count }
-    private var progress: String { String(localized: "Page \(pageNumber.map { $0.formatted() } ?? "—") / \(totalPages.map { $0.formatted() } ?? "—")") }
+    private var progressIcon: String {
+        switch readingProgress?.state ?? .reading {
+        case .reading: "book"
+        case .finished: "checkmark.circle"
+        case .new: "sparkles"
+        }
+    }
     private var lastRead: String {
         guard let date = position?.updatedAt else { return String(localized: "Not read yet") }
         let hours = max(0, Int(now.timeIntervalSince(date) / 3600))
@@ -63,7 +75,8 @@ private struct LibraryRow: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(title).font(.headline).lineLimit(2)
                         Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
-                        Text(progress).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                        Label(progress, systemImage: progressIcon).font(.caption).foregroundStyle(.secondary)
+                            .labelStyle(.titleAndIcon)
                         HStack(spacing: 6) {
                             if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
                             Text(lastRead).foregroundStyle(.secondary)
@@ -89,7 +102,7 @@ private struct LibraryRow: View {
         .contextMenu { actions }
         .accessibilityActions {
             if section == .recent {
-                Button(starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title) }
+                Button(starred ? String(localized: "Unstar") : String(localized: "Star")) { model.toggleStar(key, title: title, manga: manga) }
             }
         }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
@@ -100,7 +113,7 @@ private struct LibraryRow: View {
     @ViewBuilder private var actions: some View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
         if section == .recent {
-            Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title) }
+            Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.slash" : "star") { model.toggleStar(key, title: title, manga: manga) }
                 .tint(.orange)
         }
     }

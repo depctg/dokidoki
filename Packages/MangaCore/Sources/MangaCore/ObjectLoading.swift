@@ -40,6 +40,10 @@ extension DirectoryObject {
 }
 
 extension MangaObject {
+    public func setReadingStatus(_ status: ChapterReadingStatus, for chapters: [ObjectKey], using repository: ObjectRepository) throws -> MangaObject {
+        try repository.store.setReadingStatus(status, chapters: chapters, in: self)
+    }
+
     /// Refresh local chapter status without a document request or changing the cached source snapshot.
     public func readingState(using repository: ObjectRepository) throws -> MangaObject {
         try repository.store.readingState(for: self)

@@ -68,7 +68,7 @@ public struct DirectoryObject: Codable, Sendable, Identifiable {
     public var selectedSortBy: ObjectKey? = nil
     public var selectedSortOrder: ObjectKey? = nil
 }
-public struct ChapterList: Codable, Sendable, Identifiable {
+public struct ChapterList: Codable, Sendable, Equatable, Identifiable {
     public let id: String
     public let title: String?
     /// Optional compact index label supplied by the source rule.
@@ -78,9 +78,9 @@ public struct ChapterList: Codable, Sendable, Identifiable {
         self.id = id; self.title = title; self.indexTitle = indexTitle; self.chapters = chapters
     }
 }
-public enum ChapterReadingStatus: String, Codable, Sendable { case unread, reading, read }
+public enum ChapterReadingStatus: String, Codable, Sendable { case unread, reading, read, ignored }
 
-public struct MangaObject: Codable, Sendable {
+public struct MangaObject: Codable, Sendable, Equatable {
     public let key: ObjectKey
     public let sourceURL: URL
     public let title: String
@@ -94,10 +94,16 @@ public struct MangaObject: Codable, Sendable {
     public var chapterLists: [ChapterList] { lists ?? (chapters.map { [ChapterList(id: "chapters", chapters: $0)] } ?? []) }
     private let lists: [ChapterList]?
     /// Local reading knowledge, hydrated by core independently of source-cache retention.
-    public internal(set) var chapterStatuses: [ObjectKey: ChapterReadingStatus]? = nil
+    public internal(set) var personalState: MangaPersonalState? = nil
+    public var chapterStatuses: [ObjectKey: ChapterReadingStatus]? { personalState?.chapterStatuses }
     public func readingStatus(for chapter: ObjectKey) -> ChapterReadingStatus { chapterStatuses?[chapter] ?? .unread }
+    public func readingStatus(for chapters: [ObjectKey]) -> ChapterReadingStatus? {
+        guard let first = chapters.first else { return nil }
+        let status = readingStatus(for: first)
+        return chapters.allSatisfy { readingStatus(for: $0) == status } ? status : nil
+    }
     private enum CodingKeys: String, CodingKey {
-        case key, sourceURL, title, author, summary, coverPageRef, rating, status, tags, chapterStatuses
+        case key, sourceURL, title, author, summary, coverPageRef, rating, status, tags, personalState
         case chapters = "chapterRefs"
         case lists = "chapterLists"
     }

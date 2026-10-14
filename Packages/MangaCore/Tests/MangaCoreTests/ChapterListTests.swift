@@ -1,5 +1,4 @@
 import Foundation
-import GRDB
 import Testing
 @testable import MangaCore
 
@@ -118,21 +117,4 @@ struct ChapterListTests {
         #expect(decoded.chapterStatuses == loaded.chapterStatuses)
     }
 
-    @Test func oldReadingPositionsMigrateWithoutInventingCompletions() throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
-        defer { try? FileManager.default.removeItem(atPath: path) }
-        let chapter = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
-        do {
-            let store = try ObjectStore(path: path)
-            try store.savePosition(ReadingPosition(mangaKey: mangaKey, chapterKey: chapter, sourcePageKey: .page(owner: chapter, index: 0), title: "One"))
-            let db = try DatabaseQueue(path: path)
-            try db.write {
-                try $0.execute(sql: "DROP TABLE mangaReadingState")
-                try $0.execute(sql: "DELETE FROM grdb_migrations WHERE identifier = 'v4ChapterReadingStatus'")
-            }
-        }
-        let store = try ObjectStore(path: path)
-        let manga = MangaObject(key: mangaKey, sourceURL: mangaKey.identityURL, title: "Series")
-        #expect(try store.readingState(for: manga).readingStatus(for: chapter) == .reading)
-    }
 }

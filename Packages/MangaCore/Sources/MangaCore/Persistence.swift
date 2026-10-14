@@ -6,7 +6,7 @@ public struct ObjectSnapshot: Sendable {
     public let ruleVersion: Int
     public let fetchedAt: Date
 }
-public struct ReadingPosition: Codable, Sendable {
+public struct ReadingPosition: Codable, Sendable, Equatable {
     public let mangaKey: ObjectKey
     public let chapterKey: ObjectKey
     public let sourcePageKey: ObjectKey
@@ -25,7 +25,7 @@ public struct ReadingPosition: Codable, Sendable {
         self.chapterListID = chapterListID
     }
 }
-public struct SavedManga: Codable, Sendable, Identifiable {
+public struct SavedManga: Codable, Sendable, Equatable, Identifiable {
     public let key: ObjectKey
     public let title: String
     public var isStarred: Bool
@@ -42,7 +42,7 @@ public struct SavedManga: Codable, Sendable, Identifiable {
 
 /// GRDB serializes access. Parent/child snapshots are always written in one transaction.
 public final class ObjectStore: Sendable {
-    private let db: DatabaseQueue
+    let db: DatabaseQueue
     private let cacheLimit: Int
     public init(path: String = ":memory:", cacheLimit: Int? = nil) throws {
         self.cacheLimit = max(0, cacheLimit ?? CachePolicy.metadataBytes)
@@ -84,6 +84,7 @@ public final class ObjectStore: Sendable {
                 try db.execute(sql: "UPDATE objects SET priority = ? WHERE key = ?", arguments: [CachePolicy.priority(object), row["key"] as String])
             }
         }
+        migration.registerMigration("v6MangaPersonalObjects") { try Self.migratePersonalObjects($0) }
         try migration.migrate(db)
         try db.write { try trimCache($0) }
     }
@@ -99,7 +100,7 @@ public final class ObjectStore: Sendable {
                 let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ",")
                 for row in try Row.fetchAll(db, sql: "SELECT * FROM objects WHERE key IN (\(placeholders))", arguments: StatementArguments(ids)) {
                     var object = try JSONDecoder().decode(ContentObject.self, from: row["payload"])
-                    if case .manga(var manga) = object { manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); object = .manga(manga) }
+                    if case .manga(var manga) = object { manga.personalState = try Self.personalManga(manga.key, db: db)?.personalState; object = .manga(manga) }
                     result[object.key] = ObjectSnapshot(object: object, ruleVersion: row["ruleVersion"], fetchedAt: Date(timeIntervalSince1970: row["fetchedAt"]))
                 }
                 var arguments = StatementArguments([Date().timeIntervalSince1970]); arguments += StatementArguments(ids)
@@ -127,6 +128,10 @@ public final class ObjectStore: Sendable {
             }
             var preserved: Set<ObjectKey> = []
             for incoming in objects {
+                if case .manga(let manga) = incoming, let old = try Self.personalManga(manga.key, db: db) {
+                    let updated = Self.updatingMetadata(manga, in: old)
+                    if updated != old { try Self.writePersonalManga(updated, db: db) }
+                }
                 var object = incoming
                 if !incoming.isComplete,
                    let row = try Row.fetchOne(db, sql: "SELECT payload FROM objects WHERE key = ? AND ruleVersion = ?", arguments: [incoming.key.id, version]) {
@@ -205,42 +210,6 @@ public final class ObjectStore: Sendable {
         }
     }
     public func clearContent() throws { try db.write { try $0.execute(sql: "DELETE FROM objects") } }
-    public func savePosition(_ position: ReadingPosition, completed: Bool = false) throws {
-        try db.write { db in
-            try db.execute(sql: "INSERT OR REPLACE INTO readingState (mangaKey, payload, updatedAt, hidden) VALUES (?, ?, ?, 0)", arguments: [position.mangaKey.id, try JSONEncoder().encode(position), position.updatedAt.timeIntervalSince1970])
-            var statuses = try Self.chapterStatuses(position.mangaKey, db: db)
-            let status: ChapterReadingStatus = completed || statuses[position.chapterKey] == .read ? .read : .reading
-            if statuses[position.chapterKey] != status {
-                statuses[position.chapterKey] = status
-                try db.execute(sql: "INSERT OR REPLACE INTO mangaReadingState VALUES (?, ?)", arguments: [position.mangaKey.id, try JSONEncoder().encode(statuses)])
-            }
-        }
-    }
-    func readingState(for manga: MangaObject) throws -> MangaObject {
-        try db.read { db in
-            var manga = manga; manga.chapterStatuses = try Self.chapterStatuses(manga.key, db: db); return manga
-        }
-    }
-    private static func chapterStatuses(_ key: ObjectKey, db: Database) throws -> [ObjectKey: ChapterReadingStatus] {
-        guard let data = try Data.fetchOne(db, sql: "SELECT payload FROM mangaReadingState WHERE mangaKey = ?", arguments: [key.id]) else { return [:] }
-        return try JSONDecoder().decode([ObjectKey: ChapterReadingStatus].self, from: data)
-    }
-    public func positions(includeHidden: Bool = true) throws -> [ReadingPosition] {
-        try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM readingState" + (includeHidden ? "" : " WHERE hidden = 0") + " ORDER BY updatedAt DESC").map { try JSONDecoder().decode(ReadingPosition.self, from: $0) } }
-    }
-    /// Removing a history row keeps its resume position; reading again makes it recent again.
-    public func hideRecent(_ key: ObjectKey) throws {
-        try db.write { try $0.execute(sql: "UPDATE readingState SET hidden = 1 WHERE mangaKey = ?", arguments: [key.id]) }
-    }
-    public func savedManga() throws -> [SavedManga] {
-        try db.read { try Data.fetchAll($0, sql: "SELECT payload FROM savedManga ORDER BY key").map { try JSONDecoder().decode(SavedManga.self, from: $0) } }
-    }
-    public func setSaved(_ manga: SavedManga, saved: Bool) throws {
-        try db.write { db in
-            if saved { try db.execute(sql: "INSERT OR REPLACE INTO savedManga VALUES (?, ?)", arguments: [manga.key.id, try JSONEncoder().encode(manga)]) }
-            else { try db.execute(sql: "DELETE FROM savedManga WHERE key = ?", arguments: [manga.key.id]) }
-        }
-    }
     public func preference<T: Decodable>(_ key: String, as: T.Type) throws -> T? {
         try db.read { db in try Data.fetchOne(db, sql: "SELECT payload FROM preferences WHERE key = ?", arguments: [key]).map { try JSONDecoder().decode(T.self, from: $0) } }
     }

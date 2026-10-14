@@ -19,12 +19,12 @@ struct MangaView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button(starred ? String(localized: "Unstar") : String(localized: "Star"), systemImage: starred ? "star.fill" : "star") {
-                        model.toggleStar(manga.key, title: manga.title)
+                        model.toggleStar(manga.key, title: manga.title, manga: manga)
                     }.accessibilityIdentifier("manga.star")
                 }
             }
             .onAppear { refreshReadingState() }
-            .onChange(of: position?.updatedAt) { _, _ in refreshReadingState() }
+            .onChange(of: model.libraryRevision) { _, _ in refreshReadingState() }
             .task { revealChapter(includeLastRead: true) }
             .onChange(of: model.chapterToReveal) { _, key in
                 if key != nil { revealChapter(includeLastRead: false) }
@@ -123,6 +123,11 @@ struct MangaView: View {
                 Text("\(list.chapters.count) chapters")
             }
             Spacer()
+            Menu { chapterActions(list.chapters.map(\.key), wholeList: true) } label: {
+                Label("Chapter list actions", systemImage: "checklist").labelStyle(.iconOnly)
+            }
+            .disabled(list.chapters.isEmpty)
+            .accessibilityIdentifier("manga.actions.\(list.id)")
             Menu {
                 Picker("Order", selection: Binding(get: { reversedLists.contains(list.id) }, set: { reversed in
                     if reversed { reversedLists.insert(list.id) } else { reversedLists.remove(list.id) }
@@ -141,6 +146,7 @@ struct MangaView: View {
         case .unread: String(localized: "Unread")
         case .reading: String(localized: "In progress")
         case .read: String(localized: "Read")
+        case .ignored: String(localized: "Ignored")
         }
         return Button { model.openChapter(chapter.key, listID: list.id) } label: {
             HStack {
@@ -148,15 +154,41 @@ struct MangaView: View {
                 Spacer(minLength: 12)
                 if status == .read { Image(systemName: "checkmark").foregroundStyle(.secondary) }
                 else if status == .reading { Image(systemName: "circle.lefthalf.filled").foregroundStyle(.secondary) }
+                else if status == .ignored { Image(systemName: "minus.circle").foregroundStyle(.secondary) }
             }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .id(rowID(chapter.key, list: list))
+        #if !os(macOS)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) { chapterActions([chapter.key]) }
+        #endif
+        .contextMenu { chapterActions([chapter.key]) }
+        .accessibilityActions { chapterActions([chapter.key]) }
         .accessibilityLabel(chapter.title)
         .accessibilityValue(isCurrent ? String(localized: "Current chapter, \(statusTitle)") : statusTitle)
     }
+    @ViewBuilder private func chapterActions(_ keys: [ObjectKey], wholeList: Bool = false) -> some View {
+        let status = (readingState ?? manga).readingStatus(for: keys)
+        Button(wholeList ? (status == .read ? String(localized: "Mark all as unread") : String(localized: "Mark all as read"))
+               : (status == .read ? String(localized: "Mark as unread") : String(localized: "Mark as read")),
+               systemImage: status == .read ? "circle" : "checkmark") {
+            setStatus(status == .read ? .unread : .read, for: keys)
+        }.tint(.blue)
+        Button(wholeList ? (status == .ignored ? String(localized: "Unignore all") : String(localized: "Ignore all"))
+               : (status == .ignored ? String(localized: "Unignore") : String(localized: "Ignore")),
+               systemImage: status == .ignored ? "plus.circle" : "minus.circle") {
+            setStatus(status == .ignored ? .unread : .ignored, for: keys)
+        }.tint(.orange)
+    }
+    private func setStatus(_ status: ChapterReadingStatus, for keys: [ObjectKey]) {
+        guard let repository = model.repository else { return }
+        do {
+            readingState = try manga.setReadingStatus(status, for: keys, using: repository)
+            model.reloadLibrary()
+        } catch { model.report(error, operation: .storage) }
+    }
     private func isCurrent(_ chapter: ContentReference, list: ChapterList) -> Bool {
-        model.reader?.chapter.key == chapter.key && model.reader?.chapterListID == list.id
+        position?.chapterKey == chapter.key && manga.chapterList(containing: chapter.key, preferredID: position?.chapterListID)?.id == list.id
     }
     private func rowID(_ key: ObjectKey, list: ChapterList) -> String { "\(list.id)|\(key.id)" }
     private func refreshReadingState() {

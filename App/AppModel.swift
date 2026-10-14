@@ -58,6 +58,8 @@ enum AppSection: String, CaseIterable, Identifiable {
     var saved: [SavedManga] = []
     var recent: [ReadingPosition] = []
     var readingPositions: [ReadingPosition] = []
+    private(set) var personalManga: [ObjectKey: MangaObject] = [:]
+    private(set) var libraryRevision = 0
     var preferences = ReaderPreferences() {
         didSet {
             do { try store?.setPreference("reader", value: preferences) }
@@ -79,6 +81,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var readerExpanded = false
     var openingChapter = false
     private var chapterRequest: Task<Void, Never>?
+    private var libraryObservation: Task<Void, Never>?
     private var started = false
 
     func start() async {
@@ -94,6 +97,11 @@ enum AppSection: String, CaseIterable, Identifiable {
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
             repository = try ObjectRepository(store: store, rules: rules)
             reloadLibrary()
+            libraryObservation = Task { [weak self] in
+                do {
+                    for try await manga in store.libraryUpdates() { self?.applyLibrary(manga) }
+                } catch is CancellationError {} catch { self?.report(error, operation: .storage) }
+            }
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {
                 await open(CommandLine.arguments[index + 1])
             }
@@ -191,12 +199,20 @@ enum AppSection: String, CaseIterable, Identifiable {
         openChapter(key, hint: .forceRefresh, expand: readerExpanded, listID: reader.chapterListID)
     }
     func reloadLibrary() {
-        do {
-            saved = try store?.savedManga() ?? []
-            readingPositions = try store?.positions() ?? []
-            recent = try store?.positions(includeHidden: false) ?? []
-        }
+        do { applyLibrary(try store?.libraryObjects() ?? []) }
         catch { report(error, operation: .storage) }
+    }
+    private func applyLibrary(_ manga: [MangaObject]) {
+        let updated = Dictionary(uniqueKeysWithValues: manga.map { ($0.key, $0) })
+        guard updated != personalManga else { return }
+        personalManga = updated
+        saved = manga.compactMap { item in
+            guard let state = item.personalState, state.isSaved else { return nil }
+            return SavedManga(key: item.key, title: item.title, isStarred: state.isStarred)
+        }
+        readingPositions = manga.compactMap { $0.personalState?.position }.sorted { $0.updatedAt > $1.updatedAt }
+        recent = readingPositions.filter { personalManga[$0.mangaKey]?.personalState?.isRecentHidden != true }
+        libraryRevision += 1
     }
     func resumeManga(_ key: ObjectKey) {
         if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey, listID: position.chapterListID); return }
@@ -211,11 +227,11 @@ enum AppSection: String, CaseIterable, Identifiable {
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
-    func toggleStar(_ key: ObjectKey, title: String) {
+    func toggleStar(_ key: ObjectKey, title: String, manga known: MangaObject? = nil) {
         do {
             var manga = saved.first(where: { $0.key == key }) ?? SavedManga(key: key, title: title)
             manga.isStarred.toggle()
-            try store?.setSaved(manga, saved: true)
+            try store?.setSaved(manga, saved: true, manga: known)
             reloadLibrary()
         } catch { report(error, operation: .storage) }
     }

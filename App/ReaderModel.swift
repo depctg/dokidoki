@@ -17,15 +17,17 @@ struct ChapterPreview {
     var overrides: [ObjectKey: SpreadOverride] = [:]
     var source: ObjectKey?
     var fraction = 0.0
-    var previousChapter: ContentReference?
-    var nextChapter: ContentReference?
+    private var manga: MangaObject?
+    var previousChapter: ContentReference? { manga?.previousChapter(before: chapter.key, in: chapterListID) }
+    var nextChapter: ContentReference? { manga?.nextChapter(after: chapter.key, in: chapterListID) }
     private(set) var chapterListID: String?
     private var completed = false
     var finalPageReady: Bool {
         plans.last.map { $0.sourcePageKeys.allSatisfy { analysis[$0] != nil } } ?? false
     }
-    var mangaTitle: String?
-    var mangaCover: ObjectKey?
+    var mangaTitle: String? { manga?.title ?? app.saved.first { $0.key == chapter.mangaRef }?.title
+        ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle }
+    var mangaCover: ObjectKey? { manga?.coverPageRef }
     var previews: [ChapterDirection: ChapterPreview] = [:]
     private let startAtEnd: Bool
     var error: String?
@@ -54,8 +56,6 @@ struct ChapterPreview {
     init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false, listID: String? = nil) {
         self.chapter = chapter; self.app = app; self.startAtEnd = startAtEnd
         chapterListID = listID ?? app.readingPositions.first { $0.chapterKey == chapter.key }?.chapterListID
-        mangaTitle = app.saved.first { $0.key == chapter.mangaRef }?.title
-            ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle
     }
     func activate() async {
         active = true
@@ -100,11 +100,8 @@ struct ChapterPreview {
         do {
             guard let manga = try await chapter.manga(using: repository) else { return }
             try Task.checkCancellation()
-            mangaTitle = manga.title
+            self.manga = manga
             chapterListID = manga.chapterList(containing: chapter.key, preferredID: chapterListID)?.id
-            previousChapter = manga.previousChapter(before: chapter.key, in: chapterListID)
-            nextChapter = manga.nextChapter(after: chapter.key, in: chapterListID)
-            mangaCover = manga.coverPageRef
             try Task.checkCancellation()
             metadataLoaded = true
             if active { save() }
@@ -195,7 +192,7 @@ struct ChapterPreview {
         do {
             try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
                 sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,
-                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count, chapterListID: chapterListID), completed: completed)
+                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count, chapterListID: chapterListID), completed: completed, manga: manga)
         }
         catch { app.report(error, operation: .storage) }
     }

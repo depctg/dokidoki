@@ -78,6 +78,20 @@ import XCTest
         for _ in 0..<3 where !app.buttons["Extra · Sketches"].isHittable { app.swipeUp() }
         XCTAssertTrue(app.buttons["manga.sort.books"].exists && app.buttons["manga.sort.extras"].exists)
         XCTAssertTrue(app.buttons["Book one"].exists && app.buttons["Extra · Sketches"].exists)
+        // SwiftUI swipe actions bridge into native hosted cells; group actions share the same core API.
+        let book = app.buttons["Book one"]
+        book.swipeLeft(); app.buttons["Mark as read"].tap()
+        XCTAssertTrue((book.value as? String)?.hasSuffix("Read") == true)
+        book.swipeLeft(); app.buttons["Ignore"].tap()
+        XCTAssertTrue((book.value as? String)?.hasSuffix("Ignored") == true)
+        setChapterGroup("chapters", action: "Mark all as read", opposite: "Mark all as unread", in: app)
+        XCTAssertTrue((starlight.value as? String)?.hasSuffix("Read") == true)
+        setChapterGroup("chapters", action: "Mark all as unread", opposite: "Mark all as read", in: app)
+        XCTAssertTrue((starlight.value as? String)?.hasSuffix("Unread") == true)
+        setChapterGroup("extras", action: "Ignore all", opposite: "Unignore all", in: app)
+        XCTAssertTrue((app.buttons["Extra · Sketches"].value as? String)?.hasSuffix("Ignored") == true)
+        setChapterGroup("extras", action: "Unignore all", opposite: "Ignore all", in: app)
+        XCTAssertTrue((app.buttons["Extra · Sketches"].value as? String)?.hasSuffix("Unread") == true)
         for _ in 0..<3 where !arrival.isHittable { app.swipeDown() }
         arrival.tap()
         let counter = app.staticTexts["reader.pageCounter"]
@@ -93,7 +107,8 @@ import XCTest
         XCTAssertTrue(row.waitForExistence(timeout: 8))
         XCTAssertTrue(wait { row.label.contains("The Observatory") })
         XCTAssertTrue(row.label.contains("1 · Arrival"))
-        XCTAssertTrue(row.label.contains("/ 4"))
+        XCTAssertTrue(row.label.contains("Reading ("))
+        XCTAssertFalse(row.label.contains("/ 4"), "Library progress summarizes the manga, not source page counts")
         XCTAssertTrue(row.label.contains("Last read <1 hr ago"))
         row.swipeLeft()
         if app.buttons["Unstar"].exists { app.buttons["Unstar"].tap(); row.swipeLeft() }
@@ -322,15 +337,25 @@ import XCTest
         setAdjustment("Detect spreads", enabled: false, app: app)
         XCTAssertTrue(wait { counter.label == "Page 1 of 2" && !joined.exists })
     }
+    private func setChapterGroup(_ id: String, action: String, opposite: String, in app: XCUIApplication) {
+        let menu = app.buttons["manga.actions." + id]
+        menu.tap()
+        // Exercise the requested action even when a previous test left its state set.
+        if !app.buttons[action].exists { app.buttons[opposite].tap(); menu.tap() }
+        app.buttons[action].tap()
+    }
     private func selectSection(_ title: String, in app: XCUIApplication) {
-        let bar = app.tabBars.firstMatch
-        let target = bar.buttons.matching(identifier: title).firstMatch
+        // Native iPad tabs do not expose a TabBar container. Match their public
+        // labels, excluding navigation back buttons with the same title.
+        let tabs = app.buttons.matching(NSPredicate(format: "label IN %@ AND identifier != 'BackButton'", ["My Library", "Browse", "Recent", "Settings"]))
+        let target = tabs.matching(identifier: title).firstMatch
         if !target.isHittable {
             // A native minimized tab bar exposes only its selected tab; tap to expand.
-            bar.buttons.matching(NSPredicate(format: "isSelected == true")).firstMatch.tap()
+            tabs.matching(NSPredicate(format: "isSelected == true")).firstMatch.tap()
         }
         XCTAssertTrue(target.waitForExistence(timeout: 5))
         target.tap()
+        XCTAssertTrue(wait { target.isSelected })
     }
     private func launch(chapter: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
