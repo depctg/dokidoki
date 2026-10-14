@@ -7,3 +7,6 @@ xcuserdata/
 .swiftpm/
 *.xcresult
 
+# Local marketing captures may include third-party manga artwork.
+/output/marketing/
+

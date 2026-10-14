@@ -70,6 +70,9 @@ struct MangaView: View {
             guard let (chapter, list) = rows[id] else { return false }
             return isCurrent(chapter, list: list)
         }, reveal: reveal)
+        // UIKit owns the list's safe-area insets; extend its scroll surface under
+        // the system's floating navigation and tab controls.
+        .ignoresSafeArea(.container, edges: .vertical)
         #endif
     }
     private var details: some View {
