@@ -16,7 +16,7 @@ Build and test the core with Xcode 26 or later:
 swift test --package-path Packages/MangaCore
 ```
 
-Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required. Settings → About shows the release and build number from the app bundle (for example, 1.0 (3)). The display name is **dokidoki"** (including the final quote); the Xcode target, bundle identity, and storage paths stay stable. The layered icon is editable in Icon Composer; see [icon authoring](docs/ICON.md).
+Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required. Settings → About shows the release and build number from the app bundle (currently 0.1.0 (20261014023808)). Each distributed preview revision receives a unique UTC timestamp in Xcode’s `CURRENT_PROJECT_VERSION`; the same revision keeps its identifier across destination builds. The display name is **dokidoki"** (including the final quote); the Xcode target, bundle identity, and storage paths stay stable. The layered icon is editable in Icon Composer; see [icon authoring](docs/ICON.md).
 
 The UI test target keeps two journeys: Library/Browse actions, and reader gestures/position restoration. Core tests own parsing, cache/persistence, request/session policy and diagnostics; shared contracts use parameterized cases and per-test fixture transports.
 
