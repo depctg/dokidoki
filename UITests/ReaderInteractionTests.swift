@@ -184,7 +184,7 @@ import XCTest
         let url = app.textFields["Website URL"]
         XCTAssertTrue(url.waitForExistence(timeout: 5))
         url.tap(); url.typeText("https://demo.mangaviewer.local/chapter/missing?token=private-value\n")
-        XCTAssertTrue(app.alerts["MangaViewer"].waitForExistence(timeout: 8))
+        XCTAssertTrue(app.alerts.buttons["OK"].waitForExistence(timeout: 8))
         app.alerts.buttons["OK"].tap()
         selectSection("Settings", in: app)
         let background = app.switches["Background resource loading"]

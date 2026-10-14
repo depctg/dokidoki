@@ -888,22 +888,6 @@
         }
       }
     },
-    "MangaViewer": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer"
-          }
-        }
-      }
-    },
     "Mode": {
       "localizations": {
         "en": {
@@ -2356,22 +2340,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "导出报告"
-          }
-        }
-      }
-    },
-    "MangaViewer error report": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer error report"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "MangaViewer 错误报告"
           }
         }
       }

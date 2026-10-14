@@ -22,5 +22,7 @@
         <key>UISceneConfigurations</key>
         <dict/>
     </dict>
+    <key>CFBundleDisplayName</key>
+    <string>dokidoki"</string>
 </dict>
 </plist>

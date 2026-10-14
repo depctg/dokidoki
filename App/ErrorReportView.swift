@@ -22,10 +22,8 @@ struct ErrorReportView: View {
     @State private var exportError: String?
     @State private var exporting = false
     private var report: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         let system = ProcessInfo.processInfo.operatingSystemVersionString
-        return [String(localized: "MangaViewer error report"), "MangaViewer \(version) (\(build))", system, ""]
+        return [String(localized: "Error report"), "\(AppInfo.name) \(AppInfo.version)", system, ""]
             .joined(separator: "\n") + entries.map { "\($0.date.ISO8601Format()) \($0.message)" }.joined(separator: "\n")
     }
     var body: some View {
@@ -64,7 +62,7 @@ struct ErrorReportView: View {
         .alert("Could not export report", isPresented: Binding(get: { exportError != nil }, set: { if !$0 { exportError = nil } })) {
             Button("OK") { exportError = nil }
         } message: { Text(exportError ?? "") }
-        .fileExporter(isPresented: $exporting, document: ErrorReportDocument(text: report), contentType: .plainText, defaultFilename: "MangaViewer-errors") { result in
+        .fileExporter(isPresented: $exporting, document: ErrorReportDocument(text: report), contentType: .plainText, defaultFilename: "dokidoki-errors") { result in
             if case .failure(let failure) = result {
                 ErrorDiagnostics.record(failure, operation: .exportReport)
                 exportError = failure.localizedDescription

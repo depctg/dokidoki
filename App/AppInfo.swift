@@ -3,7 +3,7 @@ import Foundation
 enum AppInfo {
     static var name: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
-            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "MangaViewer"
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? Bundle.main.bundleURL.deletingPathExtension().lastPathComponent
     }
 
     /// Keep the native release and build fields separate; show both to identify previews.

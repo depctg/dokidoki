@@ -13,7 +13,7 @@ struct RootView: View {
                         Label(section.title, systemImage: section.symbol).tag(section)
                     }
                 }
-                .navigationTitle("MangaViewer")
+                .navigationTitle(Text(verbatim: AppInfo.name))
                 .navigationSplitViewColumnWidth(min: 180, ideal: 210)
             } detail: {
                 navigation(for: model.section)
@@ -60,7 +60,7 @@ struct RootView: View {
             ReaderPresentation(model: model).frame(minWidth: 600, idealWidth: 1000, minHeight: 600, idealHeight: 800)
         }
         #endif
-        .alert("MangaViewer", isPresented: Binding(get: { model.error != nil && !model.readerExpanded }, set: { if !$0 { model.error = nil } })) {
+        .alert(Text(verbatim: AppInfo.name), isPresented: Binding(get: { model.error != nil && !model.readerExpanded }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
     }

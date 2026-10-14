@@ -1,0 +1,117 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "linear-gradient": [
+          "srgb:0.73333,0.82353,1.00000,1.00000",
+          "srgb:0.60000,0.70588,1.00000,1.00000"
+        ]
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "linear-gradient": [
+          "srgb:0.20000,0.25882,0.45882,1.00000",
+          "srgb:0.34510,0.42353,0.69412,1.00000"
+        ]
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "ドキドキ",
+      "layers": [
+        {
+          "image-name": "40-dokidoki.svg",
+          "name": "ドキドキ",
+          "glass": true,
+          "position": {
+            "scale": 1.12,
+            "translation-in-points": [
+              -65,
+              -40
+            ]
+          }
+        }
+      ],
+      "lighting": "combined",
+      "specular": false,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "blur-material": 0
+    },
+    {
+      "name": "Speech bubble",
+      "layers": [
+        {
+          "image-name": "30-speech-bubble.svg",
+          "name": "Speech bubble",
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": false,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "blur-material": 0
+    },
+    {
+      "name": "Comic page",
+      "layers": [
+        {
+          "image-name": "20-paper-front.svg",
+          "name": "Comic page",
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": false,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "blur-material": 0
+    },
+    {
+      "name": "Rear paper",
+      "layers": [
+        {
+          "image-name": "10-paper-back.svg",
+          "name": "Rear paper",
+          "glass": true
+        }
+      ],
+      "lighting": "combined",
+      "specular": false,
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.4
+      },
+      "translucency": {
+        "enabled": false,
+        "value": 0
+      },
+      "blur-material": 0
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

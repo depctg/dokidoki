@@ -15,7 +15,7 @@ import MangaCore
         #if os(macOS)
         Settings {
             SettingsView(model: model).frame(width: 550, height: 500)
-                .alert("MangaViewer", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+                .alert(Text(verbatim: AppInfo.name), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
                     Button("OK") { model.error = nil }
                 } message: { Text(model.error ?? "") }
         }
@@ -25,7 +25,7 @@ import MangaCore
         #if os(iOS)
         WindowGroup { content }
         #else
-        Window("MangaViewer", id: "main") { content }
+        Window(Text(verbatim: AppInfo.name), id: "main") { content }
         #endif
     }
     private var content: some View {

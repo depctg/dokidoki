@@ -1,6 +1,8 @@
-# Manga Viewer — Design Specification (V1)
+# dokidoki" — Design Specification (V1)
 
 **Status:** maintained implementation design
+
+**Branding:** the display name includes a trailing quotation mark. Native Icon Composer source and the derived visionOS stack are documented in [ICON.md](ICON.md); bundle/storage identity stays stable.
 **Platforms:** iOS, macOS, visionOS; adaptive layout for iPhone Duo (closed and unfolded)  
 **UI:** native SwiftUI  
 **Primary goal:** a small, extensible URL-to-object engine with an excellent manga-reading view.

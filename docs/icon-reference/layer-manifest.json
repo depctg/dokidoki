@@ -1,0 +1,37 @@
+{
+  "format": "custom-layer-manifest-not-native-icon-composer",
+  "canvas": {
+    "width": 1024,
+    "height": 1024
+  },
+  "order": [
+    "00-background",
+    "10-paper-back",
+    "20-paper-front",
+    "30-speech-bubble",
+    "40-dokidoki"
+  ],
+  "variants": {
+    "opaque": [
+      "layers/shared/00-background",
+      "layers/opaque/10-paper-back",
+      "layers/opaque/20-paper-front",
+      "layers/shared/30-speech-bubble",
+      "layers/shared/40-dokidoki"
+    ],
+    "frosted": [
+      "layers/shared/00-background",
+      "layers/frosted/10-paper-back",
+      "layers/frosted/20-paper-front",
+      "layers/shared/30-speech-bubble",
+      "layers/shared/40-dokidoki"
+    ]
+  },
+  "formats": [
+    "svg",
+    "png"
+  ],
+  "pngPixels": 1024,
+  "realVectorPaths": true,
+  "previewNote": "Concept lighting and native dynamic materials may differ."
+}

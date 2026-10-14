@@ -47,7 +47,7 @@ struct ReaderPresentation: View {
         .onAppear { dragOffset = .zero }
         .interactiveDismissDisabled()
         .accessibilityAction(named: "Collapse reader") { model.collapseReader() }
-        .alert("MangaViewer", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
+        .alert(Text(verbatim: AppInfo.name), isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("OK") { model.error = nil }
         } message: { Text(model.error ?? "") }
     }

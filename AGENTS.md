@@ -1,8 +1,9 @@
-# MangaViewer development
+# dokidoki" development
 
 Read `docs/MangaViewer_DESIGN.md` and `docs/DEV_STATE.md` before changing behavior.
 Implement milestones sequentially, with a clean-session review subagent after each milestone. Resolve material findings before committing. Keep DEV_STATE and README accurate in each milestone commit.
 
+- The app display name is literal `dokidoki"`, including the trailing quote. Keep the MangaViewer target, bundle ID, OSLog subsystem and storage paths stable. AppInfo reads native bundle branding/version for UI and reports. `App/AppIcon.icon` is the source for iOS/iPadOS/macOS; its group array is front-to-back. Use opaque artwork and native restrained shadows, no baked glass/refraction. visionOS needs its own three-layer asset; regenerate with `python3 scripts/export-vision-icon.py` after icon edits. See docs/ICON.md.
 - About reads the native marketing version and build number from the bundle, displayed as release (build). Increment CURRENT_PROJECT_VERSION for distributed previews; keep bundle identity and storage paths stable across display-name changes.
 - Swift 6, iOS/macOS/visionOS 26 minimum. One native SwiftUI application and one UI-independent MangaCore package.
 - Use Apple's native localization: App/Localizable.xcstrings for SwiftUI/explicit String(localized:) UI, InfoPlist.xcstrings for bundle display text, and MangaCore/Localization/*.lproj/Localizable.strings with bundle: .module for package errors. Localize complete messages, including accessibility/ternary/variable text; use catalog plurals instead of English plural concatenation. Keep persisted enum raw values, object keys, identifiers and rule JSON stable. Website titles/metadata/rule names are source data, not localization keys. Update both English and Simplified Chinese resources when adding app text; see docs/LOCALIZATION.md.

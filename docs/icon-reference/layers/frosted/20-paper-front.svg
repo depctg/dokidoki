@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024"><title>Front paper — frosted</title><defs>
+ <linearGradient id="paper" x1="0" y1="0" x2=".8" y2="1"><stop stop-color="#ffffff"/><stop offset=".52" stop-color="#f8f9fc"/><stop offset="1" stop-color="#eef1f7"/></linearGradient>
+ <linearGradient id="glass" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".73"/><stop offset=".38" stop-color="#eff6ff" stop-opacity=".38"/><stop offset=".72" stop-color="#e8f2ff" stop-opacity=".2"/><stop offset="1" stop-color="#ffffff" stop-opacity=".56"/></linearGradient>
+ <linearGradient id="edge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".98"/><stop offset=".42" stop-color="#fff" stop-opacity=".4"/><stop offset=".74" stop-color="#d9e4ff" stop-opacity=".5"/><stop offset="1" stop-color="#fff" stop-opacity=".88"/></linearGradient>
+ <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffd4e5"/><stop offset="1" stop-color="#f7aacd"/></linearGradient>
+ <linearGradient id="yellow" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff4a7"/><stop offset="1" stop-color="#ffe777"/></linearGradient>
+ <linearGradient id="blue" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#bceefa"/><stop offset="1" stop-color="#83d0ef"/></linearGradient>
+ <linearGradient id="base" x1=".1" y1="0" x2=".9" y2="1"><stop stop-color="#bbd2ff"/><stop offset=".48" stop-color="#96adff"/><stop offset="1" stop-color="#a5c4ff"/></linearGradient>
+ <linearGradient id="baseEdge" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".82"/><stop offset=".45" stop-color="#e8efff" stop-opacity=".14"/><stop offset="1" stop-color="#e8f4ff" stop-opacity=".75"/></linearGradient>
+ <radialGradient id="bloom" cx=".25" cy="0" r="1"><stop stop-color="#fff" stop-opacity=".42"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></radialGradient>
+
+
+
+ </defs><g transform="matrix(0.9884169884 0 0 0.9884169884 -108.7258687 -104.7722008)"><g id="paper-front"><path d="M 421 216 C 404 213 390 224 387 243 L 299 872 C 295 896 304 910 326 914 L 824 996 C 846 1000 859 987 859 963 L 859 316 C 859 298 850 286 832 283 Z" fill="url(#glass)" stroke="url(#edge)" stroke-width="4" stroke-linejoin="round"/><g stroke="#20272e" stroke-width="6.2" stroke-linejoin="round" fill-opacity="0.52" stroke-opacity="0.87"><path d="M437 279 L800 337 L796 608 L397 546 Z" fill="url(#pink)"/><path d="M394 571 L552 594 L528 890 L351 861 Z" fill="url(#yellow)"/><path d="M577 598 L808 633 L809 939 L554 894 Z" fill="url(#blue)"/></g><path d="M410 232 L826 297 Q842 300 843 317 M400 250 L312 867 Q308 895 328 900" stroke="#fff" stroke-opacity=".52" stroke-width="2.4" fill="none" stroke-linecap="round"/></g></g></svg>

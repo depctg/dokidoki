@@ -7,13 +7,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "MangaViewer"
+            "value": "dokidoki\""
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "MangaViewer"
+            "value": "dokidoki\""
           }
         }
       }
@@ -24,13 +24,30 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copyright © 2026 MangaViewer"
+            "value": "Copyright © 2026 dokidoki\""
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "版权所有 © 2026 MangaViewer"
+            "value": "版权所有 © 2026 dokidoki\""
+          }
+        }
+      }
+    },
+    "CFBundleName": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dokidoki\""
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "dokidoki\""
           }
         }
       }
