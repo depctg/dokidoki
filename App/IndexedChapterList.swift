@@ -13,6 +13,7 @@ struct IndexedChapterList: UIViewControllerRepresentable {
     }
     let sections: [Section]
     let row: (String) -> AnyView
+    let highlighted: (String) -> Bool
     let reveal: ChapterListReveal?
 
     func makeUIViewController(context: Context) -> Controller { Controller() }
@@ -27,7 +28,7 @@ struct IndexedChapterList: UIViewControllerRepresentable {
         init() {
             super.init(collectionViewLayout: UICollectionViewCompositionalLayout { section, environment in
                 var configuration = UICollectionLayoutListConfiguration(appearance: .insetGrouped)
-                configuration.headerMode = section == 0 ? .none : .supplementary
+                configuration.headerMode = section == 0 ? .none : .firstItemInSection
                 return NSCollectionLayoutSection.list(using: configuration, layoutEnvironment: environment)
             })
         }
@@ -36,21 +37,25 @@ struct IndexedChapterList: UIViewControllerRepresentable {
         override func viewDidLoad() {
             super.viewDidLoad()
             collectionView.indexDisplayMode = .automatic
+            collectionView.allowsSelection = false
             collectionView.accessibilityIdentifier = "manga.chapters"
             let cells = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, id in
                 guard let self, let content else { return }
-                cell.contentConfiguration = UIHostingConfiguration { content.row(id).id(id) }
-            }
-            let headers = UICollectionView.SupplementaryRegistration<UICollectionViewListCell>(elementKind: UICollectionView.elementKindSectionHeader) { [weak self] cell, _, path in
-                self?.configureHeader(cell, section: path.section)
+                if let group = content.sections.first(where: { Self.headerID($0.id) == id }) {
+                    cell.contentConfiguration = UIHostingConfiguration { group.header.font(.subheadline) }
+                    cell.backgroundConfiguration = .clear()
+                } else {
+                    cell.contentConfiguration = UIHostingConfiguration { content.row(id).id(id) }
+                    var background = UIBackgroundConfiguration.listGroupedCell()
+                    if content.highlighted(id) { background.backgroundColor = .tintColor.withAlphaComponent(0.15) }
+                    cell.backgroundConfiguration = background
+                }
             }
             source = IndexedSource(collectionView: collectionView) { collection, path, id in
                 collection.dequeueConfiguredReusableCell(using: cells, for: path, item: id)
             }
-            source.supplementaryViewProvider = { collection, _, path in
-                collection.dequeueConfiguredReusableSupplementary(using: headers, for: path)
-            }
         }
+        private static func headerID(_ section: String) -> String { "header|" + section }
         func update(_ content: IndexedChapterList) {
             loadViewIfNeeded()
             self.content = content
@@ -60,14 +65,15 @@ struct IndexedChapterList: UIViewControllerRepresentable {
                 // every 25 rows. These are index entries, never visible list sections.
                 let stride = max(25, Int(ceil(Double(group.rows.count) / 9)))
                 for item in Swift.stride(from: stride, to: group.rows.count, by: stride) {
-                    entries.append(("•", IndexPath(item: item, section: section)))
+                    entries.append(("•", IndexPath(item: item + (group.header == nil ? 0 : 1), section: section)))
                 }
                 return entries
             }
             let previous = Set(source.snapshot().itemIdentifiers)
             var snapshot = NSDiffableDataSourceSnapshot<String, String>()
             for section in content.sections {
-                snapshot.appendSections([section.id]); snapshot.appendItems(section.rows, toSection: section.id)
+                snapshot.appendSections([section.id])
+                snapshot.appendItems((section.header == nil ? [] : [Self.headerID(section.id)]) + section.rows, toSection: section.id)
             }
             snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { previous.contains($0) })
             if let reveal = content.reveal, reveal.id != lastReveal {
@@ -75,20 +81,8 @@ struct IndexedChapterList: UIViewControllerRepresentable {
             }
             source.apply(snapshot, animatingDifferences: false) { [weak self] in
                 guard let self else { return }
-                for path in collectionView.indexPathsForVisibleSupplementaryElements(ofKind: UICollectionView.elementKindSectionHeader) {
-                    if let cell = collectionView.supplementaryView(forElementKind: UICollectionView.elementKindSectionHeader, at: path) as? UICollectionViewListCell {
-                        configureHeader(cell, section: path.section)
-                    }
-                }
                 view.setNeedsLayout()
             }
-        }
-        private func configureHeader(_ cell: UICollectionViewListCell, section: Int) {
-            guard let content, content.sections.indices.contains(section) else { return }
-            cell.contentConfiguration = UIHostingConfiguration {
-                content.sections[section].header.font(.subheadline)
-            }
-            cell.backgroundConfiguration = .clear()
         }
         override func viewDidLayoutSubviews() {
             super.viewDidLayoutSubviews()

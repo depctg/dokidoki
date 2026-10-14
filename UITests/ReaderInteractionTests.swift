@@ -7,11 +7,10 @@ import XCTest
     func testLibraryNavigationAndActions() {
         let app = launch()
         let libraryTab = app.buttons.matching(identifier: "My Library").firstMatch
-        let recentTab = app.buttons.matching(identifier: "Recent").firstMatch
         XCTAssertTrue(libraryTab.waitForExistence(timeout: 20))
         XCTAssertTrue(libraryTab.isSelected)
 
-        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        selectSection("Browse", in: app)
         app.buttons["Switch site"].tap()
         app.buttons["Bundled reading room"].tap()
         let shelf = app.buttons["browse.list.https://demo.mangaviewer.local/catalog"]
@@ -39,23 +38,17 @@ import XCTest
         XCTAssertTrue(app.navigationBars["Search results"].waitForExistence(timeout: 8))
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["directory.sort"].exists)
-        // The footer is plain text. Only deliberate overpull (or its accessible action) appends.
-        let footer = app.staticTexts["directory.loadMore"]
+        // The plain footer is a native button; one tap appends the next range.
+        let footer = app.buttons["directory.loadMore"]
         XCTAssertTrue(footer.waitForExistence(timeout: 8))
         if footer.label == "No more titles" {
             app.buttons["More"].tap()
             app.buttons["Refresh"].tap()
-            XCTAssertTrue(wait { footer.label == "Pull up to load more" })
+            XCTAssertTrue(wait { footer.label == "Tap to load more" })
         }
         footer.tap()
-        XCTAssertFalse(aster.exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.66)), withVelocity: .fast, thenHoldForDuration: 0)
-        XCTAssertFalse(aster.exists, "A short bounce must not load the next batch")
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)), withVelocity: .slow, thenHoldForDuration: 0.3)
         XCTAssertTrue(aster.waitForExistence(timeout: 8))
-        XCTAssertTrue(wait { footer.label == "No more titles" })
+        XCTAssertTrue(wait { footer.label == "No more titles" && !footer.isEnabled })
         listedManga.tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Rating: 9.2 / 10"].exists)
@@ -67,6 +60,13 @@ import XCTest
         XCTAssertFalse(app.staticTexts["Search this site"].exists)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         listedManga.tap()
+        // The reading action must work with the first tap in a newly hosted list.
+        let read = app.buttons["manga.read"]
+        for _ in 0..<3 where !read.isHittable { app.swipeUp() }
+        XCTAssertTrue(read.isHittable)
+        read.tap()
+        XCTAssertTrue(app.staticTexts["reader.pageCounter"].waitForExistence(timeout: 20))
+        app.buttons["reader.collapse"].tap()
         // Each chapter group has its own presentation sort, without changing core adjacency.
         let arrival = app.buttons["1 · Arrival"], starlight = app.buttons["2 · Starlight"]
         for _ in 0..<3 where !app.buttons["manga.sort.chapters"].isHittable { app.swipeUp() }
@@ -88,7 +88,7 @@ import XCTest
         XCTAssertTrue(resume.waitForExistence(timeout: 8))
         XCTAssertEqual(resume.value as? String, position)
 
-        recentTab.tap()
+        selectSection("Recent", in: app)
         let row = app.buttons["library.item.demo|https://demo.mangaviewer.local/series/observatory"]
         XCTAssertTrue(row.waitForExistence(timeout: 8))
         XCTAssertTrue(wait { row.label.contains("The Observatory") })
@@ -98,7 +98,7 @@ import XCTest
         row.swipeLeft()
         if app.buttons["Unstar"].exists { app.buttons["Unstar"].tap(); row.swipeLeft() }
         app.buttons["Star"].tap()
-        libraryTab.tap()
+        selectSection("My Library", in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 8))
         XCTAssertTrue(row.label.contains("Starred"))
         row.swipeLeft()
@@ -118,20 +118,20 @@ import XCTest
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue((app.buttons["2 · Starlight"].value as? String)?.hasPrefix("Current chapter,") == true)
         XCTAssertTrue(app.buttons["2 · Starlight"].isHittable)
-        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        selectSection("Settings", in: app)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertTrue(resume.isHittable)
         XCTAssertEqual(app.buttons.matching(identifier: "reader.resume").count, 1)
         XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
 
         // Each removal affects its own list; the separate Resume button opens the latest chapter.
-        recentTab.tap()
+        selectSection("Recent", in: app)
         XCTAssertTrue(wait { row.label.contains("2 · Starlight") })
         row.swipeLeft()
         app.buttons["Remove"].tap()
         XCTAssertTrue(wait { !row.exists })
         XCTAssertTrue(resume.exists)
-        libraryTab.tap()
+        selectSection("My Library", in: app)
         app.navigationBars.buttons.matching(identifier: "My Library").firstMatch.tap()
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         app.buttons["library.resume.demo|https://demo.mangaviewer.local/series/observatory"].tap()
@@ -141,11 +141,11 @@ import XCTest
         row.swipeLeft()
         app.buttons["Remove"].tap()
         XCTAssertTrue(wait { !row.exists })
-        recentTab.tap()
+        selectSection("Recent", in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5), "Reading makes the hidden history entry recent again")
 
         // Reordering site rules belongs to shell coverage; persistence is checked in core tests.
-        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        selectSection("Settings", in: app)
         XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 8))
         let demo = app.staticTexts["Bundled reading room"]
         let other = app.staticTexts["拷貝漫畫 · MangaCopy"]
@@ -161,11 +161,7 @@ import XCTest
             .press(forDuration: 0.8, thenDragTo: upper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: -20)))
         XCTAssertTrue(wait { lower.frame.minY < upper.frame.minY })
         XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
-        // Scrolling can minimize the native phone tab bar to its selected tab.
-        if !app.buttons.matching(identifier: "Browse").firstMatch.exists {
-            app.buttons.matching(identifier: "Settings").firstMatch.tap()
-        }
-        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        selectSection("Browse", in: app)
         XCTAssertEqual(app.staticTexts["browse.siteTitle"].label, lower.label)
 
         // Diagnostics owns error reporting; opening a failing bundled URL requires no live site.
@@ -175,7 +171,7 @@ import XCTest
         url.tap(); url.typeText("https://demo.mangaviewer.local/chapter/missing?token=private-value\n")
         XCTAssertTrue(app.alerts["MangaViewer"].waitForExistence(timeout: 8))
         app.alerts.buttons["OK"].tap()
-        app.buttons.matching(identifier: "Settings").firstMatch.tap()
+        selectSection("Settings", in: app)
         let background = app.switches["Background resource loading"]
         for _ in 0..<5 where !background.isHittable { app.swipeUp() }
         XCTAssertTrue(background.isHittable)
@@ -313,7 +309,7 @@ import XCTest
         select("Right to left", in: "Direction", app: app)
         setAdjustment("Detect spreads", enabled: true, app: app)
         app.buttons["reader.collapse"].tap()
-        app.buttons.matching(identifier: "Browse").firstMatch.tap()
+        selectSection("Browse", in: app)
         app.buttons["Open URL"].tap()
         let url = app.textFields["Website URL"]
         XCTAssertTrue(url.waitForExistence(timeout: 5))
@@ -325,6 +321,16 @@ import XCTest
         XCTAssertTrue(wait { counter.label == "Page 1 of 1" && joined.exists })
         setAdjustment("Detect spreads", enabled: false, app: app)
         XCTAssertTrue(wait { counter.label == "Page 1 of 2" && !joined.exists })
+    }
+    private func selectSection(_ title: String, in app: XCUIApplication) {
+        let bar = app.tabBars.firstMatch
+        let target = bar.buttons.matching(identifier: title).firstMatch
+        if !target.isHittable {
+            // A native minimized tab bar exposes only its selected tab; tap to expand.
+            bar.buttons.matching(NSPredicate(format: "isSelected == true")).firstMatch.tap()
+        }
+        XCTAssertTrue(target.waitForExistence(timeout: 5))
+        target.tap()
     }
     private func launch(chapter: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()

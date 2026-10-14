@@ -11,8 +11,6 @@ struct DirectoryView: View {
     @State private var loadingMore = false
     @State private var loadRequest = 0
     @State private var loadError: String?
-    @State private var pull = ScrollPull()
-    private let threshold: CGFloat = 72
     private var current: DirectoryObject { accumulated ?? directory }
     private var hasMore: Bool { current.hasMore != false }
     private var references: [ContentReference] {
@@ -62,21 +60,15 @@ struct DirectoryView: View {
                     Divider().accessibilityHidden(true)
                 }
             }.padding(.horizontal, 20)
-            Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles")
-                 : pull.distance >= threshold ? String(localized: "Release to load more") : String(localized: "Pull up to load more"))
-                .font(.footnote).foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity).padding(.vertical, 24)
-                .accessibilityIdentifier("directory.loadMore")
-                .accessibilityActions {
-                    if hasMore, !loadingMore { Button("Load more", action: requestMore) }
-                }
-                .contextMenu { if hasMore, !loadingMore { Button("Load more", action: requestMore) } }
+            Button(action: requestMore) {
+                Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles") : String(localized: "Tap to load more"))
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 24).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).disabled(!hasMore || loadingMore)
+            .accessibilityIdentifier("directory.loadMore")
         }
         .accessibilityIdentifier("directory.list")
-        .scrollBounceBehavior(.always)
-        .modifier(ScrollOverpull(enabled: hasMore && !loadingMore, pull: $pull) { pull in
-            if pull.distance >= threshold { requestMore() }
-        })
         .task(id: loadRequest) {
             guard loadingMore, let repository = model.repository else { return }
             defer { loadingMore = false }

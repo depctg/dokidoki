@@ -88,18 +88,9 @@ struct ReaderView: View {
         }
         // Toolbars overlay the same full-size reading surface in either chrome state.
         .ignoresSafeArea(.container)
-        .persistentSystemOverlays(model.readerImmersive ? .hidden : .automatic)
-        #if os(iOS)
-        .statusBarHidden(model.readerImmersive)
-        #endif
         .focusable(interactions: .activate).focusEffectDisabled().focused($focused)
         .navigationTitle(chapter.title)
         .toolbarTitleDisplayMode(.inline)
-        #if os(macOS)
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .windowToolbar)
-        #else
-        .toolbarVisibility(model.readerImmersive ? .hidden : .automatic, for: .navigationBar, .tabBar)
-        #endif
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Collapse reader", systemImage: model.preferences.mode == .paged ? "chevron.down" : "chevron.left") { model.collapseReader() }

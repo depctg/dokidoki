@@ -37,7 +37,10 @@ struct MangaView: View {
                 Section { details; readingButton }
                 ForEach(manga.chapterLists) { list in
                     Section {
-                        ForEach(orderedChapters(list)) { chapterRow($0, list: list) }
+                        ForEach(orderedChapters(list)) { chapter in
+                            chapterRow(chapter, list: list)
+                                .listRowBackground(isCurrent(chapter, list: list) ? Color.accentColor.opacity(0.15) : nil)
+                        }
                         if list.chapters.isEmpty { emptyChapters }
                     }
                         header: { chapterHeader(list) }
@@ -63,6 +66,9 @@ struct MangaView: View {
             if id == "reading" { return AnyView(readingButton) }
             if let (chapter, list) = rows[id] { return AnyView(chapterRow(chapter, list: list)) }
             return AnyView(emptyChapters)
+        }, highlighted: { id in
+            guard let (chapter, list) = rows[id] else { return false }
+            return isCurrent(chapter, list: list)
         }, reveal: reveal)
         #endif
     }
@@ -83,14 +89,19 @@ struct MangaView: View {
             }
         }.padding(.vertical, 12)
     }
-    @ViewBuilder private var readingButton: some View {
-        if position != nil {
-            Button("Resume reading", systemImage: "play.fill") { model.resumeManga(manga.key) }
-        } else if let first = manga.chapterRefs.first {
-            Button("Start reading", systemImage: "play.fill") {
+    private var readingButton: some View {
+        Button {
+            if position != nil { model.resumeManga(manga.key) }
+            else if let first = manga.chapterRefs.first {
                 model.openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
             }
-        } else { emptyChapters }
+        } label: {
+            Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
+                .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+        .disabled(model.openingChapter || manga.chapterRefs.isEmpty && position == nil)
+        .accessibilityIdentifier("manga.read")
     }
     private var emptyChapters: some View { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
     private func orderedChapters(_ list: ChapterList) -> [ContentReference] {
@@ -125,7 +136,7 @@ struct MangaView: View {
     }
     private func chapterRow(_ chapter: ContentReference, list: ChapterList) -> some View {
         let status = (readingState ?? manga).readingStatus(for: chapter.key)
-        let isCurrent = model.reader?.chapter.key == chapter.key && model.reader?.chapterListID == list.id
+        let isCurrent = isCurrent(chapter, list: list)
         let statusTitle: String = switch status {
         case .unread: String(localized: "Unread")
         case .reading: String(localized: "In progress")
@@ -137,12 +148,15 @@ struct MangaView: View {
                 Spacer(minLength: 12)
                 if status == .read { Image(systemName: "checkmark").foregroundStyle(.secondary) }
                 else if status == .reading { Image(systemName: "circle.lefthalf.filled").foregroundStyle(.secondary) }
-            }
+            }.frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
         }
+        .buttonStyle(.borderless)
         .id(rowID(chapter.key, list: list))
         .accessibilityLabel(chapter.title)
         .accessibilityValue(isCurrent ? String(localized: "Current chapter, \(statusTitle)") : statusTitle)
-        .background(isCurrent ? Color.accentColor.opacity(0.15) : nil)
+    }
+    private func isCurrent(_ chapter: ContentReference, list: ChapterList) -> Bool {
+        model.reader?.chapter.key == chapter.key && model.reader?.chapterListID == list.id
     }
     private func rowID(_ key: ObjectKey, list: ChapterList) -> String { "\(list.id)|\(key.id)" }
     private func refreshReadingState() {

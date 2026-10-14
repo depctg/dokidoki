@@ -8,13 +8,25 @@ struct ReaderPresentation: View {
     var body: some View {
         GeometryReader { geometry in
             NavigationStack {
-                if let reader = model.reader {
-                    ReaderView(reader: reader, model: model).id(reader.id).transition(.opacity)
-                } else {
-                    ProgressView("Opening chapter…")
-                        .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Collapse reader") { model.collapseReader() } } }
+                Group {
+                    if let reader = model.reader {
+                        ReaderView(reader: reader, model: model).id(reader.id).transition(.opacity)
+                    } else {
+                        ProgressView("Opening chapter…")
+                            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Collapse reader") { model.collapseReader() } } }
+                    }
                 }
+                // This preference belongs to the persistent stack root, not a replaced chapter.
+                #if os(macOS)
+                .toolbarVisibility(model.readerImmersive ? .hidden : .visible, for: .windowToolbar)
+                #else
+                .toolbarVisibility(model.readerImmersive ? .hidden : .visible, for: .navigationBar)
+                #endif
             }
+            .persistentSystemOverlays(model.readerImmersive ? .hidden : .automatic)
+            #if os(iOS)
+            .statusBarHidden(model.readerImmersive)
+            #endif
             .animation(.easeOut(duration: 0.2), value: model.reader?.id)
             .offset(dragOffset)
             .simultaneousGesture(DragGesture(minimumDistance: 20, coordinateSpace: .named("readerPresentation"))

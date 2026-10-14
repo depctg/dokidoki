@@ -53,12 +53,11 @@ struct ReaderChapterPreview: View {
             }
             if reference != nil {
                 ZStack {
-                    Image(systemName: "photo").foregroundStyle(.secondary)
                     if let page = preview?.page { PageImageView(page: page, model: model).accessibilityIdentifier("reader.continuationImage") }
                     else if let error = preview?.error { Text(error).font(.caption) }
+                    else { Image(systemName: "photo").foregroundStyle(.secondary) }
                 }
                 .frame(width: advancing ? size.width : imageWidth, height: advancing ? size.height : imageHeight)
-                .background(Color(white: 0.08))
                 .position(x: advancing ? size.width / 2 : (paged ? center.x : size.width * 0.24),
                           y: advancing ? size.height / 2 : (paged ? size.height * 0.43 : center.y))
                 .opacity(advancing ? 1 : min(1, reveal / 0.08))

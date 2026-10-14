@@ -56,35 +56,33 @@ private struct LibraryRow: View {
         return String(localized: "Last read \(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
     }
     var body: some View {
-        HStack(spacing: 12) {
-            NavigationLink(value: AppRoute.object(key)) {
+        NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 16) {
                     CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 76, height: 140), hint: manga == nil ? .offlineOnly : .preferCache)
                         .frame(width: 76)
                     VStack(alignment: .leading, spacing: 6) {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text(title).font(.headline).lineLimit(2)
-                            if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
-                        }
+                        Text(title).font(.headline).lineLimit(2)
                         Text(chapterTitle).font(.subheadline).foregroundStyle(.secondary).lineLimit(2)
                         Text(progress).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        Text(lastRead).font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 6) {
+                            if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
+                            Text(lastRead).foregroundStyle(.secondary)
+                        }.font(.caption)
                         if let manga { MangaMetadataView(manga: manga, compact: true) }
                     }
                     Spacer(minLength: 0)
+                    Button { model.resumeManga(key) } label: {
+                        Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
+                            .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.bordered)
+                    .buttonBorderShape(.circle)
+                    .accessibilityIdentifier("library.resume.\(key.id)")
                 }
                 .padding(.vertical, 6).contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("library.item.\(key.id)")
-            .accessibilityHint("Manga details")
-            Button { model.resumeManga(key) } label: {
-                Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
-                    .labelStyle(.iconOnly).frame(minWidth: 44, minHeight: 44)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityIdentifier("library.resume.\(key.id)")
         }
+        .accessibilityIdentifier("library.item.\(key.id)")
+        .accessibilityHint("Manga details")
         #if os(iOS)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) { actions }
         #endif
