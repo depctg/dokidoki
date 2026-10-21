@@ -22,30 +22,30 @@ public enum ContentRequest: Sendable {
 public actor RequestSender {
     private struct Key: Hashable {
         let url: URL
-        let policy: Data
+        let policy: SiteRule
         let purpose: String
         let referer: URL?
         let backgroundLoading: Bool
         let load: SourceLoad?
     }
-    private struct ResourceKey: Hashable { let policy: Data; let url: URL }
+    private struct ResourceKey: Hashable { let policy: SiteRule; let url: URL }
     private var resources: [ResourceKey: SessionResources] = [:]
     private var resourceGeneration = 0
     public func invalidateResources() async { resourceGeneration += 1; resources.removeAll(); await fetcher.invalidate() }
-    private func resourceKey(_ request: ContentRequest) throws -> ResourceKey {
+    private func resourceKey(_ request: ContentRequest) -> ResourceKey {
         let owner: URL
         switch request {
         case .source(let key, _, _, _, let load): owner = load.sessionURL ?? key.identityURL
         case .image(let page, _): owner = page.sessionURL ?? page.ownerRef?.identityURL ?? page.refererURL ?? page.imageURL ?? page.key.identityURL
         }
-        return ResourceKey(policy: try request.rule.exported(), url: owner)
+        return ResourceKey(policy: request.rule, url: owner)
     }
     func discardResource(_ page: PageObject, rule: SiteRule) {
         let request = ContentRequest.image(page, rule: rule)
-        if let key = try? resourceKey(request) { resources[key]?.remove(request.url, referer: page.refererURL) }
+        resources[resourceKey(request)]?.remove(request.url, referer: page.refererURL)
     }
     private func remember(_ response: SourceResponse, request: ContentRequest) {
-        guard let key = try? resourceKey(request) else { return }
+        let key = resourceKey(request)
         resources[key, default: SessionResources()].insert(response, for: request.url, referer: request.referer)
         if resources.count > 4, let oldest = resources.min(by: { $0.value.used < $1.value.used })?.key { resources[oldest] = nil }
     }
@@ -89,8 +89,8 @@ public actor RequestSender {
         case .image(let page, _): purpose = "image"; referer = page.refererURL; backgroundLoading = false; load = nil
         }
         // Images can reuse bytes acquired by this logical session before admission.
-        if case .image = request, let context = try? resourceKey(request), let cached = resources[context]?.response(for: request.url, referer: request.referer) { return cached }
-        let key = Key(url: request.url, policy: try request.rule.exported(), purpose: purpose, referer: referer, backgroundLoading: backgroundLoading, load: load)
+        if case .image = request, let cached = resources[resourceKey(request)]?.response(for: request.url, referer: request.referer) { return cached }
+        let key = Key(url: request.url, policy: request.rule, purpose: purpose, referer: referer, backgroundLoading: backgroundLoading, load: load)
         let consumer = UUID()
         let response: SourceResponse = try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<SourceResponse, Error>) in

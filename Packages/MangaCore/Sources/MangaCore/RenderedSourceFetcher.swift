@@ -24,7 +24,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
 /// The sender admits one rendered operation at a time. Keep up to four logical
 /// contexts so a cover/metadata visit does not destroy a chapter's scroll position.
 @MainActor private final class RenderedSessionManager {
-    private struct Identity: Hashable { let url: URL; let policy: Data; let extraction: Data; let background: Bool }
+    private struct Identity: Hashable { let url: URL; let policy: SiteRule; let extraction: ExtractionRule; let background: Bool }
     private struct Entry {
         let session: WebPageSession
         var used = ContinuousClock.now
@@ -42,8 +42,7 @@ public struct RenderedSourceFetcher: SourceFetcher {
         for identity in Array(entries.keys) { remove(identity) }
     }
     func read(_ url: URL, rule: SiteRule, kind: ContentKind, extraction: ExtractionRule, backgroundLoading: Bool, load: SourceLoad) async throws -> SourceResponse {
-        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
-        let identity = Identity(url: load.sessionURL ?? url, policy: try rule.exported(), extraction: try encoder.encode(extraction), background: backgroundLoading)
+        let identity = Identity(url: load.sessionURL ?? url, policy: rule, extraction: extraction, background: backgroundLoading)
         let epoch = generation
         if load.refresh { remove(identity) }
         entries[identity]?.expiry?.cancel()
@@ -67,8 +66,8 @@ public struct RenderedSourceFetcher: SourceFetcher {
         } catch { remove(identity); throw error }
     }
     func resource(_ url: URL, rule: SiteRule, owner: URL?, referer: URL?) async -> SourceResponse? {
-        guard rule.permits(url), let policy = try? rule.exported(),
-              let entry = entries.filter({ $0.key.url == owner && $0.key.policy == policy && $0.value.session.url == referer })
+        guard rule.permits(url),
+              let entry = entries.filter({ $0.key.url == owner && $0.key.policy == rule && $0.value.session.url == referer })
                 .max(by: { $0.value.used < $1.value.used })?.value else { return nil }
         return await entry.session.resource(url)
     }

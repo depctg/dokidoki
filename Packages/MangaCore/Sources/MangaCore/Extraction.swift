@@ -243,7 +243,7 @@ public struct RuleExtractor: Sendable {
             guard var components = URLComponents(url: responseURL, resolvingAgainstBaseURL: true) else { throw ReaderError.invalidResponse }
             components.queryItems = (components.queryItems ?? []).filter { $0.name != pagination.parameter } + [URLQueryItem(name: pagination.parameter, value: String(next))]
             guard let target = components.url, rule.permits(target),
-                  let (_, kind, key) = try? RuleRegistry(rules: [rule]).match(target), kind == .directory else { throw ReaderError.invalidResponse }
+                  let (_, kind, key) = try? registry.match(target), kind == .directory else { throw ReaderError.invalidResponse }
             return key.identityURL
         }
         let title = try first("title") ?? String(localized: "Untitled", bundle: .module)

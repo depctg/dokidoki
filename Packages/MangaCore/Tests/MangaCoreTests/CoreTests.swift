@@ -20,8 +20,11 @@ struct CoreTests {
         #expect(normalized.absoluteString == "https://example.com/a?q=2")
         #expect(throws: ReaderError.self) { try registry.match(URL(string: "https://evil.test/catalog")!) }
         #expect(throws: ReaderError.self) { try RuleRegistry(rules: [rules[0], rules[0]]) }
-        for rule in rules { #expect(try SiteRule.decode(rule.exported()).exported() == rule.exported()) }
+        for rule in rules { #expect(try SiteRule.decode(rule.exported()) == rule) }
         var json = try JSONSerialization.jsonObject(with: rules[0].exported()) as! [String: Any]
+        // Even native Codable decoding validates before a rule can enter core.
+        var invalid = json; invalid["processors"] = ["unknown"]
+        #expect(throws: ReaderError.self) { try JSONDecoder().decode(SiteRule.self, from: JSONSerialization.data(withJSONObject: invalid)) }
         json["headers"] = ["Cookie": "secret"]
         #expect(throws: ReaderError.self) { try SiteRule.decode(JSONSerialization.data(withJSONObject: json)) }
     }

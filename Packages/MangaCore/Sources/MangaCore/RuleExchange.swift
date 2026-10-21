@@ -4,9 +4,16 @@ import CoreImage.CIFilterBuiltins
 import CoreGraphics
 
 public enum RuleExchange {
+    @concurrent public static func read(from url: URL) async throws -> SiteRule {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        let file = try FileHandle(forReadingFrom: url)
+        defer { try? file.close() }
+        return try SiteRule.decode(file.read(upToCount: 128 * 1024 + 1) ?? Data())
+    }
     /// Conservative single-code payload. Larger rules always remain available as JSON files.
     public static let qrByteLimit = 1200
-    public static func qrImage(for rule: SiteRule) throws -> CGImage? {
+    @concurrent public static func qrImage(for rule: SiteRule) async throws -> CGImage? {
         let data = try rule.exported()
         guard data.count <= qrByteLimit else { return nil }
         let filter = CIFilter.qrCodeGenerator()

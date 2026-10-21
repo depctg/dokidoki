@@ -85,6 +85,8 @@ The [rule format reference](docs/RULES.md) lists supported fields and examples. 
 
 ## More documentation
 
+The SwiftUI app uses an asynchronous MangaCore engine for loading, caching, site rules, and local storage. Website recipes remain data-only JSON; the UI contains no site-specific parsing.
+
 - [Design and architecture](docs/MangaViewer_DESIGN.md)
 - [Development state, verification, and known limitations](docs/DEV_STATE.md)
 - [Image processing](docs/IMAGE_PROCESSING.md) · [Localization](docs/LOCALIZATION.md) · [Error reports](docs/DIAGNOSTICS.md)

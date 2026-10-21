@@ -579,18 +579,18 @@
         }
       }
     },
-    "Images use up to 256 MiB on disk. Reading history, preferences, and saved titles survive cache clearing.": {
+    "Images use up to 512 MiB on disk. Reading history, preferences, and saved titles survive cache clearing.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Images use up to 256 MiB on disk. Reading history, preferences, and saved titles survive cache clearing."
+            "value": "Images use up to 512 MiB on disk. Reading history, preferences, and saved titles survive cache clearing."
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "图片缓存最多占用 256 MiB 磁盘空间。清除缓存会保留阅读记录、偏好设置和收藏。"
+            "value": "图片缓存最多占用 512 MiB 磁盘空间。清除缓存会保留阅读记录、偏好设置和收藏。"
           }
         }
       }

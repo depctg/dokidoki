@@ -57,7 +57,7 @@ struct SettingsView: View {
                         }
                     }.padding(.vertical, 4)
                     .accessibilityIdentifier("rules.item.\(rule.id)")
-                }.onMove(perform: model.moveRules)
+                }.onMove { offsets, destination in Task { await model.moveRules(from: offsets, to: destination) } }
                 Button("Import JSON rule", systemImage: "square.and.arrow.down") { importing = true }
                 Button("Restore bundled rules", systemImage: "arrow.counterclockwise") { Task { await restoreRules() } }
             } header: { Text("Site rules") } footer: { Text("Drag to reorder. The first site opens in Browse. Removing a rule keeps reading history and saved titles.") }
@@ -81,7 +81,7 @@ struct SettingsView: View {
                         catch { model.report(error, operation: .storage) }
                     }
                 }
-            } header: { Text("Storage") } footer: { Text("Images use up to 256 MiB on disk. Reading history, preferences, and saved titles survive cache clearing.") }
+            } header: { Text("Storage") } footer: { Text("Images use up to 512 MiB on disk. Reading history, preferences, and saved titles survive cache clearing.") }
             .disabled(model.repository == nil)
             Section { Button("Error report", systemImage: "exclamationmark.bubble") { showingErrors = true } }
             if let status { Section { Text(status).foregroundStyle(.secondary).accessibilityAddTraits(.updatesFrequently) } }
@@ -99,13 +99,10 @@ struct SettingsView: View {
         .sheet(isPresented: $showingErrors) { ErrorReportView() }
         .task { diskBytes = await model.repository?.imageCacheUsage() ?? 0 }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
-            do {
-                let url = try result.get()
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer { if accessed { url.stopAccessingSecurityScopedResource() } }
-                let file = try FileHandle(forReadingFrom: url); defer { try? file.close() }
-                pendingRule = try SiteRule.decode(file.read(upToCount: 128 * 1024 + 1) ?? Data())
-            } catch { model.report(error, operation: .importRule) }
+            Task {
+                do { pendingRule = try await RuleExchange.read(from: result.get()) }
+                catch { model.report(error, operation: .importRule) }
+            }
         }
         .fileExporter(isPresented: $exporting, document: exportDocument, contentType: .json, defaultFilename: filename) { result in
             switch result { case .success: status = String(localized: "Rule exported."); case .failure(let error): model.report(error, operation: .exportRule) }
@@ -136,21 +133,19 @@ struct SettingsView: View {
     }
     private func install(_ rule: SiteRule) async {
         do {
-            try await model.repository?.install(rule); model.rules = try model.store?.rules() ?? []
+            try await model.repository?.install(rule); model.rules = await model.repository?.installedRules() ?? []
             pendingRule = nil; status = String(localized: "Installed \(rule.name).")
         } catch { model.report(error, operation: .updateRules); pendingRule = nil }
     }
     private func remove(_ rule: SiteRule) async {
-        do { try await model.repository?.removeRule(rule.id); model.rules = try model.store?.rules() ?? [] }
+        do { try await model.repository?.removeRule(rule.id); model.rules = await model.repository?.installedRules() ?? [] }
         catch { model.report(error, operation: .updateRules) }
     }
     private func restoreRules() async {
         do {
-            for rule in try DemoContent.bundledRules() {
-                if let installed = model.rules.first(where: { $0.id == rule.id }), installed.version >= rule.version { continue }
-                try await model.repository?.install(rule)
-            }
-            model.rules = try model.store?.rules() ?? []; status = String(localized: "Bundled rules restored.")
+            try await model.repository?.restoreBundledRules()
+            model.rules = await model.repository?.installedRules() ?? []
+            status = String(localized: "Bundled rules restored.")
         } catch { model.report(error, operation: .updateRules) }
     }
 }
@@ -179,7 +174,7 @@ private struct RuleQRView: View {
         .frame(minWidth: 300, idealWidth: 460, minHeight: 420)
         .task {
             do {
-                qr = try RuleExchange.qrImage(for: rule)
+                qr = try await RuleExchange.qrImage(for: rule)
                 if qr == nil { message = String(localized: "This rule is too large for a reliable single QR code (\(RuleExchange.qrByteLimit) UTF-8 bytes). Use JSON file export.") }
             } catch { ErrorDiagnostics.record(error, operation: .exportRule); message = error.localizedDescription }
         }

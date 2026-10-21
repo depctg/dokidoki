@@ -114,24 +114,37 @@ struct BrowseTests {
         } catch ReaderError.blockedHost {}
     }
 
-    @Test func ruleOrderSurvivesRestartAndRecipeReplacement() throws {
-        let path = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).path
-        defer { try? FileManager.default.removeItem(atPath: path) }
-        let store = try ObjectStore(path: path)
-        let rules = try DemoContent.bundledRules()
-        for rule in rules { try store.saveRule(rule) }
-        let order = rules.map(\.id).reversed().map { $0 }
-        try store.setRuleOrder(order)
-        let reopened = try ObjectStore(path: path)
-        #expect(try reopened.rules().map(\.id) == order)
-        let top = try #require(reopened.rules().first)
+    @Test func ruleOrderSurvivesRestartAndRecipeReplacement() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let repository = try await ObjectRepository.open(directory: directory)
+        let order = await repository.installedRules().map(\.id).reversed().map { $0 }
+        try await repository.setRuleOrder(order)
+        try await repository.setPreference("jumpToLastChapter", value: false)
+        let reopened = try await ObjectRepository.open(directory: directory)
+        #expect(await reopened.installedRules().map(\.id) == order)
+        #expect(try await reopened.preference("jumpToLastChapter", as: Bool.self) == false)
+        let top = try #require(await reopened.installedRules().first)
         var json = try JSONSerialization.jsonObject(with: top.exported()) as! [String: Any]
         json["version"] = top.version + 1
-        try reopened.saveRule(SiteRule.decode(JSONSerialization.data(withJSONObject: json)))
-        #expect(try reopened.rules().map(\.id) == order)
-        #expect(throws: ReaderError.self) { try reopened.setRuleOrder([top.id, top.id]) }
-        try reopened.removeRule(top.id)
-        try reopened.saveRule(top)
-        #expect(try reopened.rules().map(\.id) == Array(order.dropFirst()) + [top.id])
+        try await reopened.install(SiteRule.decode(JSONSerialization.data(withJSONObject: json)))
+        #expect(await reopened.installedRules().map(\.id) == order)
+        await #expect(throws: ReaderError.self) { try await reopened.setRuleOrder([top.id, top.id]) }
+        try await reopened.removeRule(top.id)
+        try await reopened.install(top)
+        #expect(await reopened.installedRules().map(\.id) == Array(order.dropFirst()) + [top.id])
+        for id in ["z-import", "a-import"] {
+            json["id"] = id
+            try await reopened.install(SiteRule.decode(JSONSerialization.data(withJSONObject: json)))
+        }
+        let again = try await ObjectRepository.open(directory: directory)
+        #expect(await again.installedRules().map(\.id) == reopened.installedRules().map(\.id))
+        // Older releases left imported IDs out of this preference.
+        try await again.setPreference("ruleOrder", value: order)
+        let legacy = try await ObjectRepository.open(directory: directory)
+        json["id"] = "next-import"
+        try await legacy.install(SiteRule.decode(JSONSerialization.data(withJSONObject: json)))
+        let updated = try await ObjectRepository.open(directory: directory)
+        #expect(await updated.installedRules().map(\.id) == legacy.installedRules().map(\.id))
     }
 }

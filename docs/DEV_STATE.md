@@ -1,5 +1,12 @@
 # Development state
 
+## Code and design cleanup — in progress 2026-10-21
+
+- Scope: preserve current functionality while simplifying core/UI ownership, view lifetimes, repeated validation and tests. Milestone 1 covers core boundaries/settings; milestone 2 covers native UI lifetimes, reader geometry and concentrated test flows. The separate Duo background TODO remains queued.
+- Milestone 1: SiteRule now validates at native decoding and is immutable/Hashable. Sender/resource/session keys use complete rule values instead of repeatedly validating and JSON-encoding recipes. Exact-host/redirect checks, policy separation, bounded admission and independent cancellation remain intact. Existing extraction reuses its registry for pagination.
+- Startup/migration, preference/rule persistence and library observation now enter through ObjectRepository; AppModel no longer exposes ObjectStore. RuleExchange owns async security-scoped file loading and concurrent QR generation. Rule replacement preserves presentation order. Removed the unused libraryRevision counter; corrected the Settings cache description to the existing 512 MiB limit in both languages.
+- Milestone 1 verified: 85 core tests and macOS/iOS Simulator/visionOS Simulator builds pass (`/tmp/dokidoki-cleanup-m1-verify-final.log`). Clean-session reviewer `review_cleanup_boundaries` caught import-order drift; rule/order writes now commit together using the full effective legacy order. The existing startup/reopen test covers fresh imports and older partial preferences; final BrowseTests pass 4/4 (`/tmp/dokidoki-cleanup-order.log`). Reviewer approved the fix. Import/QR and immutable-decoding assertions stay in their existing contracts. Production site-name audit and diff checks pass. No new rule syntax, transport policy or cache budget; UI interaction verification follows in milestone 2.
+
 ## Local simulator maintenance — 2026-10-21
 
 - Removed the iOS 27.0 and visionOS 27.0 simulator runtimes at the user's request. Native runtime inventory now contains only iOS 27.1 (24A94425), preserving the Duo test destination. Simulator device records/data were not deleted; destinations tied to removed runtimes are unavailable until a compatible runtime is installed.

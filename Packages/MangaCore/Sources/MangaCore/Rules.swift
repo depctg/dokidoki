@@ -1,7 +1,7 @@
 import Foundation
 import libxml2
 
-public struct Field: Codable, Sendable {
+public struct Field: Codable, Hashable, Sendable {
     public let path: String
     public var read: String? = nil
     /// Relative label path for a selected JSON link object (default: title).
@@ -16,8 +16,8 @@ public struct Field: Codable, Sendable {
     public var fields: [String: Field]? = nil
 }
 /// Data-only parameters for the generic WebKit observer, never executable script.
-public struct RenderingRule: Codable, Sendable {
-    public enum ContentMode: String, Codable, Sendable { case recommended, desktop, mobile }
+public struct RenderingRule: Codable, Hashable, Sendable {
+    public enum ContentMode: String, Codable, Hashable, Sendable { case recommended, desktop, mobile }
     public var contentMode: ContentMode? = nil
     public var captureFunction: String? = nil
     /// Observe the normal return value instead of the first argument.
@@ -29,14 +29,14 @@ public struct RenderingRule: Codable, Sendable {
     /// The global background-loading setting can always disable it.
     public var loadAds: Bool? = nil
 }
-public struct SessionRule: Codable, Sendable {
-    public enum Mode: String, Codable, Sendable { case load, page, scroll }
+public struct SessionRule: Codable, Hashable, Sendable {
+    public enum Mode: String, Codable, Hashable, Sendable { case load, page, scroll }
     public let mode: Mode
     public var actionXPath: String? = nil
     public var endXPath: String? = nil
 }
-public struct ExtractionRule: Codable, Sendable {
-    public enum Format: String, Codable, Sendable {
+public struct ExtractionRule: Codable, Hashable, Sendable {
+    public enum Format: String, Codable, Hashable, Sendable {
         case html, json, renderedHTML, renderedJSON
         var isJSON: Bool { self == .json || self == .renderedJSON }
         var isRendered: Bool { self == .renderedHTML || self == .renderedJSON }
@@ -61,25 +61,25 @@ extension ExtractionRule {
     }
 }
 /// JSON response counters and the URL query parameter advanced by one page.
-public struct OffsetPagination: Codable, Sendable {
+public struct OffsetPagination: Codable, Hashable, Sendable {
     public let offset: String
     public let limit: String
     public let total: String
     public let parameter: String
 }
-public struct URLMatcher: Codable, Sendable {
+public struct URLMatcher: Codable, Hashable, Sendable {
     public let kind: ContentKind
     public let pattern: String
     public var priority: Int = 0
     public var extractor: String? = nil
 }
 /// Minimal JSON browse source; SiteObject normalizes its site-page or directory URL.
-public struct BrowseList: Codable, Sendable, Identifiable {
+public struct BrowseList: Codable, Hashable, Sendable, Identifiable {
     public let title: String
     public let url: URL
     public var id: URL { url }
 }
-public struct SiteRule: Codable, Sendable, Identifiable {
+public struct SiteRule: Codable, Hashable, Sendable, Identifiable {
     public let schemaVersion: Int
     public let id: String
     public let name: String
@@ -87,9 +87,29 @@ public struct SiteRule: Codable, Sendable, Identifiable {
     public let allowedHosts: [String]
     public let matchers: [URLMatcher]
     public let extractors: [String: ExtractionRule]
-    public var searchURLTemplate: String? = nil
-    public var browse: [BrowseList]? = nil
-    public var processors: [String]? = nil
+    public let searchURLTemplate: String?
+    public let browse: [BrowseList]?
+    public let processors: [String]?
+
+    // A rule is validated once when decoded and immutable afterward. Transport/cache
+    // identity uses the whole value; loading an image never recompiles its selectors.
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, id, name, version, allowedHosts, matchers, extractors, searchURLTemplate, browse, processors
+    }
+    public init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decode(Int.self, forKey: .schemaVersion)
+        id = try c.decode(String.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        version = try c.decode(Int.self, forKey: .version)
+        allowedHosts = try c.decode([String].self, forKey: .allowedHosts)
+        matchers = try c.decode([URLMatcher].self, forKey: .matchers)
+        extractors = try c.decode([String: ExtractionRule].self, forKey: .extractors)
+        searchURLTemplate = try c.decodeIfPresent(String.self, forKey: .searchURLTemplate)
+        browse = try c.decodeIfPresent([BrowseList].self, forKey: .browse)
+        processors = try c.decodeIfPresent([String].self, forKey: .processors)
+        try validate()
+    }
 
     /// A matcher can select another recipe for the same object kind (e.g. an HTML
     /// catalog and a JSON search API). URL recognition remains entirely in JSON.
@@ -104,7 +124,7 @@ public struct SiteRule: Codable, Sendable, Identifiable {
         ["https", "http"].contains(url.scheme?.lowercased() ?? "") && url.user == nil && url.password == nil &&
         (url.port == nil || url.port == 80 || url.port == 443) && allowedHosts.contains(url.host?.lowercased() ?? "")
     }
-    public func validate() throws {
+    private func validate() throws {
         guard schemaVersion == 1, version > 0, !id.isEmpty, id.count < 100, !name.isEmpty,
               !allowedHosts.isEmpty, !matchers.isEmpty else { throw ReaderError.invalidRule(String(localized: "Missing identity, hosts, or supported schema version.", bundle: .module)) }
         for host in allowedHosts {
@@ -260,10 +280,10 @@ public struct SiteRule: Codable, Sendable, Identifiable {
             try checkOptions(fields)
             if let rendering = extractor["rendering"] as? [String: Any], !Set(rendering.keys).isSubset(of: ["contentMode", "captureFunction", "captureResult", "readyImageXPath", "readyXPath", "loadAds"]) { throw ReaderError.invalidRule(String(localized: "Unsupported rendering options; scripts are not allowed.", bundle: .module)) }
         }
-        let rule = try JSONDecoder().decode(SiteRule.self, from: data); try rule.validate(); return rule
+        return try JSONDecoder().decode(SiteRule.self, from: data)
     }
     public func exported() throws -> Data {
-        try validate(); let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
         return try encoder.encode(self)
     }
 }
@@ -271,7 +291,6 @@ public struct SiteRule: Codable, Sendable, Identifiable {
 public struct RuleRegistry: Sendable {
     public let rules: [SiteRule]
     public init(rules: [SiteRule]) throws {
-        for rule in rules { try rule.validate() }
         guard Set(rules.map(\.id)).count == rules.count else { throw ReaderError.invalidRule(String(localized: "Duplicate rule IDs.", bundle: .module)) }
         self.rules = rules
     }

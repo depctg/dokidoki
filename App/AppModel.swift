@@ -33,7 +33,6 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 @MainActor @Observable final class AppModel {
     var repository: ObjectRepository?
-    var store: ObjectStore?
     var rules: [SiteRule] = [] {
         didSet {
             do { sites = try rules.map { try SiteObject(rule: $0) } }
@@ -59,7 +58,6 @@ enum AppSection: String, CaseIterable, Identifiable {
     var recent: [ReadingPosition] = []
     var readingPositions: [ReadingPosition] = []
     private(set) var personalManga: [ObjectKey: MangaObject] = [:]
-    private(set) var libraryRevision = 0
     var preferences = ReaderPreferences() {
         didSet {
             guard let repository else { return }
@@ -90,20 +88,16 @@ enum AppSection: String, CaseIterable, Identifiable {
     func start() async {
         guard !started else { return }; started = true
         do {
-            let support = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("MangaViewer", isDirectory: true)
-            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
-            let store = try ObjectStore(path: support.appendingPathComponent("library.sqlite").path)
-            try store.applyBundledRules(DemoContent.bundledRules())
-            rules = try store.rules(); self.store = store
-            backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
-            jumpToLastChapter = try store.preference("jumpToLastChapter", as: Bool.self) ?? true
-            preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
-            let repository = try ObjectRepository(store: store, rules: rules)
+            let repository = try await ObjectRepository.open()
+            rules = await repository.installedRules()
+            backgroundLoading = try await repository.preference("backgroundLoading", as: Bool.self) ?? true
+            jumpToLastChapter = try await repository.preference("jumpToLastChapter", as: Bool.self) ?? true
+            preferences = try await repository.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
             self.repository = repository
             applyLibrary(try await repository.personalLibrary())
             libraryObservation = Task { [weak self] in
                 do {
-                    for try await manga in store.libraryUpdates() { self?.applyLibrary(manga) }
+                    for try await manga in repository.libraryUpdates() { self?.applyLibrary(manga) }
                 } catch is CancellationError {} catch { self?.report(error, operation: .storage) }
             }
             if let index = CommandLine.arguments.firstIndex(of: "--open-url"), CommandLine.arguments.indices.contains(index + 1) {
@@ -133,10 +127,11 @@ enum AppSection: String, CaseIterable, Identifiable {
             loadingRevision += 1 // Retry canceled metadata without discarding the loaded reader.
         } catch { backgroundLoading = previous; report(error, operation: .storage) }
     }
-    func moveRules(from offsets: IndexSet, to destination: Int) {
+    func moveRules(from offsets: IndexSet, to destination: Int) async {
+        guard let repository else { return }
         var reordered = rules; reordered.move(fromOffsets: offsets, toOffset: destination)
         do {
-            try store?.setRuleOrder(reordered.map(\.id)); rules = reordered
+            try await repository.setRuleOrder(reordered.map(\.id)); rules = reordered
             browseSiteID = nil; paths[.browse] = []
         } catch { report(error, operation: .storage) }
     }
@@ -239,7 +234,6 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
         readingPositions = manga.compactMap { $0.personalState?.position }.sorted { $0.updatedAt > $1.updatedAt }
         recent = readingPositions.filter { personalManga[$0.mangaKey]?.personalState?.isRecentHidden != true }
-        libraryRevision += 1
     }
     func resumeManga(_ key: ObjectKey, manga known: MangaObject? = nil) {
         if reader?.chapter.mangaRef == key { resumeReader(); return }

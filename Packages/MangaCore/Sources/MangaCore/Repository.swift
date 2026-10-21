@@ -22,6 +22,15 @@ public actor ObjectRepository {
         images = ImageLoader(sender: sender)
         backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
     }
+    /// Disk setup/migration belongs to core and never runs on the UI executor.
+    @concurrent public static func open(directory: URL? = nil) async throws -> ObjectRepository {
+        let directory = try directory ?? FileManager.default.url(for: .applicationSupportDirectory,
+            in: .userDomainMask, appropriateFor: nil, create: true).appendingPathComponent("MangaViewer", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = try ObjectStore(path: directory.appendingPathComponent("library.sqlite").path)
+        try store.applyBundledRules(DemoContent.bundledRules())
+        return try ObjectRepository(store: store, rules: store.rules())
+    }
     public func clearImages() async { await images.clear(); await sender.invalidateResources() }
     public func imageCacheUsage() async -> Int { await images.diskUsage() }
     public func setBackgroundLoading(_ enabled: Bool) async throws {
@@ -31,6 +40,12 @@ public actor ObjectRepository {
     }
     public func installedRules() -> [SiteRule] { registry.rules }
     public func personalLibrary() throws -> [MangaObject] { try store.libraryObjects() }
+    public nonisolated func libraryUpdates() -> some AsyncSequence<[MangaObject], any Error> & Sendable {
+        store.libraryUpdates()
+    }
+    public func preference<Value: Decodable & Sendable>(_ key: String, as type: Value.Type) throws -> Value? {
+        try store.preference(key, as: type)
+    }
     public func setPreference<Value: Encodable & Sendable>(_ key: String, value: Value) throws {
         try store.setPreference(key, value: value)
     }
@@ -43,14 +58,25 @@ public actor ObjectRepository {
     }
     public func key(for url: URL) throws -> ObjectKey { try match(url).key }
     public func install(_ rule: SiteRule) async throws {
-        try rule.validate()
         if let existing = registry.rules.first(where: { $0.id == rule.id }) {
-            let identical = try rule.exported() == existing.exported()
-            if identical { return }
+            if rule == existing { return }
             guard rule.version > existing.version else { throw ReaderError.invalidRule(String(localized: "Changed rules must increase their version.", bundle: .module)) }
         }
-        let next = try RuleRegistry(rules: registry.rules.filter { $0.id != rule.id } + [rule])
+        var rules = registry.rules
+        if let index = rules.firstIndex(where: { $0.id == rule.id }) { rules[index] = rule }
+        else { rules.append(rule) }
+        let next = try RuleRegistry(rules: rules)
         try store.saveRule(rule); registry = next; await invalidate()
+    }
+    public func setRuleOrder(_ ids: [String]) throws {
+        try store.setRuleOrder(ids)
+        registry = try RuleRegistry(rules: store.rules())
+    }
+    public func restoreBundledRules() async throws {
+        for rule in try DemoContent.bundledRules() {
+            if let installed = registry.rules.first(where: { $0.id == rule.id }), installed.version >= rule.version { continue }
+            try await install(rule)
+        }
     }
     public func removeRule(_ id: String) async throws {
         let next = try RuleRegistry(rules: registry.rules.filter { $0.id != id })

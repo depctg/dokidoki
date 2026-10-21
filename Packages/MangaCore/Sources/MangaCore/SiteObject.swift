@@ -10,7 +10,6 @@ public struct SiteObject: Sendable, Identifiable {
     private let rule: SiteRule
 
     public init(rule: SiteRule) throws {
-        try rule.validate()
         self.rule = rule; id = rule.id; name = rule.name; version = rule.version
         browseRefs = try (rule.browse ?? []).map {
             ContentReference(key: ObjectKey(ruleID: rule.id, identityURL: try RuleRegistry.normalize($0.url)), title: $0.title)

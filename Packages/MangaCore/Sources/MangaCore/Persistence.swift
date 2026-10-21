@@ -197,7 +197,17 @@ public final class ObjectStore: Sendable {
     }
     public func saveRule(_ rule: SiteRule) throws {
         let data = try rule.exported()
-        try db.write { try $0.execute(sql: "INSERT OR REPLACE INTO rules VALUES (?, ?, ?)", arguments: [rule.id, rule.version, data]) }
+        try db.write { db in
+            // New imports append once; recipe replacement preserves their position.
+            let orderData = try Data.fetchOne(db, sql: "SELECT payload FROM preferences WHERE key = 'ruleOrder'")
+            let preferred = try orderData.map { try JSONDecoder().decode([String].self, from: $0) } ?? []
+            var order = try String.fetchAll(db, sql: "SELECT id FROM rules ORDER BY id").sorted {
+                (preferred.firstIndex(of: $0) ?? Int.max) < (preferred.firstIndex(of: $1) ?? Int.max)
+            }
+            if !order.contains(rule.id) { order.append(rule.id) }
+            try db.execute(sql: "INSERT OR REPLACE INTO rules VALUES (?, ?, ?)", arguments: [rule.id, rule.version, data])
+            try db.execute(sql: "INSERT OR REPLACE INTO preferences VALUES ('ruleOrder', ?)", arguments: [try JSONEncoder().encode(order)])
+        }
     }
     public func removeRule(_ id: String) throws {
         try db.write {
