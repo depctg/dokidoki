@@ -6,6 +6,22 @@ struct ChapterListTests {
     private func demo() throws -> SiteRule { try #require(DemoContent.bundledRules().first { $0.id == "demo" }) }
     private var mangaKey: ObjectKey { ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/series/observatory")!) }
 
+    @Test func numericDisplayOrderIgnoresTextAndPreservesSourceNavigation() {
+        let titles = ["Afterword", "Chapter 10", "第２話", "Chapter 0002 bonus", "Book 1 · Part 5",
+                      "Chapter ٣", "Chapter 9999999999999999999999999999", "Chapter 10000000000000000000000000000",
+                      "Preface", "Chapter 0", "Chapter ٠٠", "Chapter 1.2", "第十二話"]
+        let refs = titles.enumerated().map { index, title in
+            ContentReference(key: ObjectKey(ruleID: mangaKey.ruleID,
+                identityURL: mangaKey.identityURL.appendingPathComponent(String(index))), title: title)
+        }
+        let list = ChapterList(id: "main", chapters: refs)
+        #expect(list.chaptersByNumber == [9, 10, 2, 3, 5, 1, 11, 4, 6, 7, 0, 8, 12].map { refs[$0] })
+        let manga = MangaObject(key: mangaKey, sourceURL: mangaKey.identityURL, title: "Series", chapterLists: [list])
+        #expect(manga.chapterLists[0].chapters == refs)
+        #expect(manga.nextChapter(after: refs[0].key, in: list.id) == refs[1])
+        #expect(ChapterList(id: "empty", chapters: []).chaptersByNumber.isEmpty)
+    }
+
     @Test(arguments: [false, true])
     func adjacencyUsesSelectedListOrderAndStopsAtItsBoundaries(grouped: Bool) {
         let refs = [3, 1, 2].map { number in

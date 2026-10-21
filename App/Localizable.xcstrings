@@ -2680,6 +2680,22 @@
         }
       }
     },
+    "Smart order": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Smart order"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "智能排序"
+          }
+        }
+      }
+    },
     "Source order": {
       "localizations": {
         "en": {

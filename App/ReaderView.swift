@@ -14,6 +14,7 @@ struct ReaderView: View {
     @State private var restoration: UUID?
     @State private var contentID: UUID?
     @State private var userScrolling = false
+    @State private var scrollOwner: UUID?
     @State private var pendingRestore = false
     @State private var restoreRequest = 0
     @State private var chapterPull = ScrollPull()
@@ -116,7 +117,7 @@ struct ReaderView: View {
             // gesture or rubber-band return as a new user-driven scroll.
             zoom = 1; zoomStart = 1
             pendingRestore = true; chapterPull = ScrollPull(); chapterTransition = nil
-            userScrolling = false
+            userScrolling = false; scrollOwner = nil
             contentID = reader.id
             restoreRequest += 1
         }
@@ -138,6 +139,7 @@ struct ReaderView: View {
         guard !advancing, !model.openingChapter else { return }
         if delta > 0, reader.index == reader.plans.count - 1 { advanceChapter(.next); return }
         if delta < 0, reader.index == 0 { advanceChapter(.previous); return }
+        scrollOwner = nil
         reader.move(delta)
         withAnimation(.easeOut(duration: 0.2)) { if let id = reader.current?.id { reader.scrollPosition.scrollTo(id: id) } }
     }
@@ -158,7 +160,7 @@ struct ReaderView: View {
             .scrollIndicators(.hidden)
             .scrollTargetBehavior(.viewAligned(limitBehavior: .alwaysByOne))
             .scrollBounceBehavior(.always, axes: .horizontal)
-            .scrollPosition($reader.scrollPosition)
+            .scrollPosition($reader.scrollPosition, anchor: .center)
             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
             .scrollDisabled(zoom > 1 || model.openingChapter)
             .opacity(zoom > 1 ? 0 : 1)
@@ -245,10 +247,14 @@ struct ReaderView: View {
                          }, onPhaseChange: scrollPhaseChanged)
     }
     private func scrollPhaseChanged(_ phase: ScrollPhase) {
-        if phase != .decelerating { userScrolling = phase == .tracking || phase == .interacting }
+        // Native callbacks may briefly idle before the same drag decelerates.
+        // Retain its chapter ownership until explicit navigation/restoration.
+        if phase == .tracking || phase == .interacting { scrollOwner = reader.id }
+        userScrolling = scrollOwner == reader.id && (phase == .tracking || phase == .interacting || phase == .decelerating)
         reader.setInteracting(userScrolling)
         if phase == .idle {
-            if canRecordPosition, model.preferences.mode == .paged, let index = reader.plans.firstIndex(where: { $0.id == reader.scrollPosition.viewID(type: String.self) }) {
+            if scrollOwner == reader.id, canRecordPosition, model.preferences.mode == .paged,
+               let index = reader.plans.firstIndex(where: { $0.id == reader.scrollPosition.viewID(type: String.self) }) {
                 reader.record(index: index, within: 0, preserveSource: false)
             }
             reader.save()
@@ -278,6 +284,7 @@ struct ReaderView: View {
     private func restorePosition() async {
         guard let plan = reader.current else { return }
         guard !userScrolling else { pendingRestore = true; return }
+        scrollOwner = nil
         if model.preferences.mode == .paged {
             guard pagerReady else { return }
             reader.scrollPosition.scrollTo(id: plan.id)

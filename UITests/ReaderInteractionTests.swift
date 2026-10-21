@@ -65,10 +65,15 @@ import XCTest
         let arrival = app.buttons["1 · Arrival"], starlight = app.buttons["2 · Starlight"]
         for _ in 0..<3 where !app.buttons["manga.sort.chapters"].isHittable { app.windows.firstMatch.swipeUp() }
         app.buttons["manga.sort.chapters"].tap()
+        XCTAssertTrue(app.buttons["Smart order"].isSelected)
         app.buttons["Reverse order"].tap()
         XCTAssertTrue(wait { starlight.frame.minY < arrival.frame.minY })
         app.buttons["manga.sort.chapters"].tap()
         app.buttons["Source order"].tap()
+        XCTAssertTrue(wait { arrival.frame.minY < starlight.frame.minY })
+        app.buttons["manga.sort.chapters"].tap()
+        app.buttons["Smart order"].tap()
+        XCTAssertTrue(wait { arrival.frame.minY < starlight.frame.minY })
         for _ in 0..<3 where !app.buttons["Extra · Sketches"].isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(app.buttons["manga.sort.books"].exists && app.buttons["manga.sort.extras"].exists)
         XCTAssertTrue(app.buttons["Book one"].exists && app.buttons["Extra · Sketches"].exists)

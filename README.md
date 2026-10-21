@@ -16,7 +16,7 @@ A native manga reader for iPhone, iPad, Mac, and Apple Vision Pro. Browse your f
 
 ## What you can do
 
-- **Keep your place.** Save and star manga, revisit recent reading, and resume from the same page—even after closing the app. Mark chapters or whole groups read, unread, or ignored.
+- **Keep your place.** Save and star manga, revisit recent reading, and resume from the same page—even after closing the app. Mark chapters or whole groups read, unread, or ignored. Chapter lists default to numeric Smart order, with website and reverse website order also available.
 - **Read your way.** Choose paged or continuous scrolling, either reading direction, facing pages in wide windows, margin trimming, and automatic split-page joining.
 - **Stay immersed.** Tap the artwork to hide controls while keeping a small chapter/page badge. Pull beyond either chapter boundary by 20% of the viewport and release to switch chapters. Collapse the reader into a small Resume bar when browsing.
 - **Explore websites.** Browse shelves, search, use source-provided sorting, and automatically load more as you approach the end of a list. MangaCopy, Manhuagui, and an offline example reading room are included.

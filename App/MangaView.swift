@@ -7,7 +7,8 @@ struct MangaView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var coverWidth = 112.0
     private var readingState: MangaObject { model.personalManga[manga.key] ?? manga }
-    @State private var reversedLists: Set<String> = []
+    private enum ChapterOrder { case smart, source, reversed }
+    @State private var chapterOrders: [String: ChapterOrder] = [:]
     @State private var reveal: ChapterListReveal?
     private var starred: Bool { model.saved.contains { $0.key == manga.key && $0.isStarred } }
     private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == manga.key } }
@@ -103,7 +104,11 @@ struct MangaView: View {
     }
     private var emptyChapters: some View { Text("No chapters are available on this page.").foregroundStyle(.secondary) }
     private func orderedChapters(_ list: ChapterList) -> [ContentReference] {
-        reversedLists.contains(list.id) ? Array(list.chapters.reversed()) : list.chapters
+        switch chapterOrders[list.id, default: .smart] {
+        case .smart: list.chaptersByNumber
+        case .source: list.chapters
+        case .reversed: Array(list.chapters.reversed())
+        }
     }
     private func revealChapter(includeLastRead: Bool) {
         let explicit = model.chapterToReveal.flatMap { key in manga.chapterRefs.contains { $0.key == key } ? key : nil }
@@ -127,11 +132,10 @@ struct MangaView: View {
             .disabled(list.chapters.isEmpty)
             .accessibilityIdentifier("manga.actions.\(list.id)")
             Menu {
-                Picker("Order", selection: Binding(get: { reversedLists.contains(list.id) }, set: { reversed in
-                    if reversed { reversedLists.insert(list.id) } else { reversedLists.remove(list.id) }
-                })) {
-                    Text("Source order").tag(false)
-                    Text("Reverse order").tag(true)
+                Picker("Order", selection: Binding(get: { chapterOrders[list.id, default: .smart] }, set: { chapterOrders[list.id] = $0 })) {
+                    Text("Smart order").tag(ChapterOrder.smart)
+                    Text("Source order").tag(ChapterOrder.source)
+                    Text("Reverse order").tag(ChapterOrder.reversed)
                 }
             } label: { Label("Sort chapters", systemImage: "arrow.up.arrow.down").labelStyle(.iconOnly) }
             .accessibilityIdentifier("manga.sort.\(list.id)")

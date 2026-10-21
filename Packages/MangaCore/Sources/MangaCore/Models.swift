@@ -77,6 +77,25 @@ public struct ChapterList: Codable, Sendable, Equatable, Identifiable {
     public init(id: String, title: String? = nil, indexTitle: String? = nil, chapters: [ContentReference]) {
         self.id = id; self.title = title; self.indexTitle = indexTitle; self.chapters = chapters
     }
+    /// Numeric display order only; source order still governs reader navigation.
+    /// Concatenate decimal digits, keeping ties stable and unnumbered titles last.
+    public var chaptersByNumber: [ContentReference] {
+        chapters.enumerated().map { offset, chapter in
+            let digits = chapter.title.unicodeScalars.filter { CharacterSet.decimalDigits.contains($0) }
+                .compactMap { Character(String($0)).wholeNumberValue }.map(String.init).joined()
+            return (offset: offset, chapter: chapter,
+                    number: digits.isEmpty ? nil : String(digits.drop(while: { $0 == "0" })))
+        }.sorted {
+            switch ($0.number, $1.number) {
+            case let (a?, b?) where a != b:
+                // Compare normalized digit strings without integer overflow.
+                return a.count == b.count ? a < b : a.count < b.count
+            case (_?, nil): return true
+            case (nil, _?): return false
+            default: return $0.offset < $1.offset
+            }
+        }.map(\.chapter)
+    }
 }
 public enum ChapterReadingStatus: String, Codable, Sendable { case unread, reading, read, ignored }
 
