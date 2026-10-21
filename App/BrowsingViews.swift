@@ -111,10 +111,14 @@ struct ObjectScreen: View {
     @State private var object: ContentObject?
     @State private var error: String?
     @State private var loading = false
-    @State private var revision = UUID()
-    @State private var loadID = UUID()
-    @State private var loadedIdentity: String?
-    private var identity: String { "\(key.id)|\(model.loadingRevision)" }
+    @State private var refresh = 0
+    private struct LoadIdentity: Hashable {
+        let key: ObjectKey
+        let revision: Int
+        let refresh: Int
+    }
+    @State private var loadedIdentity: LoadIdentity?
+    private var identity: LoadIdentity { LoadIdentity(key: key, revision: model.loadingRevision, refresh: refresh) }
     var body: some View {
         Group {
             if let object {
@@ -131,17 +135,18 @@ struct ObjectScreen: View {
                 case .page(let page): PageImageView(page: page, model: model)
                 }
             } else if loading { ProgressView("Opening content…").frame(maxWidth: .infinity, maxHeight: .infinity) }
-            else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? String(localized: "Try a supported URL.")) } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
+            else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? String(localized: "Try a supported URL.")) } actions: { Button("Retry") { refresh += 1 } } }
         }
-        .id(revision)
+        .id(loadedIdentity)
         .task(id: identity) {
             guard loadedIdentity != identity else { return }
-            object = nil
-            await load(.preferCache)
+            let sameContent = loadedIdentity?.key == key && loadedIdentity?.revision == model.loadingRevision
+            if !sameContent { object = nil }
+            await load(sameContent ? .forceRefresh : .preferCache)
         }
         .toolbar {
             ToolbarItemGroup(placement: .secondaryAction) {
-                Button("Refresh", systemImage: "arrow.clockwise") { Task { await load(.forceRefresh) } }.disabled(loading)
+                Button("Refresh", systemImage: "arrow.clockwise") { refresh += 1 }.disabled(loading)
                 Link(destination: key.identityURL) { Label("Source website", systemImage: "safari") }
             }
         }
@@ -151,19 +156,16 @@ struct ObjectScreen: View {
     }
     private func load(_ hint: CacheHint) async {
         guard let repository = model.repository else { return }
-        let request = UUID(); loadID = request
-        let target = key, requestedIdentity = identity
+        let requestedIdentity = identity
         loading = true; error = nil
-        defer { if loadID == request { loading = false } }
+        defer { if !Task.isCancelled { loading = false } }
         do {
-            let result = try await target.load(using: repository, hint: hint)
+            let result = try await key.load(using: repository, hint: hint)
             try Task.checkCancellation()
-            guard loadID == request, identity == requestedIdentity else { return }
-            object = result; loadedIdentity = requestedIdentity; revision = UUID()
+            object = result; loadedIdentity = requestedIdentity
             if case .chapter(let chapter) = result { openChapter(chapter) }
-        }
-        catch is CancellationError {} catch {
-            if !Task.isCancelled, loadID == request, key == target { self.error = error.localizedDescription }
+        } catch is CancellationError {} catch {
+            if !Task.isCancelled { self.error = error.localizedDescription }
         }
     }
 }

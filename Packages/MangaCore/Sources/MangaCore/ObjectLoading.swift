@@ -123,3 +123,19 @@ extension PageObject {
         }
     }
 }
+
+// Display plans delegate resource requests to their source objects. Composition is
+// core work shared by prepared chapter landings and ordinary visible rows.
+extension DisplayPage {
+    @concurrent public func image(pages: [PageObject], using repository: ObjectRepository,
+                                  refresh: Bool = false) async throws -> (image: CGImage?, originals: [CGImage]) {
+        var images: [ObjectKey: CGImage] = [:]
+        for page in pages where sourcePageKeys.contains(page.key) {
+            images[page.key] = try await page.image(using: repository, refresh: refresh)
+        }
+        try Task.checkCancellation()
+        let image = ImageProcessing.render(self, images: images)
+        try Task.checkCancellation()
+        return (image, image == nil ? sourcePageKeys.compactMap { images[$0] } : [])
+    }
+}

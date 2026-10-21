@@ -18,8 +18,14 @@ struct PagePreparationTests {
         let (page, repository, sender, fetcher) = try context()
         let analysis = try await page.prepare(using: repository)
         await sender.invalidateResources()
-        let displayed = try await page.image(using: repository)
+        let plan = DisplayPage(regions: [PageRegion(sourcePage: page.key)])
+        let artwork = try await plan.image(pages: [page], using: repository)
+        let displayed = try #require(artwork.image)
         #expect(displayed.width == analysis.width && displayed.height == analysis.height)
+        #expect(artwork.originals.isEmpty)
+        let thumbnail = try await page.image(using: repository, maxPixel: 512)
+        #expect(max(thumbnail.width, thumbnail.height) == 512)
+        #expect(thumbnail.height > thumbnail.width)
         #expect(await fetcher.lookups == 1)
     }
 

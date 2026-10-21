@@ -10,9 +10,8 @@ struct CoverImageView: View {
     var hint: CacheHint = .preferCache
     var cornerRadius = 8.0
     @State private var image: CGImage?
-    @State private var active = false
     private var requestID: String {
-        "\(key?.id ?? "")|\(hint)|\(model.loadingRevision)|\(active)"
+        "\(key?.id ?? "")|\(hint)|\(model.loadingRevision)"
     }
     var body: some View {
         ZStack {
@@ -27,17 +26,14 @@ struct CoverImageView: View {
             }
         }
         .accessibilityHidden(true)
-        .onAppear { active = true }
-        .onDisappear { active = false; image = nil }
+        .onDisappear { image = nil }
         .task(id: requestID) {
-            guard active else { return }
             image = nil
             guard let key, let repository = model.repository else { return }
             do {
                 guard case .page(let page) = try await key.load(using: repository, hint: hint) else { return }
                 let decoded = try await page.image(using: repository, maxPixel: 768)
                 try Task.checkCancellation()
-                guard active else { return }
                 image = decoded
             } catch { /* Core records image errors; the decorative placeholder stays available. */ }
         }

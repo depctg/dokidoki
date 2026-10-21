@@ -9,9 +9,7 @@ struct ReaderView: View {
     @State private var zoom: CGFloat = 1
     @State private var zoomStart: CGFloat = 1
     @State private var pagerReady = false
-    @State private var frames: [String: CGRect] = [:]
-    @State private var scrollOffset = 0.0
-    @State private var restoration: UUID?
+    @State private var restoration: FractionalRestore?
     @State private var contentID: UUID?
     @State private var userScrolling = false
     @State private var scrollOwner: UUID?
@@ -116,7 +114,7 @@ struct ReaderView: View {
             // Preserve native geometry; a new chapter cannot inherit an outgoing
             // gesture or rubber-band return as a new user-driven scroll.
             zoom = 1; zoomStart = 1
-            pendingRestore = true; chapterPull = ScrollPull(); chapterTransition = nil
+            pendingRestore = true; restoration = nil; chapterPull = ScrollPull(); chapterTransition = nil
             userScrolling = false; scrollOwner = nil
             contentID = reader.id
             restoreRequest += 1
@@ -130,7 +128,7 @@ struct ReaderView: View {
         }
         .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.next) }
         .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.previous) }
-        .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
+        .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)-\(pagerReady)") { restorePosition() }
     }
     private func toggleChrome() {
         withAnimation(.easeInOut(duration: 0.2)) { model.readerImmersive.toggle() }
@@ -209,6 +207,7 @@ struct ReaderView: View {
                 ForEach(reader.plans) { plan in
                     let finalReady = canRecordPosition
                         && reader.finalPageReady && plan.id == reader.plans.last?.id
+                    let restoreFraction = restoration?.pageID == plan.id ? restoration?.fraction : nil
                     DisplayImageView(plan: plan, pages: reader.pages, model: model, prepared: reader.landingArtwork,
                                          onLoad: reader.preparePages)
                         .frame(width: max(1, size.width - 24), height: reader.height(plan, width: max(1, size.width - 24)))
@@ -223,20 +222,21 @@ struct ReaderView: View {
                             let bottom = geometry.frame(in: .named("readerViewport")).maxY
                             return finalReady && bottom > 0 && bottom <= size.height + 1
                         } action: { finished in if finished { reader.finishReading() } }
-                        .background(GeometryReader { geometry in
-                            Color.clear.preference(key: ReaderFrames.self, value: [plan.id: geometry.frame(in: .named("readerViewport"))])
-                        })
+                        .onGeometryChange(for: ReaderPageGeometry.self) { geometry in
+                            ReaderPageGeometry(frame: geometry.frame(in: .named("readerViewport")),
+                                               contentY: geometry.frame(in: .named("readerContent")).minY,
+                                               restoreFraction: restoreFraction)
+                        } action: { geometry in
+                            updateScroll(plan: plan, geometry: geometry)
+                        }
                 }
-            }.frame(width: size.width).scrollTargetLayout()
+            }.frame(width: size.width).scrollTargetLayout().coordinateSpace(name: "readerContent")
         }
         .accessibilityIdentifier("reader.viewport")
         .coordinateSpace(name: "readerViewport")
         .scrollBounceBehavior(.always)
         .scrollDisabled(model.openingChapter)
         .scrollPosition($reader.scrollPosition)
-        .onPreferenceChange(ReaderFrames.self) { frames = $0; recordScroll() }
-        // ScrollPosition's y coordinate starts after the top inset, unlike contentOffset.
-        .onScrollGeometryChange(for: Double.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, offset in scrollOffset = offset; recordScroll() }
         .modifier(chapterOverscroll)
     }
     private var chapterOverscroll: ScrollOverpull {
@@ -249,7 +249,10 @@ struct ReaderView: View {
     private func scrollPhaseChanged(_ phase: ScrollPhase) {
         // Native callbacks may briefly idle before the same drag decelerates.
         // Retain its chapter ownership until explicit navigation/restoration.
-        if phase == .tracking || phase == .interacting { scrollOwner = reader.id }
+        if phase == .tracking || phase == .interacting {
+            scrollOwner = reader.id
+            restoration = nil // A new native gesture supersedes an unfinished restore.
+        }
         userScrolling = scrollOwner == reader.id && (phase == .tracking || phase == .interacting || phase == .decelerating)
         reader.setInteracting(userScrolling)
         if phase == .idle {
@@ -275,16 +278,24 @@ struct ReaderView: View {
             reader.openAdjacent(reference, fromEnd: direction == .previous)
         }
     }
-    private func recordScroll() {
-        guard canRecordPosition, userScrolling else { return }
-        let visible = frames.filter { $0.value.maxY > 1 }.min { $0.value.minY < $1.value.minY }
-        guard let (id, rect) = visible, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
-        reader.record(index: index, within: max(0, -rect.minY) / max(1, rect.height))
+    private func updateScroll(plan: DisplayPage, geometry: ReaderPageGeometry) {
+        if restoration?.pageID == plan.id, let fraction = geometry.restoreFraction, !userScrolling {
+            // The native target has laid out: use its real content coordinate now,
+            // without a timer, guessed delay, or a second independent offset observer.
+            self.restoration = nil
+            reader.scrollPosition.scrollTo(y: max(0, geometry.contentY + fraction * geometry.frame.height))
+            return
+        }
+        let frame = geometry.frame
+        guard canRecordPosition, userScrolling, frame.maxY > 1, frame.minY <= 12,
+              let index = reader.plans.firstIndex(where: { $0.id == plan.id }) else { return }
+        reader.record(index: index, within: max(0, -frame.minY) / max(1, frame.height))
     }
-    private func restorePosition() async {
+    private func restorePosition() {
         guard let plan = reader.current else { return }
         guard !userScrolling else { pendingRestore = true; return }
         scrollOwner = nil
+        restoration = nil
         if model.preferences.mode == .paged {
             guard pagerReady else { return }
             reader.scrollPosition.scrollTo(id: plan.id)
@@ -292,21 +303,13 @@ struct ReaderView: View {
             return
         }
         pendingRestore = false
-        let request = UUID()
-        restoration = request
-        defer { if restoration == request { restoration = nil } }
         let within = reader.withinPage
         if within >= 0.999_999, plan.id == reader.plans.last?.id {
             reader.scrollPosition.scrollTo(edge: .bottom)
-            return
+        } else {
+            restoration = within > 0 ? FractionalRestore(pageID: plan.id, fraction: within) : nil
+            reader.scrollPosition.scrollTo(id: plan.id, anchor: .top)
         }
-        reader.scrollPosition.scrollTo(id: plan.id, anchor: .top)
-        // Chapter-boundary entry needs only the native target. Fractional resumes
-        // additionally need the laid-out row height, never a second zero-offset jump.
-        guard within > 0 else { return }
-        do { try await Task.sleep(for: .milliseconds(100)); try Task.checkCancellation() } catch { return }
-        guard !userScrolling else { pendingRestore = true; return }
-        if let rect = frames[plan.id] { reader.scrollPosition.scrollTo(y: max(0, scrollOffset + rect.minY + within * rect.height)) }
     }
 }
 private struct ChapterTransition {
@@ -314,7 +317,12 @@ private struct ChapterTransition {
     let direction: ChapterDirection
     let fraction: Double
 }
-private struct ReaderFrames: PreferenceKey {
-    static let defaultValue: [String: CGRect] = [:]
-    static func reduce(value: inout [String: CGRect], nextValue: () -> [String: CGRect]) { value.merge(nextValue(), uniquingKeysWith: { _, new in new }) }
+private struct ReaderPageGeometry: Equatable {
+    let frame: CGRect
+    let contentY: Double
+    let restoreFraction: Double?
+}
+private struct FractionalRestore {
+    let pageID: String
+    let fraction: Double
 }

@@ -168,17 +168,17 @@ import XCTest
         XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 8))
         let demo = app.staticTexts["Bundled reading room"]
         let other = app.staticTexts["拷貝漫畫 · MangaCopy"]
-        for _ in 0..<6 where !demo.isHittable || !other.isHittable {
-            let downward = demo.exists && demo.frame.minY < app.navigationBars.firstMatch.frame.maxY
-            app.collectionViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
-                .press(forDuration: 0.05, thenDragTo: app.collectionViews.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: downward ? 0.8 : 0.5)), withVelocity: .slow, thenHoldForDuration: 0.2)
-        }
+        app.buttons["Edit"].tap()
+        for _ in 0..<5 where !demo.isHittable { app.collectionViews.firstMatch.swipeUp() }
         XCTAssertTrue(demo.isHittable && other.isHittable)
         let lower = demo.frame.minY > other.frame.minY ? demo : other
         let upper = demo.frame.minY > other.frame.minY ? other : demo
-        lower.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            .press(forDuration: 0.8, thenDragTo: upper.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).withOffset(CGVector(dx: 0, dy: -20)))
+        let cell = app.cells.containing(.staticText, identifier: lower.label).firstMatch
+        let handle = cell.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Reorder'")).firstMatch
+        XCTAssertTrue(handle.exists)
+        handle.press(forDuration: 0.1, thenDragTo: upper)
         XCTAssertTrue(wait { lower.frame.minY < upper.frame.minY })
+        app.buttons["Done"].tap()
         XCTAssertEqual(resume.label, "Resume The Observatory, 2 · Starlight")
         selectSection("Browse", in: app)
         XCTAssertEqual(app.staticTexts["browse.siteTitle"].label, lower.label)
@@ -251,12 +251,7 @@ import XCTest
         XCTAssertTrue(resume.waitForExistence(timeout: 8))
         resume.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 8))
-        let resumedPage = wait { self.visiblePage(in: app) == "Comic page 2" }
-        if !resumedPage {
-            let capture = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-            capture.name = "Resume restoration failure"; add(capture)
-        }
-        XCTAssertTrue(resumedPage, "Resume: \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
+        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" }, "Resume: \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
 
         // Check actual content, since a stale counter alone would hide lost restoration.
         select("Scroll", in: "Mode", app: app)
@@ -398,12 +393,7 @@ import XCTest
         center.tap()
         XCTAssertTrue(wait { !app.buttons["Reader options"].isHittable })
         pull(in: app, axis: axis, from: -0.25, to: 0.45)
-        let switched = wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" }
-        if !switched {
-            let capture = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
-            capture.name = "Chapter replacement failure"; add(capture)
-        }
-        XCTAssertTrue(switched, "Forward landing: \(counter.value ?? "unknown"), \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
+        XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" }, "Forward landing: \(counter.value ?? "unknown"), \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
         XCTAssertFalse(title.exists, "Chapter switching retains immersion")
         center.tap()
         XCTAssertTrue(wait { app.buttons["Previous chapter"].isEnabled })

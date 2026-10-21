@@ -16,7 +16,7 @@ struct ChapterPreview {
     var analysis: [ObjectKey: ImageAnalysis] = [:]
     var overrides: [ObjectKey: SpreadOverride] = [:]
     var source: ObjectKey?
-    var fraction = 0.0
+    @ObservationIgnored var fraction = 0.0
     var scrollPosition = ScrollPosition(idType: String.self)
     var landingArtwork: PageArtwork?
     private var manga: MangaObject?
@@ -42,7 +42,7 @@ struct ChapterPreview {
     private var learned: [ObjectKey: ImageAnalysis] = [:]
     private(set) var active = false
     private var metadataLoaded = false
-    var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
+    private(set) var index = 0
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
     func adjacentChapter(_ direction: ChapterDirection) -> ContentReference? {
         direction == .next ? nextChapter : previousChapter
@@ -100,7 +100,7 @@ struct ChapterPreview {
             let planned = await pipeline.plan(pages.map(\.key), context: ReaderContext(
                 size: size, preferences: app.preferences, analysis: analysis, overrides: overrides))
             try Task.checkCancellation()
-            plans = planned; revision += 1
+            plans = planned; updateIndex(); revision += 1
             if let current {
                 // Content, native target and its composed artwork are prepared together
                 // before AppModel publishes an incoming chapter to the persistent view.
@@ -164,7 +164,7 @@ struct ChapterPreview {
             let replacedCurrent = current.map { current in !planned.contains { $0.id == current.id } } ?? true
             analysis = context.analysis
             learned = learned.filter { context.analysis[$0.key] == nil }
-            if plans != planned { plans = planned }
+            if plans != planned { plans = planned; updateIndex() }
             if pendingRestore || replacedCurrent { revision += 1 }
             pendingRestore = false
             preparePages()
@@ -188,7 +188,11 @@ struct ChapterPreview {
         guard let key else { return }
         let oldIndex = self.index
         source = key; fraction = PagePipeline.fraction(index: index, withinPage: within, source: key, in: plans)
+        updateIndex()
         if oldIndex != self.index { landingArtwork = nil; preparePages() }
+    }
+    private func updateIndex() {
+        index = PagePipeline.index(for: source, fraction: fraction, in: plans)
     }
     var withinPage: Double {
         guard let source else { return 0 }

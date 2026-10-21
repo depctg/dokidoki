@@ -15,17 +15,11 @@ nonisolated struct PageArtwork: Sendable {
         }.joined()
     }
 
-    @concurrent static func load(plan: DisplayPage, pages: [PageObject], using repository: ObjectRepository,
+    static func load(plan: DisplayPage, pages: [PageObject], using repository: ObjectRepository,
                                 revision: Int, refresh: Bool = false) async throws -> PageArtwork {
-        var images: [ObjectKey: CGImage] = [:]
-        for page in pages where plan.sourcePageKeys.contains(page.key) {
-            images[page.key] = try await page.image(using: repository, refresh: refresh)
-            try Task.checkCancellation()
-        }
-        let image = ImageProcessing.render(plan, images: images)
-        try Task.checkCancellation()
-        return PageArtwork(id: identity(plan: plan, pages: pages), revision: revision, image: image,
-                           originals: image == nil ? plan.sourcePageKeys.compactMap { images[$0] } : [])
+        let artwork = try await plan.image(pages: pages, using: repository, refresh: refresh)
+        return PageArtwork(id: identity(plan: plan, pages: pages), revision: revision,
+                           image: artwork.image, originals: artwork.originals)
     }
 }
 
@@ -38,7 +32,6 @@ struct DisplayImageView: View {
     @State private var artwork: PageArtwork?
     @State private var error: String?
     @State private var attempt = 0
-    @State private var active = false
     private var identity: String { PageArtwork.identity(plan: plan, pages: pages) }
     private var preparedArtwork: PageArtwork? {
         guard attempt == 0, prepared?.id == identity, prepared?.revision == model.loadingRevision else { return nil }
@@ -63,8 +56,7 @@ struct DisplayImageView: View {
                 VStack(spacing: 12) { Image(systemName: "photo.badge.exclamationmark"); Text(error).font(.caption); Button("Retry image") { attempt += 1 } }.padding().foregroundStyle(.secondary)
             } else { ProgressView("Loading image…").padding(30) }
         }
-        .onAppear { active = true }
-        .onDisappear { active = false; artwork = nil }
+        .onDisappear { artwork = nil }
         .task(id: "\(identity)|\(model.loadingRevision)|\(attempt)") {
             guard !Task.isCancelled else { return }
             error = nil
@@ -79,10 +71,9 @@ struct DisplayImageView: View {
                 let loaded = try await PageArtwork.load(plan: plan, pages: pages, using: repository,
                                                        revision: model.loadingRevision, refresh: attempt > 0)
                 try Task.checkCancellation()
-                guard active else { return }
                 artwork = loaded
                 onLoad()
-            } catch is CancellationError {} catch { self.error = error.localizedDescription }
+            } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
 }

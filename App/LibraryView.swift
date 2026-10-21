@@ -12,16 +12,14 @@ struct LibraryView: View {
         }.map(\.key)
     }
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 60)) { timeline in
-            List(keys, id: \.self) { key in
-                LibraryRow(key: key, model: model, section: section, now: timeline.date)
-            }
-            .overlay {
-                if keys.isEmpty {
-                    ContentUnavailableView(section == .recent ? String(localized: "Your next chapter awaits") : String(localized: "Make room for a story"),
+        List(keys, id: \.self) { key in
+            LibraryRow(key: key, model: model, section: section)
+        }
+        .overlay {
+            if keys.isEmpty {
+                ContentUnavailableView(section == .recent ? String(localized: "Your next chapter awaits") : String(localized: "Make room for a story"),
                         systemImage: section.symbol,
                         description: Text(section == .recent ? String(localized: "Manga you read appears here.") : String(localized: "Star a manga to add it to your library.")))
-                }
             }
         }
         .navigationTitle(section.title)
@@ -32,7 +30,6 @@ private struct LibraryRow: View {
     let key: ObjectKey
     let model: AppModel
     let section: AppSection
-    let now: Date
     @State private var manga: MangaObject?
     @State private var cachedChapter: ChapterObject?
     @ScaledMetric(relativeTo: .body) private var resumeButtonSize = 44.0
@@ -59,14 +56,6 @@ private struct LibraryRow: View {
         case .new: "sparkles"
         }
     }
-    private var lastRead: String {
-        guard let date = position?.updatedAt else { return String(localized: "Not read yet") }
-        let hours = max(0, Int(now.timeIntervalSince(date) / 3600))
-        if hours < 1 { return String(localized: "<1 hr ago") }
-        if hours < 24 { return String(localized: "\(hours) hr ago") }
-        let days = hours / 24
-        return String(localized: "\(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
-    }
     var body: some View {
         NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 8) {
@@ -79,7 +68,7 @@ private struct LibraryRow: View {
                             .labelStyle(.titleAndIcon)
                         HStack(spacing: 6) {
                             if starred { Image(systemName: "star.fill").foregroundStyle(.yellow).accessibilityLabel("Starred") }
-                            Text(lastRead).foregroundStyle(.secondary)
+                            LastReadLabel(date: position?.updatedAt).foregroundStyle(.secondary)
                         }.font(.caption)
                         if let manga { MangaMetadataView(manga: manga, compact: true) }
                     }
@@ -136,4 +125,22 @@ private struct LibraryRow: View {
         } catch { /* Keep the durable title/progress and a cover placeholder when unavailable. */ }
     }
     private var repository: ObjectRepository? { model.repository }
+}
+
+/// Only the relative age ticks; the list, its sorting and image tasks stay stable.
+private struct LastReadLabel: View {
+    let date: Date?
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { timeline in
+            Text(age(at: timeline.date))
+        }
+    }
+    private func age(at now: Date) -> String {
+        guard let date else { return String(localized: "Not read yet") }
+        let hours = max(0, Int(now.timeIntervalSince(date) / 3600))
+        if hours < 1 { return String(localized: "<1 hr ago") }
+        if hours < 24 { return String(localized: "\(hours) hr ago") }
+        let days = hours / 24
+        return String(localized: "\(days) days ago", comment: "Whole days since the last reading session; varies by plural.")
+    }
 }

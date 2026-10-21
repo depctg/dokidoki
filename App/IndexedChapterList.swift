@@ -8,7 +8,7 @@ struct IndexedChapterList: UIViewControllerRepresentable {
     struct Section {
         let id: String
         let indexTitle: String
-        let header: AnyView?
+        let header: (() -> AnyView)?
         let rows: [String]
     }
     let sections: [Section]
@@ -40,15 +40,19 @@ struct IndexedChapterList: UIViewControllerRepresentable {
             collectionView.allowsSelection = false
             collectionView.accessibilityIdentifier = "manga.chapters"
             let cells = UICollectionView.CellRegistration<UICollectionViewListCell, String> { [weak self] cell, _, id in
-                guard let self, let content else { return }
-                if let group = content.sections.first(where: { Self.headerID($0.id) == id }) {
-                    cell.contentConfiguration = UIHostingConfiguration { group.header.font(.subheadline) }
-                    cell.backgroundConfiguration = .clear()
-                } else {
-                    cell.contentConfiguration = UIHostingConfiguration { content.row(id).id(id) }
-                    var background = UIBackgroundConfiguration.listCell()
-                    if content.highlighted(id) { background.backgroundColor = .tintColor.withAlphaComponent(0.15) }
-                    cell.backgroundConfiguration = background
+                // UIKit tracks Observable reads in this native handler. Personal
+                // progress updates visible cells without reapplying the entire snapshot.
+                cell.configurationUpdateHandler = { [weak self] cell, _ in
+                    guard let self, let content else { return }
+                    if let header = content.sections.first(where: { Self.headerID($0.id) == id })?.header {
+                        cell.contentConfiguration = UIHostingConfiguration { header().font(.subheadline) }
+                        cell.backgroundConfiguration = .clear()
+                    } else {
+                        cell.contentConfiguration = UIHostingConfiguration { content.row(id).id(id) }
+                        var background = UIBackgroundConfiguration.listCell()
+                        if content.highlighted(id) { background.backgroundColor = .tintColor.withAlphaComponent(0.15) }
+                        cell.backgroundConfiguration = background
+                    }
                 }
             }
             source = IndexedSource(collectionView: collectionView) { collection, path, id in
@@ -69,16 +73,17 @@ struct IndexedChapterList: UIViewControllerRepresentable {
                 }
                 return entries
             }
-            let previous = Set(source.snapshot().itemIdentifiers)
+            let previous = source.snapshot()
             var snapshot = NSDiffableDataSourceSnapshot<String, String>()
             for section in content.sections {
                 snapshot.appendSections([section.id])
                 snapshot.appendItems((section.header == nil ? [] : [Self.headerID(section.id)]) + section.rows, toSection: section.id)
             }
-            snapshot.reconfigureItems(snapshot.itemIdentifiers.filter { previous.contains($0) })
             if let reveal = content.reveal, reveal.id != lastReveal {
                 lastReveal = reveal.id; pendingRow = reveal.row
+                view.setNeedsLayout()
             }
+            guard snapshot.sectionIdentifiers != previous.sectionIdentifiers || snapshot.itemIdentifiers != previous.itemIdentifiers else { return }
             source.apply(snapshot, animatingDifferences: false) { [weak self] in
                 guard let self else { return }
                 view.setNeedsLayout()

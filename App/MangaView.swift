@@ -4,8 +4,6 @@ import MangaCore
 struct MangaView: View {
     let manga: MangaObject
     let model: AppModel
-    @Environment(\.dynamicTypeSize) private var typeSize
-    @ScaledMetric(relativeTo: .title) private var coverWidth = 112.0
     private var readingState: MangaObject { model.personalManga[manga.key] ?? manga }
     private enum ChapterOrder { case smart, source, reversed }
     @State private var chapterOrders: [String: ChapterOrder] = [:]
@@ -51,15 +49,16 @@ struct MangaView: View {
             }
         }
         #else
-        let chapters = manga.chapterLists.flatMap { list in
-            orderedChapters(list).map { (id: rowID($0.key, list: list), chapter: $0, list: list) }
+        let ordered = manga.chapterLists.map { (list: $0, chapters: orderedChapters($0)) }
+        let chapters = ordered.flatMap { list, chapters in
+            chapters.map { (id: rowID($0.key, list: list), chapter: $0, list: list) }
         }
         let rows = Dictionary(uniqueKeysWithValues: chapters.map { ($0.id, ($0.chapter, $0.list)) })
         IndexedChapterList(sections: [
             .init(id: "details", indexTitle: "↑", header: nil, rows: ["details", "reading"])
         ] + manga.chapterLists.enumerated().map { offset, list in
             .init(id: "group|\(list.id)", indexTitle: list.indexTitle.map { String($0.prefix(2)) } ?? String(offset + 1),
-                  header: AnyView(chapterHeader(list)), rows: list.chapters.isEmpty ? ["empty|\(list.id)"] : orderedChapters(list).map { rowID($0.key, list: list) })
+                  header: { AnyView(chapterHeader(list)) }, rows: list.chapters.isEmpty ? ["empty|\(list.id)"] : ordered[offset].chapters.map { rowID($0.key, list: list) })
         }, row: { id in
             if id == "details" { return AnyView(details) }
             if id == "reading" { return AnyView(readingButton) }
@@ -74,23 +73,7 @@ struct MangaView: View {
         .ignoresSafeArea(.container, edges: .vertical)
         #endif
     }
-    private var details: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
-            layout {
-                CoverImageView(key: manga.coverPageRef, model: model, bounds: CGSize(width: min(170, coverWidth), height: 260))
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
-                    if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
-                    MangaMetadataView(manga: manga)
-                }.frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if let summary = manga.summary {
-                Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityIdentifier("manga.summary")
-            }
-        }.padding(.vertical, 12)
-    }
+    private var details: some View { MangaDetails(manga: manga, model: model) }
     private var readingButton: some View {
         Button {
             model.resumeManga(manga.key, manga: manga)
@@ -191,4 +174,29 @@ struct MangaView: View {
         position?.chapterKey == chapter.key && manga.chapterList(containing: chapter.key, preferredID: position?.chapterListID)?.id == list.id
     }
     private func rowID(_ key: ObjectKey, list: ChapterList) -> String { "\(list.id)|\(key.id)" }
+}
+
+private struct MangaDetails: View {
+    let manga: MangaObject
+    let model: AppModel
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @ScaledMetric(relativeTo: .title) private var coverWidth = 112.0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 16)) : AnyLayout(HStackLayout(alignment: .top, spacing: 20))
+            layout {
+                CoverImageView(key: manga.coverPageRef, model: model, bounds: CGSize(width: min(170, coverWidth), height: 260))
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(manga.title).font(.title2.bold()).fixedSize(horizontal: false, vertical: true)
+                    if let author = manga.author { Text(author).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                    MangaMetadataView(manga: manga)
+                }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let summary = manga.summary {
+                Text(summary).font(.callout).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityIdentifier("manga.summary")
+            }
+        }.padding(.vertical, 12)
+    }
 }

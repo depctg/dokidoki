@@ -38,14 +38,13 @@ enum AppSection: String, CaseIterable, Identifiable {
             do { sites = try rules.map { try SiteObject(rule: $0) } }
             catch { report(error, operation: .storage) }
             // Reordering is a browsing preference, not a recipe change or reader refresh.
-            if Dictionary(uniqueKeysWithValues: oldValue.map { ($0.id, $0.version) }) != Dictionary(uniqueKeysWithValues: rules.map { ($0.id, $0.version) }) { ruleRevision += 1 }
+            if Dictionary(uniqueKeysWithValues: oldValue.map { ($0.id, $0.version) }) != Dictionary(uniqueKeysWithValues: rules.map { ($0.id, $0.version) }) { loadingRevision += 1; invalidateReader() }
             if !rules.contains(where: { $0.id == browseSiteID }) { browseSiteID = nil }
         }
     }
     private(set) var sites: [SiteObject] = []
     var browseSiteID: String?
     var browseSite: SiteObject? { sites.first(where: { $0.id == browseSiteID }) ?? sites.first }
-    var ruleRevision = 0 { didSet { loadingRevision += 1; invalidateReader() } }
     var loadingRevision = 0
     var paths: [AppSection: [AppRoute]] = [:]
     var searches: [String: SiteSearchState] = [:]
