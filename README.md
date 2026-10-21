@@ -10,17 +10,17 @@ The core uses Foundation networking, native XPath (libxml2), and [GRDB](https://
 
 The interface supports English and Simplified Chinese through Apple's native localization. It follows your system/per-app language and includes localized controls, accessibility labels, errors, progress and plural forms. Website content keeps its source language. See [localization](docs/LOCALIZATION.md) to add languages or update translations.
 
-Build and test the core with Xcode 26 or later:
+Build with Xcode 27.1 (iOS 27.1 SDK, Swift 6 language mode); the minimum deployment version remains 26 on all platforms. Test the core with:
 
 ```sh
 swift test --package-path Packages/MangaCore
 ```
 
-Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required. Settings → About shows the release and build number from the app bundle (currently 0.1.0 (20261014030743)). Each distributed preview revision receives a unique UTC timestamp in Xcode’s `CURRENT_PROJECT_VERSION`; the same revision keeps its identifier across destination builds. The display name is **dokidoki"** (including the final quote); the Xcode target, bundle identity, and storage paths stay stable. The layered icon is editable in Icon Composer; see [icon authoring](docs/ICON.md).
+Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required. Settings → About shows the release and build number from the app bundle (currently 0.1.0 (20261021170412)). Each distributed preview revision receives a unique UTC timestamp in Xcode’s `CURRENT_PROJECT_VERSION`; the same revision keeps its identifier across destination builds. The display name is **dokidoki"** (including the final quote); the Xcode target, bundle identity, and storage paths stay stable. The layered icon is editable in Icon Composer; see [icon authoring](docs/ICON.md).
 
 The UI test target keeps two journeys: Library/Browse actions, and reader gestures/position restoration. Core tests own parsing, cache/persistence, request/session policy and diagnostics; shared contracts use parameterized cases and per-test fixture transports.
 
-For an iOS preview, select an iPhone or iPad simulator and Run. Xcode 27 opens simulators in Device Hub. The local `MangaViewer Compact` and `MangaViewer Expanded` devices have iOS 27 installed. The actual iPhone Duo simulator requires [Xcode 27.1](https://developer.apple.com/iphone-duo/prepare/); an iPhone/iPad comparison checks adaptive layout but does not simulate folding.
+For an iOS preview, select an iPhone, iPhone Duo, or iPad simulator and Run. Xcode 27.1 opens simulators in Device Hub. Install the iOS 27.1 runtime for iPhone Duo; use Device Hub to open, close, and rotate the device. Native tabs/toolbars adapt to its safe areas, and the reader replans single/facing pages from available window geometry while retaining the source page. There are no device-model or fold-state branches. See Apple’s [iPhone Duo preparation guide](https://developer.apple.com/videos/play/tech-talks/111461/).
 
 ```sh
 xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \

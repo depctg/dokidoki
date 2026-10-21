@@ -308,10 +308,13 @@ import XCTest
         select("Paged", in: "Mode", app: app)
         for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { end.press(forDuration: 0.05, thenDragTo: start) }
         XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
             .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 1)
-        XCTAssertEqual(title.label, "2 · Starlight")
+        XCTAssertEqual(counter.value as? String, "2 · Starlight")
         XCTAssertTrue(counter.label.hasPrefix("Page 4 "))
+        XCTAssertFalse(title.exists)
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         app.buttons["Back to manga"].tap()
         XCTAssertTrue(app.buttons["2 · Starlight"].waitForExistence(timeout: 8))
@@ -393,8 +396,14 @@ import XCTest
             pull(in: app, axis: axis, from: -0.1, to: 0)
             XCTAssertTrue(wait { self.pageImage(1, in: app).frame.minY < -5 })
         }
+        // Boundary pulls target unobstructed artwork, including native vertical toolbars.
+        // Verify backward chapter changes retain immersion just like forward changes.
+        center.tap()
         pull(in: app, axis: axis, from: 0.35, to: -0.45)
-        XCTAssertTrue(wait { title.label == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
+        XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
+        XCTAssertFalse(title.exists)
+        center.tap()
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
         if axis.dy == 0 { XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" }) }
         else { XCTAssertTrue(wait { abs(self.pageImage(4, in: app).frame.maxY - app.frame.maxY) < 3 }) }
     }

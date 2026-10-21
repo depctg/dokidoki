@@ -46,7 +46,7 @@ struct IndexedChapterList: UIViewControllerRepresentable {
                     cell.backgroundConfiguration = .clear()
                 } else {
                     cell.contentConfiguration = UIHostingConfiguration { content.row(id).id(id) }
-                    var background = UIBackgroundConfiguration.listGroupedCell()
+                    var background = UIBackgroundConfiguration.listCell()
                     if content.highlighted(id) { background.backgroundColor = .tintColor.withAlphaComponent(0.15) }
                     cell.backgroundConfiguration = background
                 }
