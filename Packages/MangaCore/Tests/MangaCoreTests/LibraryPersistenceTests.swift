@@ -7,15 +7,16 @@ struct LibraryPersistenceTests {
     private let manga = ObjectKey(ruleID: "fixture", identityURL: URL(string: "https://example.test/manga")!)
     private let chapter = ObjectKey(ruleID: "fixture", identityURL: URL(string: "https://example.test/chapter")!)
 
-    @Test func removingEntriesPreservesResumeAndReadingRestoresRecent() throws {
+    @Test func removingEntriesPreservesResumeAndReadingRestoresRecent() async throws {
         let store = try ObjectStore()
         let position = ReadingPosition(mangaKey: manga, chapterKey: chapter, sourcePageKey: .page(owner: chapter, index: 2),
             fractionalOffset: 0.4, title: "Chapter three", mangaTitle: "A story", pageNumber: 3, totalPages: 20,
             updatedAt: Date(timeIntervalSince1970: 12345))
-        let saved = SavedManga(key: manga, title: "A story", isStarred: true)
-        try store.savePosition(position)
-        try store.setSaved(saved, saved: true)
-        try store.hideRecent(manga)
+        let repository = try ObjectRepository(store: store, rules: [])
+        let object = MangaObject(key: manga, sourceURL: manga.identityURL, title: "A story")
+        try await position.save(using: repository, manga: object)
+        try await object.toggleStar(using: repository)
+        try await object.hideFromRecent(using: repository)
         try store.clearContent()
         #expect(try store.positions(includeHidden: false).isEmpty)
         let retained = try #require(store.positions().first)
@@ -23,10 +24,12 @@ struct LibraryPersistenceTests {
         #expect(retained.pageNumber == 3 && retained.totalPages == 20)
         #expect(retained.updatedAt == position.updatedAt)
         #expect(try store.savedManga().first?.isStarred == true)
-        try store.setSaved(saved, saved: false)
+        try await object.toggleStar(using: repository)
+        #expect(try store.savedManga().first?.isStarred == false)
+        try await object.removeFromLibrary(using: repository)
         #expect(try store.savedManga().isEmpty)
         #expect(try store.positions().first?.chapterKey == chapter)
-        try store.savePosition(position)
+        try await position.save(using: repository)
         #expect(try store.positions(includeHidden: false).count == 1)
     }
 

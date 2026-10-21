@@ -20,6 +20,9 @@ extension ObjectStore {
         try libraryObjects().filter { includeHidden || $0.personalState?.isRecentHidden != true }
             .compactMap { $0.personalState?.position }.sorted { $0.updatedAt > $1.updatedAt }
     }
+    func readingPosition(for key: ObjectKey) throws -> ReadingPosition? {
+        try db.read { try Self.personalManga(key, db: $0)?.personalState?.position }
+    }
     public func savedManga() throws -> [SavedManga] {
         try libraryObjects().compactMap { manga in
             guard let state = manga.personalState, state.isSaved else { return nil }

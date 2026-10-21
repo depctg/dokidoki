@@ -40,12 +40,23 @@ extension DirectoryObject {
 }
 
 extension MangaObject {
-    public func setReadingStatus(_ status: ChapterReadingStatus, for chapters: [ObjectKey], using repository: ObjectRepository) throws -> MangaObject {
+    @concurrent public func toggleStar(using repository: ObjectRepository) async throws {
+        let current = try repository.store.readingState(for: self)
+        let saved = SavedManga(key: key, title: title, isStarred: current.personalState?.isStarred != true)
+        try repository.store.setSaved(saved, saved: true, manga: self)
+    }
+    @concurrent public func removeFromLibrary(using repository: ObjectRepository) async throws {
+        try repository.store.setSaved(SavedManga(key: key, title: title), saved: false, manga: self)
+    }
+    @concurrent public func hideFromRecent(using repository: ObjectRepository) async throws {
+        try repository.store.hideRecent(key)
+    }
+    @concurrent public func setReadingStatus(_ status: ChapterReadingStatus, for chapters: [ObjectKey], using repository: ObjectRepository) async throws -> MangaObject {
         try repository.store.setReadingStatus(status, chapters: chapters, in: self)
     }
 
     /// Refresh local chapter status without a document request or changing the cached source snapshot.
-    public func readingState(using repository: ObjectRepository) throws -> MangaObject {
+    @concurrent public func readingState(using repository: ObjectRepository) async throws -> MangaObject {
         try repository.store.readingState(for: self)
     }
     public func coverPage(using repository: ObjectRepository, hint: CacheHint = .preferCache) async throws -> PageObject? {
@@ -54,6 +65,15 @@ extension MangaObject {
     }
 }
 extension ChapterObject {
+    /// Local state is independent of evictable content and never requires a source request.
+    @concurrent public func readingState(using repository: ObjectRepository) async throws -> (position: ReadingPosition?, overrides: [ObjectKey: SpreadOverride]) {
+        let position = try repository.store.readingPosition(for: mangaRef ?? key)
+        let overrides = try repository.store.preference("overrides:" + key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
+        return (position?.chapterKey == key ? position : nil, overrides)
+    }
+    @concurrent public func saveOverrides(_ overrides: [ObjectKey: SpreadOverride], using repository: ObjectRepository) async throws {
+        try repository.store.setPreference("overrides:" + key.id, value: overrides)
+    }
     public func manga(using repository: ObjectRepository) async throws -> MangaObject? {
         guard let mangaRef, case .manga(let manga) = try await mangaRef.load(using: repository) else { return nil }
         return manga
@@ -71,6 +91,11 @@ extension ChapterObject {
     /// Cached descriptors preserve all source identities without eagerly resolving URLs.
     public func pages(using repository: ObjectRepository) async throws -> [PageObject] {
         try await repository.pageDescriptors(for: self)
+    }
+}
+extension ReadingPosition {
+    @concurrent public func save(using repository: ObjectRepository, completed: Bool = false, manga: MangaObject? = nil) async throws {
+        try repository.store.savePosition(self, completed: completed, manga: manga)
     }
 }
 extension PageObject {

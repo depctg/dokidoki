@@ -60,7 +60,7 @@ struct ChapterPreview {
     func activate() async {
         active = true
         if plans.isEmpty { await load() }
-        else { replan(restore: true); preparePages(); await loadMangaMetadata() }
+        else { replan(restore: true); preparePages(); save(); await loadMangaMetadata() }
     }
     func load() async {
         guard let repository = app.repository else { return }
@@ -73,8 +73,11 @@ struct ChapterPreview {
             try Task.checkCancellation(); pages = loaded
             let position: ReadingPosition?
             do {
-                overrides = try app.store?.preference("overrides:" + chapter.key.id, as: [ObjectKey: SpreadOverride].self) ?? [:]
-                position = try app.store?.positions().first { $0.chapterKey == chapter.key }
+                await app.finishPersistence()
+                try Task.checkCancellation()
+                let state = try await chapter.readingState(using: repository)
+                try Task.checkCancellation()
+                overrides = state.overrides; position = state.position
             } catch { ErrorDiagnostics.record(error, operation: .storage); throw error }
             source = startAtEnd ? pages.last?.key : (pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key)
             fraction = startAtEnd ? 0.999_999 : (position?.fractionalOffset ?? 0)
@@ -178,8 +181,11 @@ struct ChapterPreview {
     }
     func setOverride(_ value: SpreadOverride) {
         guard let source else { return }; overrides[source] = value
-        do { try app.store?.setPreference("overrides:" + chapter.key.id, value: overrides) }
-        catch { app.report(error, operation: .storage) }; replan(restore: true)
+        if let repository = app.repository {
+            let chapter = chapter, overrides = overrides
+            app.persist { try await chapter.saveOverrides(overrides, using: repository) }
+        }
+        replan(restore: true)
     }
     func finishReading() {
         guard active, app.reader?.id == id, !completed, finalPageReady else { return }
@@ -188,18 +194,19 @@ struct ChapterPreview {
     }
     func save() {
         // An outgoing view may settle during the chapter crossfade after stop().
-        guard active, app.reader?.id == id, let source else { return }
-        do {
-            try app.store?.savePosition(ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
+        guard active, app.reader?.id == id, let source, let repository = app.repository else { return }
+        let position = ReadingPosition(mangaKey: chapter.mangaRef ?? chapter.key, chapterKey: chapter.key,
                 sourcePageKey: source, fractionalOffset: fraction, title: chapter.title, mangaTitle: mangaTitle,
-                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count, chapterListID: chapterListID), completed: completed, manga: manga)
+                pageNumber: pages.firstIndex(where: { $0.key == source }).map { $0 + 1 }, totalPages: pages.count, chapterListID: chapterListID)
+        let completed = completed, manga = manga
+        app.persist {
+            try await position.save(using: repository, completed: completed, manga: manga)
         }
-        catch { app.report(error, operation: .storage) }
     }
     func stop() {
         guard active else { return }
         save(); active = false; interacting = false; pendingReplan = false
-        planning?.cancel(); cancelPrefetch(); app.reloadLibrary()
+        planning?.cancel(); cancelPrefetch()
     }
     func height(_ plan: DisplayPage, width: Double) -> Double {
         width / max(0.1, plan.aspectRatio(analysis: analysis))

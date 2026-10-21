@@ -30,6 +30,10 @@ public actor ObjectRepository {
         backgroundLoading = enabled; await invalidate()
     }
     public func installedRules() -> [SiteRule] { registry.rules }
+    public func personalLibrary() throws -> [MangaObject] { try store.libraryObjects() }
+    public func setPreference<Value: Encodable & Sendable>(_ key: String, value: Value) throws {
+        try store.setPreference(key, value: value)
+    }
     public func rule(for key: ObjectKey) throws -> SiteRule {
         guard let rule = registry.rules.first(where: { $0.id == key.ruleID }) else { throw ReaderError.missingRule }; return rule
     }

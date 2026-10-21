@@ -149,10 +149,13 @@ public struct RenderedSourceFetcher: SourceFetcher {
                     text = try? await view.evaluateJavaScript("window.__readerSnapshot ? JSON.stringify(window.__readerSnapshot()) : null") as? String
                 } else { text = try? await view.evaluateJavaScript("document.documentElement.outerHTML") as? String }
                 if let text, !text.isEmpty, text != "null" {
-                    guard text.utf8.count <= 8 * 1024 * 1024, let finalURL = view.url, rule.permits(finalURL) else { throw ReaderError.invalidResponse }
-                    let response = SourceResponse(data: Data(text.utf8), url: finalURL)
+                    guard let finalURL = view.url, rule.permits(finalURL) else { throw ReaderError.invalidResponse }
+                    let needsItems = load.range != nil && extraction.session.map { $0.mode != .load } == true
+                    let (response, objects) = try await Self.snapshot(text, url: finalURL,
+                        key: ObjectKey(ruleID: rule.id, identityURL: url), kind: kind, rule: rule, extract: needsItems)
+                    guard !closed else { throw CancellationError() }
+                    if let failure { throw failure }
                     guard let range = load.range, let strategy = extraction.session, strategy.mode != .load else { return response }
-                    let objects = try RuleExtractor().extract(data: response.data, responseURL: finalURL, key: ObjectKey(ruleID: rule.id, identityURL: url), kind: kind, rule: rule)
                     let items: [String]
                     let satisfied: Bool
                     if case .chapter(let chapter) = objects.first {
@@ -225,7 +228,23 @@ public struct RenderedSourceFetcher: SourceFetcher {
           return data.length <= 33554432 ? data.substring(data.indexOf(',')+1) : null;
         } catch (_) { return null; }
         """, arguments: ["url": url.absoluteString], in: nil, contentWorld: .page) as? String
-        guard let encoded, let data = Data(base64Encoded: encoded), data.count <= 24 * 1024 * 1024 else { return nil }
+        guard let encoded else { return nil }
+        let response = await Self.decodedResource(encoded, url: url)
+        return closed || Task.isCancelled ? nil : response
+    }
+    // WebKit requires MainActor; snapshot parsing and resource decoding do not.
+    // Explicit concurrent functions retain task cancellation without detached jobs.
+    @concurrent nonisolated private static func snapshot(_ text: String, url: URL, key: ObjectKey,
+        kind: ContentKind, rule: SiteRule, extract: Bool) async throws -> (SourceResponse, [ContentObject]) {
+        try Task.checkCancellation()
+        guard text.utf8.count <= 8 * 1024 * 1024 else { throw ReaderError.invalidResponse }
+        let response = SourceResponse(data: Data(text.utf8), url: url)
+        let objects = extract ? try RuleExtractor().extract(data: response.data, responseURL: url, key: key, kind: kind, rule: rule) : []
+        try Task.checkCancellation()
+        return (response, objects)
+    }
+    @concurrent nonisolated private static func decodedResource(_ encoded: String, url: URL) async -> SourceResponse? {
+        guard !Task.isCancelled, let data = Data(base64Encoded: encoded), data.count <= 24 * 1024 * 1024 else { return nil }
         return SourceResponse(data: data, url: url)
     }
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {

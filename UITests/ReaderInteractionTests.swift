@@ -30,7 +30,7 @@ import XCTest
         app.buttons["Descending"].tap()
         XCTAssertTrue(app.navigationBars["Reading room · Z–A"].waitForExistence(timeout: 8))
         XCTAssertTrue(wait { listedManga.frame.minY < aster.frame.minY })
-        app.navigationBars.buttons["Browse"].tap()
+        goBack(in: app)
         app.buttons["Search site"].tap()
         let query = app.searchFields["Search titles"]
         XCTAssertTrue(query.waitForExistence(timeout: 5))
@@ -48,7 +48,7 @@ import XCTest
         XCTAssertGreaterThan(app.staticTexts["Rating: 9.2 / 10"].frame.width, 50, "Rating text must remain visible beside its icon")
         XCTAssertTrue(app.staticTexts["Status: Finished"].exists)
         XCTAssertTrue(app.staticTexts["Tags: Science fiction, Adventure"].exists)
-        app.navigationBars.buttons["Search results"].tap()
+        goBack(in: app)
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8), "Returning from a result retains the submitted search")
         XCTAssertTrue(aster.exists && footer.label == "No more titles", "Returning retains the loaded directory range")
         XCTAssertFalse(app.staticTexts["Search this site"].exists)
@@ -56,20 +56,20 @@ import XCTest
         listedManga.tap()
         // The reading action must work with the first tap in a newly hosted list.
         let read = app.buttons["manga.read"]
-        for _ in 0..<3 where !read.isHittable { app.swipeUp() }
+        for _ in 0..<3 where !read.isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(read.isHittable)
         read.tap()
         XCTAssertTrue(app.staticTexts["reader.pageCounter"].waitForExistence(timeout: 20))
         app.buttons["reader.collapse"].tap()
         // Each chapter group has its own presentation sort, without changing core adjacency.
         let arrival = app.buttons["1 · Arrival"], starlight = app.buttons["2 · Starlight"]
-        for _ in 0..<3 where !app.buttons["manga.sort.chapters"].isHittable { app.swipeUp() }
+        for _ in 0..<3 where !app.buttons["manga.sort.chapters"].isHittable { app.windows.firstMatch.swipeUp() }
         app.buttons["manga.sort.chapters"].tap()
         app.buttons["Reverse order"].tap()
         XCTAssertTrue(wait { starlight.frame.minY < arrival.frame.minY })
         app.buttons["manga.sort.chapters"].tap()
         app.buttons["Source order"].tap()
-        for _ in 0..<3 where !app.buttons["Extra · Sketches"].isHittable { app.swipeUp() }
+        for _ in 0..<3 where !app.buttons["Extra · Sketches"].isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(app.buttons["manga.sort.books"].exists && app.buttons["manga.sort.extras"].exists)
         XCTAssertTrue(app.buttons["Book one"].exists && app.buttons["Extra · Sketches"].exists)
         // SwiftUI swipe actions bridge into native hosted cells; group actions share the same core API.
@@ -86,7 +86,7 @@ import XCTest
         XCTAssertTrue((app.buttons["Extra · Sketches"].value as? String)?.hasSuffix("Ignored") == true)
         setChapterGroup("extras", action: "Unignore all", opposite: "Ignore all", in: app)
         XCTAssertTrue((app.buttons["Extra · Sketches"].value as? String)?.hasSuffix("Unread") == true)
-        for _ in 0..<3 where !arrival.isHittable { app.swipeDown() }
+        for _ in 0..<3 where !arrival.isHittable { app.windows.firstMatch.swipeDown() }
         arrival.tap()
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.waitForExistence(timeout: 20))
@@ -128,7 +128,7 @@ import XCTest
         XCTAssertTrue((app.buttons["2 · Starlight"].value as? String)?.hasPrefix("Current chapter,") == true)
         XCTAssertTrue(wait { !counter.exists })
         let currentRow = app.buttons["2 · Starlight"]
-        XCTAssertTrue(app.frame.contains(currentRow.frame), "Back to manga reveals the current chapter")
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(currentRow.frame), "Back to manga reveals the current chapter")
         currentRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 8), "The revealed chapter remains interactive")
         app.buttons["reader.collapse"].tap()
@@ -146,7 +146,7 @@ import XCTest
         XCTAssertTrue(wait { !row.exists })
         XCTAssertTrue(resume.exists)
         selectSection("My Library", in: app)
-        app.navigationBars.buttons.matching(identifier: "My Library").firstMatch.tap()
+        goBack(in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         app.buttons["library.resume.demo|https://demo.mangaviewer.local/series/observatory"].tap()
         XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
@@ -187,7 +187,7 @@ import XCTest
         app.alerts.buttons["OK"].tap()
         selectSection("Settings", in: app)
         let background = app.switches["Background resource loading"]
-        for _ in 0..<5 where !background.isHittable { app.swipeUp() }
+        for _ in 0..<5 where !background.isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(background.isHittable)
         let original = background.value as? String
         background.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
@@ -196,7 +196,7 @@ import XCTest
         XCTAssertTrue(wait { background.value as? String == original })
         XCTAssertTrue(resume.exists)
         let reportButton = app.buttons["Error report"]
-        for _ in 0..<5 where !reportButton.isHittable { app.swipeUp() }
+        for _ in 0..<5 where !reportButton.isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(reportButton.isHittable)
         reportButton.tap()
         let report = app.staticTexts["diagnostics.report"]
@@ -223,8 +223,8 @@ import XCTest
         XCTAssertEqual(title.label, "1 · Arrival")
 
         // RTL: drag right to reveal the next source page.
-        let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
-        let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        let start = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.5))
+        let end = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
         // The test is repeatable without deleting the app's reading history.
         for _ in 0..<3 where !counter.label.hasPrefix("Page 1 ") {
             end.press(forDuration: 0.05, thenDragTo: start)
@@ -240,8 +240,8 @@ import XCTest
         XCTAssertTrue(wait { counter.label == advanced && self.visiblePage(in: app) == "Comic page 2" })
 
         // Paged mode collapses from a top pull, then resumes the actual same source image.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.13))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.13))
+            .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6)))
         let resume = app.buttons["reader.resume"]
         XCTAssertTrue(resume.waitForExistence(timeout: 8))
         resume.tap()
@@ -253,13 +253,13 @@ import XCTest
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
         checkCenteredPages(in: app)
         checkImmersion(in: app)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.6))
+            .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 0.3)
         let scrolledPage = pageImage(2, in: app)
         let verticalPosition = scrolledPage.frame.minY
         // Vertical reading uses a physical left-edge back swipe, never a vertical page drag.
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.5)))
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.65, dy: 0.5)))
         XCTAssertTrue(resume.waitForExistence(timeout: 8))
         resume.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 8))
@@ -290,12 +290,12 @@ import XCTest
                 select(direction, in: "Direction", app: app)
                 let last = pageImage(4, in: app)
                 for _ in 0..<8 {
-                    if mode == "Paged" ? counter.label.hasPrefix("Page 4 ") : last.exists && last.frame.maxY <= app.frame.maxY + 2 { break }
+                    if mode == "Paged" ? counter.label.hasPrefix("Page 4 ") : last.exists && last.frame.maxY <= app.windows.firstMatch.frame.maxY + 2 { break }
                     pull(in: app, axis: axis, from: -0.3, to: 0.3)
                     XCTAssertEqual(title.label, "1 · Arrival", "Reaching the end must not open the next chapter")
                 }
                 XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
-                if mode == "Scroll" { XCTAssertTrue(last.exists && last.frame.maxY <= app.frame.maxY + 2) }
+                if mode == "Scroll" { XCTAssertTrue(last.exists && last.frame.maxY <= app.windows.firstMatch.frame.maxY + 2) }
                 checkChapterBoundary(in: app, axis: axis)
             }
         }
@@ -307,13 +307,13 @@ import XCTest
         select("Paged", in: "Mode", app: app)
         for _ in 0..<3 where !counter.label.hasPrefix("Page 4 ") { end.press(forDuration: 0.05, thenDragTo: start) }
         XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 1)
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5))
+            .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)), withVelocity: .slow, thenHoldForDuration: 1)
         XCTAssertEqual(counter.value as? String, "2 · Starlight")
         XCTAssertTrue(counter.label.hasPrefix("Page 4 "))
         XCTAssertFalse(title.exists)
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
 
         app.buttons["Back to manga"].tap()
         XCTAssertTrue(app.buttons["2 · Starlight"].waitForExistence(timeout: 8))
@@ -359,6 +359,10 @@ import XCTest
         target.tap()
         XCTAssertTrue(wait { target.isSelected })
     }
+    private func goBack(in app: XCUIApplication) {
+        app.descendants(matching: .any).matching(identifier: "BackButton").firstMatch.tap()
+    }
+    // Coordinate gestures use a native window, including its display identity on Duo.
     private func launch(chapter: String? = nil) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
@@ -372,15 +376,15 @@ import XCTest
     }
     /// Scalar positions along the chosen reading axis, centered in the viewport.
     private func pull(in app: XCUIApplication, axis: CGVector, from: Double, to: Double, fast: Bool = false) {
-        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + axis.dx * from, dy: 0.5 + axis.dy * from))
-            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + axis.dx * to, dy: 0.5 + axis.dy * to)),
+        app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + axis.dx * from, dy: 0.5 + axis.dy * from))
+            .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + axis.dx * to, dy: 0.5 + axis.dy * to)),
                    withVelocity: fast ? .fast : .slow, thenHoldForDuration: fast ? 0 : 0.3)
     }
     private func checkChapterBoundary(in app: XCUIApplication, axis: CGVector) {
         let title = app.staticTexts["reader.chapterTitle"], counter = app.staticTexts["reader.pageCounter"]
         pull(in: app, axis: axis, from: -0.25, to: -0.15, fast: true)
         XCTAssertEqual(title.label, "1 · Arrival", "Short pulls and momentum cannot switch chapters")
-        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let center = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
         pull(in: app, axis: axis, from: -0.4, to: 0.4)
         XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" })
@@ -404,20 +408,20 @@ import XCTest
         center.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 5))
         if axis.dy == 0 { XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 4" }) }
-        else { XCTAssertTrue(wait { abs(self.pageImage(4, in: app).frame.maxY - app.frame.maxY) < 3 }) }
+        else { XCTAssertTrue(wait { abs(self.pageImage(4, in: app).frame.maxY - app.windows.firstMatch.frame.maxY) < 3 }) }
     }
     private func checkCenteredPages(in app: XCUIApplication) {
-        let visible = app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.filter { $0.frame.intersects(app.frame) }
+        let visible = app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.filter { $0.frame.intersects(app.windows.firstMatch.frame) }
         XCTAssertFalse(visible.isEmpty)
         for image in visible {
-            XCTAssertEqual(image.frame.midX, app.frame.midX, accuracy: 1, "Loading pages must not change the reader's horizontal layout")
-            XCTAssertLessThanOrEqual(image.frame.width, app.frame.width)
+            XCTAssertEqual(image.frame.midX, app.windows.firstMatch.frame.midX, accuracy: 1, "Loading pages must not change the reader's horizontal layout")
+            XCTAssertLessThanOrEqual(image.frame.width, app.windows.firstMatch.frame.width)
         }
     }
     private func checkImmersion(in app: XCUIApplication) {
         let image = pageImage(2, in: app)
         let frame = image.frame
-        let center = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        let center = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
         XCTAssertTrue(wait { !app.staticTexts["reader.chapterTitle"].exists && !app.buttons["Reader options"].isHittable })
         let counter = app.staticTexts["reader.pageCounter"]
@@ -437,10 +441,10 @@ import XCTest
         dismissOptions(in: app)
     }
     private func dismissOptions(in app: XCUIApplication) {
-        if app.buttons["Image adjustments"].exists { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
+        if app.buttons["Image adjustments"].exists { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
     }
     private func visiblePage(in app: XCUIApplication) -> String? {
-        let point = CGPoint(x: app.frame.midX, y: app.frame.minY + app.frame.height * 0.35)
+        let point = CGPoint(x: app.windows.firstMatch.frame.midX, y: app.windows.firstMatch.frame.minY + app.windows.firstMatch.frame.height * 0.35)
         return app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex
             .first { $0.frame.contains(point) }?.label
     }
@@ -451,7 +455,7 @@ import XCTest
         XCTAssertTrue(toggle.waitForExistence(timeout: 5))
         let selected = toggle.isSelected || ["1", "on"].contains(toggle.value as? String ?? "")
         if selected != enabled { toggle.tap() }
-        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
+        else { app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.1, dy: 0.5)).tap() }
     }
     private func wait(_ condition: @escaping () -> Bool) -> Bool {
         let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in condition() }, object: nil)

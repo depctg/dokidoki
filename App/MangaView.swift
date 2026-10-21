@@ -6,7 +6,7 @@ struct MangaView: View {
     let model: AppModel
     @Environment(\.dynamicTypeSize) private var typeSize
     @ScaledMetric(relativeTo: .title) private var coverWidth = 112.0
-    @State private var readingState: MangaObject?
+    private var readingState: MangaObject { model.personalManga[manga.key] ?? manga }
     @State private var reversedLists: Set<String> = []
     @State private var reveal: ChapterListReveal?
     private var starred: Bool { model.saved.contains { $0.key == manga.key && $0.isStarred } }
@@ -23,8 +23,6 @@ struct MangaView: View {
                     }.accessibilityIdentifier("manga.star")
                 }
             }
-            .onAppear { refreshReadingState() }
-            .onChange(of: model.libraryRevision) { _, _ in refreshReadingState() }
             .task { revealChapter(includeLastRead: true) }
             .onChange(of: model.chapterToReveal) { _, key in
                 if key != nil { revealChapter(includeLastRead: false) }
@@ -94,10 +92,7 @@ struct MangaView: View {
     }
     private var readingButton: some View {
         Button {
-            if position != nil { model.resumeManga(manga.key) }
-            else if let first = manga.chapterRefs.first {
-                model.openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
-            }
+            model.resumeManga(manga.key, manga: manga)
         } label: {
             Label(position == nil ? String(localized: "Start reading") : String(localized: "Resume reading"), systemImage: "play.fill")
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
@@ -143,7 +138,7 @@ struct MangaView: View {
         }.textCase(nil)
     }
     private func chapterRow(_ chapter: ContentReference, list: ChapterList) -> some View {
-        let status = (readingState ?? manga).readingStatus(for: chapter.key)
+        let status = readingState.readingStatus(for: chapter.key)
         let isCurrent = isCurrent(chapter, list: list)
         let statusTitle: String = switch status {
         case .unread: String(localized: "Unread")
@@ -171,7 +166,7 @@ struct MangaView: View {
         .accessibilityValue(isCurrent ? String(localized: "Current chapter, \(statusTitle)") : statusTitle)
     }
     @ViewBuilder private func chapterActions(_ keys: [ObjectKey], wholeList: Bool = false) -> some View {
-        let status = (readingState ?? manga).readingStatus(for: keys)
+        let status = readingState.readingStatus(for: keys)
         Button(wholeList ? (status == .read ? String(localized: "Mark all as unread") : String(localized: "Mark all as read"))
                : (status == .read ? String(localized: "Mark as unread") : String(localized: "Mark as read")),
                systemImage: status == .read ? "circle" : "checkmark") {
@@ -185,18 +180,11 @@ struct MangaView: View {
     }
     private func setStatus(_ status: ChapterReadingStatus, for keys: [ObjectKey]) {
         guard let repository = model.repository else { return }
-        do {
-            readingState = try manga.setReadingStatus(status, for: keys, using: repository)
-            model.reloadLibrary()
-        } catch { model.report(error, operation: .storage) }
+        let manga = manga
+        model.persist { _ = try await manga.setReadingStatus(status, for: keys, using: repository) }
     }
     private func isCurrent(_ chapter: ContentReference, list: ChapterList) -> Bool {
         position?.chapterKey == chapter.key && manga.chapterList(containing: chapter.key, preferredID: position?.chapterListID)?.id == list.id
     }
     private func rowID(_ key: ObjectKey, list: ChapterList) -> String { "\(list.id)|\(key.id)" }
-    private func refreshReadingState() {
-        guard let repository = model.repository else { return }
-        do { readingState = try manga.readingState(using: repository) }
-        catch { model.report(error, operation: .storage) }
-    }
 }

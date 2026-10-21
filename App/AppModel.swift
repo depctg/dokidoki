@@ -62,14 +62,16 @@ enum AppSection: String, CaseIterable, Identifiable {
     private(set) var libraryRevision = 0
     var preferences = ReaderPreferences() {
         didSet {
-            do { try store?.setPreference("reader", value: preferences) }
-            catch { report(error, operation: .storage) }
+            guard let repository else { return }
+            let preferences = preferences
+            persist { try await repository.setPreference("reader", value: preferences) }
         }
     }
     var jumpToLastChapter = true {
         didSet {
-            do { try store?.setPreference("jumpToLastChapter", value: jumpToLastChapter) }
-            catch { report(error, operation: .storage) }
+            guard let repository else { return }
+            let enabled = jumpToLastChapter
+            persist { try await repository.setPreference("jumpToLastChapter", value: enabled) }
         }
     }
     var section: AppSection = .library
@@ -82,6 +84,7 @@ enum AppSection: String, CaseIterable, Identifiable {
     var openingChapter = false
     private var chapterRequest: Task<Void, Never>?
     private var libraryObservation: Task<Void, Never>?
+    private var persistence: Task<Void, Never>?
     private var started = false
 
     func start() async {
@@ -95,8 +98,9 @@ enum AppSection: String, CaseIterable, Identifiable {
             backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
             jumpToLastChapter = try store.preference("jumpToLastChapter", as: Bool.self) ?? true
             preferences = try store.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
-            repository = try ObjectRepository(store: store, rules: rules)
-            reloadLibrary()
+            let repository = try ObjectRepository(store: store, rules: rules)
+            self.repository = repository
+            applyLibrary(try await repository.personalLibrary())
             libraryObservation = Task { [weak self] in
                 do {
                     for try await manga in store.libraryUpdates() { self?.applyLibrary(manga) }
@@ -198,10 +202,17 @@ enum AppSection: String, CaseIterable, Identifiable {
         guard rules.contains(where: { $0.id == key.ruleID }) else { readerExpanded = false; return }
         openChapter(key, hint: .forceRefresh, expand: readerExpanded, listID: reader.chapterListID)
     }
-    func reloadLibrary() {
-        do { applyLibrary(try store?.libraryObjects() ?? []) }
-        catch { report(error, operation: .storage) }
+    /// Preserve action order across chapter replacement; disappearing reader tasks
+    /// must not cancel the final durable position write.
+    func persist(_ operation: @escaping @Sendable () async throws -> Void) {
+        let previous = persistence
+        persistence = Task {
+            await previous?.value
+            do { try await operation() }
+            catch { report(error, operation: .storage) }
+        }
     }
+    func finishPersistence() async { await persistence?.value }
     private func applyLibrary(_ manga: [MangaObject]) {
         let updated = Dictionary(uniqueKeysWithValues: manga.map { ($0.key, $0) })
         guard updated != personalManga else { return }
@@ -214,13 +225,24 @@ enum AppSection: String, CaseIterable, Identifiable {
         recent = readingPositions.filter { personalManga[$0.mangaKey]?.personalState?.isRecentHidden != true }
         libraryRevision += 1
     }
-    func resumeManga(_ key: ObjectKey) {
-        if let position = readingPositions.first(where: { $0.mangaKey == key }) { openChapter(position.chapterKey, listID: position.chapterListID); return }
+    func resumeManga(_ key: ObjectKey, manga known: MangaObject? = nil) {
+        if reader?.chapter.mangaRef == key { resumeReader(); return }
         chapterRequest?.cancel(); openingChapter = true
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
             do {
-                guard let repository, case .manga(let manga) = try await key.load(using: repository, hint: .preferCache),
+                guard let repository else { return }
+                await finishPersistence()
+                try Task.checkCancellation()
+                let snapshot = known ?? personalManga[key] ?? MangaObject(key: key, sourceURL: key.identityURL, title: "")
+                let local: MangaObject
+                do { local = try await snapshot.readingState(using: repository) }
+                catch { ErrorDiagnostics.record(error, operation: .storage); throw error }
+                try Task.checkCancellation()
+                if let position = local.personalState?.position {
+                    openChapter(position.chapterKey, listID: position.chapterListID); return
+                }
+                guard case .manga(let manga) = try await key.load(using: repository, hint: .preferCache),
                       let first = manga.chapterRefs.first else { throw ReaderError.extraction(String(localized: "This manga has no chapters yet.")) }
                 try Task.checkCancellation()
                 openChapter(first.key, listID: manga.chapterList(containing: first.key)?.id)
@@ -228,18 +250,15 @@ enum AppSection: String, CaseIterable, Identifiable {
         }
     }
     func toggleStar(_ key: ObjectKey, title: String, manga known: MangaObject? = nil) {
-        do {
-            var manga = saved.first(where: { $0.key == key }) ?? SavedManga(key: key, title: title)
-            manga.isStarred.toggle()
-            try store?.setSaved(manga, saved: true, manga: known)
-            reloadLibrary()
-        } catch { report(error, operation: .storage) }
+        guard let repository else { return }
+        let manga = known ?? personalManga[key] ?? MangaObject(key: key, sourceURL: key.identityURL, title: title)
+        persist { try await manga.toggleStar(using: repository) }
     }
     func removeLibraryItem(_ key: ObjectKey, from section: AppSection) {
-        do {
-            if section == .recent { try store?.hideRecent(key) }
-            else if let manga = saved.first(where: { $0.key == key }) { try store?.setSaved(manga, saved: false) }
-            reloadLibrary()
-        } catch { report(error, operation: .storage) }
+        guard let repository, let manga = personalManga[key] else { return }
+        persist {
+            if section == .recent { try await manga.hideFromRecent(using: repository) }
+            else { try await manga.removeFromLibrary(using: repository) }
+        }
     }
 }

@@ -25,7 +25,6 @@ struct LibraryView: View {
             }
         }
         .navigationTitle(section.title)
-        .onAppear { model.reloadLibrary() }
     }
 }
 
@@ -111,8 +110,7 @@ private struct LibraryRow: View {
         }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
         .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(.object(key)) }
-        .task(id: "\(key.id)|\(model.loadingRevision)") { await loadDetails() }
-        .onChange(of: position?.chapterKey) { _, _ in loadCachedChapter() }
+        .task(id: "\(key.id)|\(model.loadingRevision)|\(key == position?.chapterKey)") { await loadDetails() }
     }
     @ViewBuilder private var actions: some View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
@@ -122,21 +120,20 @@ private struct LibraryRow: View {
         }
     }
     private func loadDetails() async {
-        manga = nil; loadCachedChapter()
+        manga = nil; cachedChapter = nil
         guard let repository else { return }
         do {
             // No chapter extraction just to draw history: standalone chapters use a cached page.
-            if key == position?.chapterKey { return }
+            if key == position?.chapterKey {
+                let loaded = try await key.load(using: repository, hint: .offlineOnly)
+                try Task.checkCancellation()
+                if case .chapter(let chapter) = loaded { cachedChapter = chapter }
+                return
+            }
             let reference = ContentReference(key: key, title: title)
             guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
             try Task.checkCancellation(); manga = loaded
-            loadCachedChapter()
         } catch { /* Keep the durable title/progress and a cover placeholder when unavailable. */ }
     }
     private var repository: ObjectRepository? { model.repository }
-    private func loadCachedChapter() {
-        cachedChapter = nil
-        if let chapterKey = position?.chapterKey ?? manga?.chapterRefs.first?.key,
-           let snapshot = try? model.store?.snapshot(chapterKey), case .chapter(let chapter) = snapshot.object { cachedChapter = chapter }
-    }
 }

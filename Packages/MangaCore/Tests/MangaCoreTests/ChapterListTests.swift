@@ -100,10 +100,17 @@ struct ChapterListTests {
             let ref = original.chapterRefs[index]
             return ReadingPosition(mangaKey: mangaKey, chapterKey: ref.key, sourcePageKey: .page(owner: ref.key, index: 0), title: ref.title)
         }
-        try store.savePosition(position(0), completed: true)
-        try store.savePosition(position(0)) // Rereading must not erase completion.
-        try store.savePosition(position(2))
-        let local = try original.readingState(using: repository)
+        try await position(0).save(using: repository, completed: true)
+        try await position(0).save(using: repository) // Rereading must not erase completion.
+        try await position(2).save(using: repository)
+        guard case .chapter(let chapter) = try await original.chapterRefs[2].load(using: repository),
+              case .chapter(let other) = try await original.chapterRefs[0].load(using: repository) else { throw ReaderError.invalidResponse }
+        let overrides: [ObjectKey: SpreadOverride] = [chapter.pageRefs[0]: .keep]
+        try await chapter.saveOverrides(overrides, using: repository)
+        let restored = try await chapter.readingState(using: repository)
+        #expect(restored.position?.chapterKey == chapter.key && restored.overrides == overrides)
+        #expect(try await other.readingState(using: repository).position == nil)
+        let local = try await original.readingState(using: repository)
         #expect(local.readingStatus(for: original.chapterRefs[0].key) == .read)
         #expect(local.readingStatus(for: original.chapterRefs[2].key) == .reading)
         try store.hideRecent(mangaKey); try store.clearContent()
