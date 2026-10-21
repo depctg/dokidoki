@@ -1,5 +1,10 @@
 # Development state
 
+## Local simulator maintenance — 2026-10-21
+
+- Removed the iOS 27.0 and visionOS 27.0 simulator runtimes at the user's request. Native runtime inventory now contains only iOS 27.1 (24A94425), preserving the Duo test destination. Simulator device records/data were not deleted; destinations tied to removed runtimes are unavailable until a compatible runtime is installed.
+- Zhiyuan iPhone and its installed app/data were untouched. Xcode SDKs remain unchanged; visionOS builds remain supported, but no visionOS simulator runtime is currently installed. Historical 27.0 test results below describe verification before this cleanup.
+
 ## Follow-up TODO
 
 - iPhone Duo: investigate the odd manga-list appearance. Check whether the native gray list background should extend across the full screen, including safe areas and both open/closed layouts. Prefer native list/container background behavior; inspect before changing layout. Queued at the user’s request, separate from the current reader/Smart-order patch.
