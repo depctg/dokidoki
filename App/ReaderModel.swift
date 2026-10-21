@@ -17,6 +17,8 @@ struct ChapterPreview {
     var overrides: [ObjectKey: SpreadOverride] = [:]
     var source: ObjectKey?
     var fraction = 0.0
+    var scrollPosition = ScrollPosition(idType: String.self)
+    var landingArtwork: PageArtwork?
     private var manga: MangaObject?
     var previousChapter: ContentReference? { manga?.previousChapter(before: chapter.key, in: chapterListID) }
     var nextChapter: ContentReference? { manga?.nextChapter(after: chapter.key, in: chapterListID) }
@@ -99,6 +101,14 @@ struct ChapterPreview {
                 size: size, preferences: app.preferences, analysis: analysis, overrides: overrides))
             try Task.checkCancellation()
             plans = planned; revision += 1
+            if let current {
+                // Content, native target and its composed artwork are prepared together
+                // before AppModel publishes an incoming chapter to the persistent view.
+                scrollPosition = ScrollPosition(id: current.id, anchor: app.preferences.mode == .paged ? .center : (startAtEnd ? .bottom : .top))
+                landingArtwork = try? await PageArtwork.load(plan: current, pages: pages,
+                    using: repository, revision: app.loadingRevision)
+                try Task.checkCancellation()
+            }
             preparePages()
             loading = false
             await loadMangaMetadata()
@@ -178,7 +188,7 @@ struct ChapterPreview {
         guard let key else { return }
         let oldIndex = self.index
         source = key; fraction = PagePipeline.fraction(index: index, withinPage: within, source: key, in: plans)
-        if oldIndex != self.index { preparePages() }
+        if oldIndex != self.index { landingArtwork = nil; preparePages() }
     }
     var withinPage: Double {
         guard let source else { return 0 }
@@ -212,6 +222,7 @@ struct ChapterPreview {
     func stop() {
         guard active else { return }
         save(); active = false; interacting = false; pendingReplan = false
+        landingArtwork = nil
         planning?.cancel(); cancelPrefetch()
     }
     func height(_ plan: DisplayPage, width: Double) -> Double {
@@ -230,7 +241,7 @@ struct ChapterPreview {
         let wanted = Set(neighbors.map(\.key))
         for key in prefetch.keys where !wanted.contains(key) { prefetch.removeValue(forKey: key)?.cancel() }
         for page in neighbors where prefetch[page.key] == nil {
-            prefetch[page.key] = Task {
+            prefetch[page.key] = Task(priority: .utility) {
                 do {
                     if analysis[page.key] != nil || learned[page.key] != nil {
                         _ = try await page.image(using: repository)

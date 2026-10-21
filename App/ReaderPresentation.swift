@@ -11,6 +11,9 @@ struct ReaderPresentation: View {
                 Group {
                     if let reader = model.reader {
                         ReaderView(reader: reader, model: model)
+                            .navigationTitle(reader.chapter.title)
+                            .toolbarTitleDisplayMode(.inline)
+                            .toolbar { ReaderToolbar(reader: reader, model: model) }
                     } else {
                         ProgressView("Opening chapter…")
                             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Collapse reader") { model.collapseReader() } } }
@@ -23,10 +26,6 @@ struct ReaderPresentation: View {
                 .toolbarVisibility(model.readerImmersive ? .hidden : .visible, for: .navigationBar)
                 #endif
             }
-            .persistentSystemOverlays(model.readerImmersive ? .hidden : .automatic)
-            #if os(iOS)
-            .statusBarHidden(model.readerImmersive)
-            #endif
             .offset(dragOffset)
             .simultaneousGesture(DragGesture(minimumDistance: 20, coordinateSpace: .named("readerPresentation"))
                 .onChanged { value in
@@ -42,6 +41,11 @@ struct ReaderPresentation: View {
                     else { withAnimation(.snappy) { dragOffset = .zero } }
                 })
         }
+        // Apply the system overlay preference at the full-screen presentation boundary.
+        .persistentSystemOverlays(model.readerImmersive ? .hidden : .automatic)
+        #if os(iOS)
+        .statusBarHidden(model.readerImmersive)
+        #endif
         .coordinateSpace(name: "readerPresentation")
         .onAppear { dragOffset = .zero }
         .interactiveDismissDisabled()

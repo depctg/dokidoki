@@ -1,92 +1,96 @@
+<p align="center">
+  <img src="docs/images/app-icon.png" width="112" alt="dokidoki app icon">
+</p>
+
 # dokidoki"
 
-A native SwiftUI manga reader for iOS, macOS, and visionOS 26+, with a standalone URL-to-object engine.
+A native manga reader for iPhone, iPad, Mac, and Apple Vision Pro. Browse your favorite sites, keep a personal library, and read with a quiet, immersive interface. Add support for websites through shareable JSON rules.
 
-Implementation follows [the design](docs/MangaViewer_DESIGN.md). Progress and verification are in [DEV_STATE](docs/DEV_STATE.md); development conventions are in [AGENTS.md](AGENTS.md).
+<p align="center">
+  <img src="docs/images/library.png" width="250" alt="My Library with saved example books and reading progress">
+  <img src="docs/images/manga.png" width="250" alt="Manga details with cover, metadata, and chapter groups">
+  <img src="docs/images/reader.png" width="250" alt="Immersive reader showing an example comic page">
+</p>
 
-Device screenshots and advertising artwork stay outside the app and Git; see [marketing captures](docs/MARKETING.md) for native capture and aspect-ratio requirements.
+*Real app screenshots using the original artwork in the bundled reading room.*
 
-The core uses Foundation networking, native XPath (libxml2), and [GRDB](https://github.com/groue/GRDB.swift) for SQLite. Rules are versioned data, never executable scripts.
+## What you can do
 
-The interface supports English and Simplified Chinese through Apple's native localization. It follows your system/per-app language and includes localized controls, accessibility labels, errors, progress and plural forms. Website content keeps its source language. See [localization](docs/LOCALIZATION.md) to add languages or update translations.
+- **Keep your place.** Save and star manga, revisit recent reading, and resume from the same page—even after closing the app. Mark chapters or whole groups read, unread, or ignored.
+- **Read your way.** Choose paged or continuous scrolling, either reading direction, facing pages in wide windows, margin trimming, and automatic split-page joining.
+- **Stay immersed.** Tap the artwork to hide controls while keeping a small chapter/page badge. Pull beyond either chapter boundary by 20% of the viewport and release to switch chapters. Collapse the reader into a small Resume bar when browsing.
+- **Explore websites.** Browse shelves, search, use source-provided sorting, and automatically load more as you approach the end of a list. MangaCopy, Manhuagui, and an offline example reading room are included.
+- **Use your devices naturally.** Native floating controls on iPhone/iPad, adaptive iPhone Duo layouts, a Mac sidebar, and a resizable reader window on Vision Pro. English and Simplified Chinese interfaces are included.
 
-Build with Xcode 27.1 (iOS 27.1 SDK, Swift 6 language mode); the minimum deployment version remains 26 on all platforms. Test the core with:
+Your library and reading history stay on your device. This preview does not include iCloud synchronization or full-library offline downloads. Website availability depends on the source and its installed rule.
+
+## Requirements
+
+| Platform | Minimum supported version |
+| --- | --- |
+| iPhone and iPad | iOS / iPadOS 26 |
+| iPhone Duo | iOS 27.1 |
+| Mac | macOS 26 |
+| Apple Vision Pro | visionOS 26 |
+
+The current release is **0.1.0**. Settings → About shows the release and a unique build number. Build from source with **Xcode 27.1**, the relevant platform SDKs, and Swift 6 language mode. Install the corresponding simulator runtime to run a simulator; iPhone Duo uses the iOS 27.1 runtime in Device Hub.
+
+## Get started
+
+1. Open **Browse** and choose a site with the globe button. Choose **Bundled reading room** to try the app without a network connection.
+2. Open a manga and tap its star to save it to **My Library**. Tap **Start reading** or a chapter to begin.
+3. Tap the artwork to toggle immersive mode. Use **Reader options** to change reading mode and direction. To collapse the reader, pull down from the top in paged mode, or swipe inward from the left edge in scroll mode.
+4. Return through the **Resume** bar, or use the play button beside a book in Library or Recent. Tap the book itself to see its details.
+
+Settings also provides site-rule import/export, reader defaults, cache controls, and an error report you can review and share yourself.
+
+## Build and run
 
 ```sh
-swift test --package-path Packages/MangaCore
+git clone https://github.com/depctg/dokidoki.git
+cd dokidoki
+open MangaViewer.xcodeproj
 ```
 
-Open `MangaViewer.xcodeproj`, select the MangaViewer scheme and a Mac, iOS, or visionOS destination. For device builds, choose your development team in Signing & Capabilities. No code generator is required. Settings → About shows the release and build number from the app bundle (currently 0.1.0 (20261021182000)). Each distributed preview revision receives a unique UTC timestamp in Xcode’s `CURRENT_PROJECT_VERSION`; the same revision keeps its identifier across destination builds. The display name is **dokidoki"** (including the final quote); the Xcode target, bundle identity, and storage paths stay stable. The layered icon is editable in Icon Composer; see [icon authoring](docs/ICON.md).
+In Xcode, select the **MangaViewer** scheme and a Mac, iPhone/iPad simulator, or Vision Pro destination, then Run. Swift Package Manager resolves the dependencies automatically; no project generator is needed.
 
-The UI test target keeps two journeys: Library/Browse actions, and reader gestures/position restoration. Core tests own parsing, cache/persistence, request/session policy and diagnostics; shared contracts use parameterized cases and per-test fixture transports.
+For a physical iPhone or iPad, select your Apple development team under **Signing & Capabilities**, connect and trust the device, enable Developer Mode if prompted, and Run. A Personal Team works for a local preview; provisioning and renewal are managed by Xcode.
 
-For an iOS preview, select an iPhone, iPhone Duo, or iPad simulator and Run. Xcode 27.1 opens simulators in Device Hub. Install the iOS 27.1 runtime for iPhone Duo; use Device Hub to open, close, and rotate the device. Native tabs/toolbars adapt to its safe areas, and the reader replans single/facing pages from available window geometry while retaining the source page. There are no device-model or fold-state branches. See Apple’s [iPhone Duo preparation guide](https://developer.apple.com/videos/play/tech-talks/111461/).
-
-```sh
-xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
-  -destination 'platform=macOS,arch=arm64' -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
-open build/Build/Products/Debug/MangaViewer.app
-```
-
-The app opens in **My Library**, with your saved manga. On iPhone, iPad, and visionOS, native toolbar titles sit beside the actions, and floating tabs switch between **My Library**, **Browse**, **Recent**, and **Settings**, using the system's glass appearance and platform placement. Each tab keeps its own browsing history. macOS uses a sidebar.
-
-Library and Recent rows show the cover, manga title, chapter name, whole-manga reading progress on its own line with a state icon, and short relative age (for example, “3 hr ago” or “不到一小时前”). Tap a row for manga details; use its medium circular play button to resume (or start an unread title). Swipe left on iPhone/iPad to **Remove**; Recent also offers **Star/Unstar**. Context menus and accessibility actions provide the same choices. Manga details use the same Star action, with the chapter list scrolling beneath native floating navigation and tab controls. Stars put favorites first in Library; starring a Recent item also saves it. Unstarring keeps a title saved; removing from Library unsaves it. Removing from Recent hides the history entry until you read it again. Both preserve the reading position. Manga and chapter titles wrap in full. Covers keep their original aspect ratio without gray framing. The progress line shows a book for **Reading (%)**, a checkmark for **Finished**, or sparkles for **New (%)** after a finished manga gains chapters on refresh. Percentages average chapter progress, excluding ignored chapters; an unknown catalog shows Reading until loaded. Missing covers use a simple placeholder.
-
-One reader is shared by the whole app. On visionOS, it fills a replacement window using native window navigation; closing or collapsing it restores the main window and its resume ornament. The reader initially fits the first loaded image or spread, with facing pages enabled by default in wide windows. Resize it freely with the system corner control; later page turns do not override your window size. iPhone/iPad retain their full-screen reader, and macOS retains its sheet. Opening another chapter prepares its content asynchronously, then updates pages and text inside the same reader surface; the window, chrome and immersion remain in place. Collapse it to a small glass **Resume** bar with the manga cover, manga title, chapter and page progress; tapping it returns to the same page from any main view. In paged mode, pull down from the top; in scroll mode, swipe inward from the physical left edge. The collapse button and Escape also return to the main views. On iPhone the native accessory sits above the tabs and moves inline when they minimize; iPad keeps it at the bottom, visionOS uses a bottom window ornament, and macOS places it below the top toolbar. The iOS accessory follows Apple's [Music accessory pattern](https://developer.apple.com/videos/play/wwdc2025/323/); Mac uses an in-window adaptation.
-
-In **Browse**, use **Switch site** to choose the bundled reading room for an offline fixture or MangaCopy for live shelves. Chapter availability depends on the source website. The app does not bypass site access restrictions.
-
-The command-line engine probe also supports a live rendered chapter:
-
-```sh
-swift run --package-path Packages/MangaCore manga-probe
-swift run --package-path Packages/MangaCore manga-probe --rendered https://www.manhuagui.com/comic/32602/441493.html
-swift run --package-path Packages/MangaCore manga-probe --rendered https://www.mangacopy.com/comic/yiquanchaoren/chapter/2c814b6a-4f03-11e9-8b1c-024352452ce0
-```
-
-Browse opens the first site in Settings order, initially MangaCopy. Core models it as a `SiteObject` containing rule-defined browse sources and search. MangaCopy now loads its homepage once to create the recommendation, popular-update and new-arrival lists, with known manga metadata. A site may use multiple source pages; core preserves their order and deduplicates lists. Each directory is one manga list, previewed as a horizontal cover row; tap a heading for the full list or a cover for manga details. Search opens a native results list with an editable search field and asks that Site object for a rule-defined search directory. MangaCopy, Manhuagui and the reading room pass known titles, covers and available metadata from each list into cached manga objects. Cards with known covers skip manga-detail requests; opening a full list resolves its sorting/pagination, and manga details resolve chapters when still unknown. The globe menu switches sites. Open URL remains available from the link button (or Command-O on Mac). Rules without shelves show an empty state and retain URL/search access.
-
-Directory and search lists show a native Sort menu only when their JSON extraction defines sort-by or order links. Selecting an option loads the website's sorted list; there is no hardcoded local title sort. Either axis may be absent. Manhuagui exposes its existing catalog/search choices, while its update list retains source order. Native lists automatically request the next batch near the last five rows, retaining loaded items and scroll position when returning from manga details. A plain footer shows loading, **No more titles**, or Retry after a failure. Filtering searches already-loaded titles; clear it to continue automatic loading.
-
-Drag Site rules in Settings to change the default site; iPhone/iPad also provide Edit handles. Order survives relaunch and recipe updates without restarting the reader. Rule rows show names and versions; network host permissions remain in JSON and in the import preview.
-
-Manga cards, lists, Library/Recent, and manga details show optional **rating**, **publication status**, and **tags** captured by the site rule. Ratings retain the source's scale and statuses retain its wording; absent values are omitted. Full tags are available in manga details. Manhuagui's HTML provides status and genre tags; its JavaScript-loaded score is absent from ordinary HTML and its placeholder is excluded by the JSON rule. The offline reading room demonstrates all three fields.
-
-Manga details place the description below the cover and metadata, show every source-defined chapter group, and offer **Source order / Reverse order** independently for each group. Sorting does not change reading order. Chapters show in-progress, read, or ignored marks. Swipe a chapter for **Mark as read/unread** and **Ignore/Unignore**, or use its context menu/accessibility actions. The checklist menu beside each group applies those actions to the entire group. Unignore resets to unread. Ignoring excludes chapters from progress without changing source order or removing them. Personal state and the current-row highlight survive cache clearing and restart. Opening details jumps to the last-read chapter by default; turn off **Settings → Manga details → Jump to last-read chapter** to start at the top. On iPhone, iPad and visionOS, drag the narrow native index to the top arrow, short group labels or dots inside a long group. Group labels jump to their headings; dots map directly to chapter rows; each group remains a continuous list with its full name in the heading. The system manages the index’s display and gestures. macOS uses its native scrollbar.
-
-See [the rule format](docs/RULES.md) for XPath/JSON selectors, regex captures, named variables, and simple URL templates. All site-specific parsing, including rendered chapter metadata and image URL construction, belongs in JSON. Original fixture artwork can be regenerated with `swift scripts/generate-fixtures.swift`.
-
-MangaCopy is the bundled default for catalog shelves, source sorting/pagination, manga metadata and complete chapter images. The upgrade installs and selects it once; later user ordering/removal is preserved. Its JSON rule requests desktop content on iPhone to avoid the different mobile layout. Chapter v4 extracts the declared page count and lazy image URLs from the rendered DOM, scrolling only as requested; it no longer observes JavaScript data for chapters. Search uses the website’s public JSON endpoint and rule-declared counters for 12-item pages. Approaching the end automatically appends through core; the footer shows loading or the end of the list. A standalone [AI authoring prompt](rule-authoring/PROMPT.md) and [guide](rule-authoring/GUIDE.md) explain how to create/test recipes; these files are outside the Swift application/package. The probe accepts `--rule /path/site.json` for an unbundled recipe and `--range 4:2` to resolve chapter pages 5–6 (zero-based start and count).
-
-Each horizontal swipe moves at most one page forward or back, including fast flicks; the next and previous pages share the image prefetch cache. The reader fixes page width to its viewport and lets native scrolling retain position when neighboring images arrive. A bounded prefetch window keeps overlapping work running; later display requests reuse core image caches. Tap/click the manga to hide or restore the toolbar without moving or resizing the artwork. A small floating chapter/page badge stays visible in immersive mode. The compact title shows the chapter name. The top-right controls return to the manga's current chapter row, open the previous/next chapter, and show reader settings. Pinch zooms in paged mode. With keyboard focus, arrow keys turn pages, Space toggles controls and Escape collapses the reader. On Mac, drag with the mouse or scroll with a trackpad to change pages.
-
-Reader settings use icon choices for paged/scroll mode and right-to-left/left-to-right direction. Image adjustments contain margin trimming, spread detection, facing pages in wide windows and per-page overrides. Refresh and Source website are also in this menu. Opening it does not request text input. Position is saved against original pages, including fractional scroll progress, and restored when switching modes.
-
-With **Detect spreads** enabled, core compares adjacent left/right page cuts, removes matching white binding margins and displays confident pairs as one seamless image in either reading mode. Uncertain pairs stay separate; **Keep original** prevents a join. Try **Aster House → Across the valley** in the bundled reading room. See [image processing](docs/IMAGE_PROCESSING.md) for the algorithm, external reference and limitations.
-
-`MangaObject` decides previous/next chapters within the selected source-ordered chapter group. Near either end, the reader preloads adjacent metadata and one boundary image. On the last two display pages, the small page badge shows next-chapter loading or unavailable status before any boundary pull; the hint disappears when ready. In paged and scroll modes, drag beyond either chapter boundary to reveal its preview or a missing-chapter message, even when the same drag starts inside the content. Reaching the edge or bouncing from momentum alone never changes chapters. Each boundary is prepared with placeholder artwork, which updates when the preview loads, and grows in the exposed overscroll gap with a plain chapter title and pull/release hint behind it. Text keeps its size, wrapping and position as the gap reveals it; there is no progress bar. Pull beyond 25% of the viewport and release to finish enlarging the preview quickly and continue; shorter pulls return to the current chapter. Backward pulls open the previous chapter's last page; forward pulls open the next chapter's first page. Missing chapters show “No previous chapter” or “No next chapter.” The floating page badge remains visible. Chapter changes retain immersive mode through the persistent reader presentation and use native animation; Reduce Motion skips enlargement. Toolbar chapter buttons remain available.
-
-Decoded images are limited to 112 MiB in memory (32 MiB reserved for covers) and image bytes to 512 MiB on disk. Only visible pages and a small neighbor window are decoded. Core caches metadata within a 64 MiB payload budget, retaining manga and covers ahead of chapter/page data and lists. It evicts least-recently-used entries within each priority; objects have no expiration date. Normal loads reuse retained data. Use Refresh for current source updates; changed rules and Clear cache invalidate parsed metadata. Cached image bytes survive launches and parsing-rule updates when the resource URL, referer and allowed-host policy stay the same. Refresh reloads source metadata; Clear cached images also removes saved image bytes. The system may reclaim disk image caches. Source objects and reading state use separate SQLite tables.
-
-Loading belongs to core objects and references: chapters load their pages, manga load their covers, and pages load their images. They share one repository and request sender. The sender queues document/image requests and rendered sessions, allowing four active requests total, two per initial host, and one rendered operation. A rolling one-second budget also limits starts to eight total and four per initial host, including fast completions and retries. Queued work waits without occupying an active slot. Identical requests share a result; canceling one caller preserves work needed by others. Results and errors return through native Swift async calls. WebKit manages subresources within its retained browser contexts.
-
-**Settings → Website loading → Background resource loading** defaults to on. Hidden WebKit metadata sessions can load normal website images/media/fonts, including ads, from the rule's declared hosts; ads are never presented. Turn it off to block those resources globally, or set `rendering.loadAds: false` for a particular object-kind extractor. The setting persists, cancels old object requests when changed and leaves native manga image downloads available. The core session manager retains up to four hidden browser contexts by logical URL and rule/extractor policy, expiring each after 60 seconds idle. Refresh, cancellation and policy/cache invalidation close affected sessions. These are in-process browsers, not an iOS background service. WebKit calls remain on the main actor, while snapshot parsing, resource decoding and durable reading-state work run off it. Ordered saves survive chapter replacement; views receive library/status changes through database observation.
-
-In **Settings**, import/export JSON rules, share small rules as QR images, manage reader defaults, and clear caches. QR payloads over 1200 UTF-8 bytes use JSON export instead. Rules are installed only after their allowed hosts are shown. Rule removal and cache clearing preserve saved titles and reading progress.
-
-**Settings → Error report** collects errors through Apple's native logging and lets you review, share, or export a text report. It includes up to 200 errors from the current app session, excluding normal activity and cancellation; see [diagnostics](docs/DIAGNOSTICS.md) for coverage and privacy limits.
-
-Run core tests and all platform builds with `bash scripts/verify.sh`. Generic simulator builds do not require installed simulator runtimes. The native UI suite has two distinct journeys: Library/Browse/navigation/actions (including site order), and reader gestures/chrome/position restoration. Database migration and retention details stay in core tests. Use a dedicated iPhone or iPad simulator for UI checks, because they change saved titles, site order, reader preferences, and reading history. Run Product → Test, or:
+To build for the iOS simulator from the terminal:
 
 ```sh
 xcodebuild -project MangaViewer.xcodeproj -scheme MangaViewer \
-  -destination 'platform=iOS Simulator,id=<SIMULATOR-UDID>' \
-  -derivedDataPath build -parallel-testing-enabled NO \
-  -collect-test-diagnostics never CODE_SIGNING_ALLOWED=NO test
+  -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
 ```
 
-Actual device signing requires your own Apple development team. The current verification record and remaining manual checks are in [DEV_STATE](docs/DEV_STATE.md).
+Run the core tests with `swift test --package-path Packages/MangaCore`. Run core tests and all three platform builds with `bash scripts/verify.sh`. For UI tests, select a dedicated iPhone/iPad simulator in Xcode and use Product → Test; the tests change that simulator's library and reader preferences.
 
-Manhuagui's live browsing and chapter images passed earlier iPhone and iPad checks. Connectivity recovered for the 2026-10-21 catalog, update and search checks. Directory rule v10 creates known-metadata previews from each illustrated manga link, without loading chapter catalogs for cards; see [DEV_STATE](docs/DEV_STATE.md) for verification. Its JSON rule requests desktop content for chapters, configures the generic WebKit observer and puts chapters in reading order; Swift contains no site-specific parser. The bundled reading room remains the deterministic end-to-end baseline. Refresh can renew image URLs when the source supplies new ones.
+## Create a site rule with AI
 
-Core objects are Codable content snapshots with declarative range loads and optional known items; they own no browser, task or cursor state. Chapters default to rendered DOM extraction. Rules can declare a total count before all image URLs are visible; pages resolve their missing URL when requested, using rule-defined load, page or scroll actions in a retained browser. The shared core context owns pagination and caches; views never follow source next links. Passive per-session resource buffers reuse acquired bytes before new image requests, with URL/rule/referer isolation. The browser lookup reads only already-decoded, accessible images; it never issues a fetch to fill a miss. Cross-origin pixels blocked by WebKit fall back to the normal central HTTP request. Known metadata creates normal keyed objects governed by their owning rule and the shared cache policy; it never downgrades a complete cached manga. Cover thumbnails have a protected memory allocation and higher disk retention priority. Refresh and cache clearing remain explicit.
+A rule describes a website's browse lists, search, manga metadata, chapter order, and page images. All website-specific parsing lives in JSON; rules cannot import executable scripts.
+
+1. Give a capable coding AI this repository, the [AI authoring prompt](rule-authoring/PROMPT.md), and the [rule-authoring guide](rule-authoring/GUIDE.md).
+2. Fill in the site's public URL, example directory/manga/chapter URLs, and a search query. Ask the AI to inspect normal site behavior and produce a rule JSON file plus a record of what it actually verified.
+3. Have it validate complete chapter order and page counts, decoded images, search, and pagination where supported. The guide includes probe commands; for example:
+
+   ```sh
+   swift run --package-path Packages/MangaCore manga-probe \
+     --rule /path/to/site.json --rendered --previews 'https://reader.example/catalog'
+   ```
+
+4. Import the resulting JSON in **Settings → Site rules**, review its allowed hosts, and try it in the app. You can export rules to share them. Updating a rule keeps your saved books and reading history.
+
+The [rule format reference](docs/RULES.md) lists supported fields and examples. Keep the same rule ID and increment its version when updating a recipe.
+
+## More documentation
+
+- [Design and architecture](docs/MangaViewer_DESIGN.md)
+- [Development state, verification, and known limitations](docs/DEV_STATE.md)
+- [Image processing](docs/IMAGE_PROCESSING.md) · [Localization](docs/LOCALIZATION.md) · [Error reports](docs/DIAGNOSTICS.md)
+- [Icon Composer source and workflow](docs/ICON.md) · [Screenshot provenance](docs/images/README.md)
+- [Development conventions](AGENTS.md)
+
+## License
+
+[MIT](LICENSE), © 2026 depctg. Third-party dependencies and website content retain their respective licenses and rights.

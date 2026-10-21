@@ -122,7 +122,7 @@ import XCTest
         app.buttons["manga.star"].tap()
         XCTAssertEqual(app.buttons["manga.star"].label, "Unstar")
         app.buttons["2 · Starlight"].tap()
-        XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
+        XCTAssertTrue(wait { app.descendants(matching: .any)["reader.chapterTitle"].firstMatch.label == "2 · Starlight" })
         app.buttons["Back to manga"].tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue((app.buttons["2 · Starlight"].value as? String)?.hasPrefix("Current chapter,") == true)
@@ -149,7 +149,7 @@ import XCTest
         goBack(in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         app.buttons["library.resume.demo|https://demo.mangaviewer.local/series/observatory"].tap()
-        XCTAssertTrue(wait { app.staticTexts["reader.chapterTitle"].label == "2 · Starlight" })
+        XCTAssertTrue(wait { app.descendants(matching: .any)["reader.chapterTitle"].firstMatch.label == "2 · Starlight" })
         app.buttons["reader.collapse"].tap()
         XCTAssertTrue(libraryTab.isSelected)
         row.swipeLeft()
@@ -219,7 +219,7 @@ import XCTest
         select("Right to left", in: "Direction", app: app)
         setAdjustment("Detect spreads", enabled: false, app: app)
         setAdjustment("Facing pages in wide windows", enabled: false, app: app)
-        let title = app.staticTexts["reader.chapterTitle"]
+        let title = app.descendants(matching: .any)["reader.chapterTitle"].firstMatch
         XCTAssertEqual(title.label, "1 · Arrival")
 
         // RTL: drag right to reveal the next source page.
@@ -386,12 +386,13 @@ import XCTest
                    withVelocity: fast ? .fast : .slow, thenHoldForDuration: fast ? 0 : 0.3)
     }
     private func checkChapterBoundary(in app: XCUIApplication, axis: CGVector) {
-        let title = app.staticTexts["reader.chapterTitle"], counter = app.staticTexts["reader.pageCounter"]
+        let title = app.descendants(matching: .any)["reader.chapterTitle"].firstMatch, counter = app.staticTexts["reader.pageCounter"]
         pull(in: app, axis: axis, from: -0.25, to: -0.15, fast: true)
         XCTAssertEqual(title.label, "1 · Arrival", "Short pulls and momentum cannot switch chapters")
         let center = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
-        pull(in: app, axis: axis, from: -0.4, to: 0.4)
+        XCTAssertTrue(wait { !app.buttons["Reader options"].isHittable })
+        pull(in: app, axis: axis, from: -0.25, to: 0.45)
         let switched = wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" }
         if !switched {
             let capture = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
@@ -412,7 +413,8 @@ import XCTest
         // Boundary pulls target unobstructed artwork, including native vertical toolbars.
         // Verify backward chapter changes retain immersion just like forward changes.
         center.tap()
-        pull(in: app, axis: axis, from: 0.35, to: -0.45)
+        XCTAssertTrue(wait { !app.buttons["Reader options"].isHittable })
+        pull(in: app, axis: axis, from: 0.25, to: -0.45)
         XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") }, "Backward landing: \(counter.value ?? "unknown"), \(counter.label)")
         XCTAssertFalse(title.exists)
         center.tap()
@@ -433,7 +435,7 @@ import XCTest
         let frame = image.frame
         let center = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
-        XCTAssertTrue(wait { !app.staticTexts["reader.chapterTitle"].exists && !app.buttons["Reader options"].isHittable })
+        XCTAssertTrue(wait { !app.descendants(matching: .any)["reader.chapterTitle"].firstMatch.exists && !app.buttons["Reader options"].isHittable })
         let counter = app.staticTexts["reader.pageCounter"]
         XCTAssertTrue(counter.exists)
         XCTAssertEqual(counter.value as? String, "1 · Arrival")

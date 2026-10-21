@@ -101,10 +101,10 @@ extension ReadingPosition {
 extension PageObject {
     /// Warm the same image cache used by later display requests. Analysis runs off
     /// the UI executor; neither the page snapshot nor a view owns the cached bytes.
-    public func prepare(using repository: ObjectRepository) async throws -> ImageAnalysis {
+    @concurrent public func prepare(using repository: ObjectRepository) async throws -> ImageAnalysis {
         let image = try await image(using: repository)
         try Task.checkCancellation()
-        let result = await Task.detached(priority: .utility) { ImageProcessing.analyze(image) }.value
+        let result = ImageProcessing.analyze(image)
         try Task.checkCancellation()
         return result
     }

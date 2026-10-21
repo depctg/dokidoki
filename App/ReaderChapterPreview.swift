@@ -14,17 +14,17 @@ struct ReaderChapterPreview: View {
         let forward = direction == .next
         let reference = reader.adjacentChapter(direction)
         let preview = reader.previews[direction]
-        let ready = reveal >= 0.25 && reference != nil
+        let ready = reveal >= ReaderView.chapterSwitchThreshold && reference != nil
         let title = reference?.title ?? (forward ? String(localized: "No next chapter") : String(localized: "No previous chapter"))
         let hint = reference == nil ? (forward ? String(localized: "End of manga") : String(localized: "Beginning of manga"))
             : (ready ? (forward ? String(localized: "Release for next chapter") : String(localized: "Release for previous chapter"))
                : String(localized: "Pull farther to continue"))
         let gap = min(paged ? size.width : size.height, (paged ? size.width : size.height) * reveal)
-        let restingGap = (paged ? size.width : size.height) * 0.25
+        let restingGap = (paged ? size.width : size.height) * ReaderView.chapterSwitchThreshold
         let left = forward == (model.preferences.direction == .rightToLeft)
         let center = paged ? CGPoint(x: left ? gap / 2 : size.width - gap / 2, y: size.height / 2)
             : CGPoint(x: size.width / 2, y: forward ? size.height - gap / 2 : gap / 2)
-        let growth = min(1.15, reveal / 0.25)
+        let growth = min(1.15, reveal / ReaderView.chapterSwitchThreshold)
         let imageWidth = max(1, min(paged ? 260 : 240, size.width * (paged ? 0.42 : 0.34)) * growth)
         let imageHeight = max(1, size.height * (paged ? 0.4 : 0.23) * growth)
         return ZStack {
