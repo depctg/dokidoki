@@ -163,16 +163,32 @@ enum AppSection: String, CaseIterable, Identifiable {
                 } while loaded == nil
                 guard case .chapter(let chapter) = loaded else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
                 try Task.checkCancellation()
-                presentChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
+                await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
             } catch is CancellationError {} catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
     func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
-        chapterRequest?.cancel(); chapterRequest = nil; openingChapter = false
+        chapterRequest?.cancel(); openingChapter = true
+        chapterRequest = Task {
+            defer { if !Task.isCancelled { openingChapter = false } }
+            await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
+        }
+    }
+    private func replaceChapter(_ chapter: ChapterObject, expand: Bool, preserveImmersion: Bool, fromEnd: Bool, listID: String?) async {
+        let next = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd, listID: listID)
+        // Keep the current surface visible while core prepares the incoming content.
+        if readerExpanded, let reader {
+            reader.save()
+            next.size = reader.size
+            await next.load()
+            guard !Task.isCancelled else { return }
+            if let error = next.error { self.error = error; return }
+        }
+        guard !Task.isCancelled else { return }
         reader?.stop()
-        reader = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd, listID: listID)
+        reader = next
         if !preserveImmersion { readerImmersive = false }
         readerExpanded = expand
     }

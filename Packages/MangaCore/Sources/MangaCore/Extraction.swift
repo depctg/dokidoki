@@ -79,6 +79,15 @@ public struct RuleExtractor: Sendable {
             return nil
         }
         var variables: [String: String] = [:]
+        func components(_ value: String) -> URLComponents? {
+            // Source URLs may mix Unicode with existing escapes. Encode only the
+            // remaining URI characters, then reject malformed escapes instead of
+            // letting Foundation repair them by encoding every percent again.
+            let allowed = CharacterSet.urlPathAllowed.union(.urlQueryAllowed)
+                .union(.urlFragmentAllowed).union(CharacterSet(charactersIn: "%#"))
+            guard let encoded = value.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+            return URLComponents(string: encoded, encodingInvalidCharacters: false)
+        }
         func extract(_ field: Field, relativeTo selection: Selection? = nil, container: Bool = false) throws -> [Selection] {
             var entries: [Selection]
             if let html { entries = try html.values(field, relativeTo: selection?.node, container: container) }
@@ -119,7 +128,7 @@ public struct RuleExtractor: Sendable {
                     }
                 }
                 if let path = field.queryPath {
-                    guard let query = nodes(at: path, from: selection?.json).first as? [String: Any], var components = URLComponents(string: value) else { throw ReaderError.extraction(String(localized: "Query parameters must be a JSON object.", bundle: .module)) }
+                    guard let query = nodes(at: path, from: selection?.json).first as? [String: Any], var components = components(value) else { throw ReaderError.extraction(String(localized: "Query parameters must be a JSON object.", bundle: .module)) }
                     let items = try query.keys.sorted().map { key in
                         guard let value = scalar(query[key]) else { throw ReaderError.extraction(String(localized: "Query parameters must be strings or numbers.", bundle: .module)) }
                         return URLQueryItem(name: key, value: value)
@@ -149,8 +158,10 @@ public struct RuleExtractor: Sendable {
             }
         }
         func url(_ string: String) throws -> URL {
-            guard let url = URL(string: string, relativeTo: responseURL)?.absoluteURL, rule.permits(url) else { throw ReaderError.blockedHost }
-            return try RuleRegistry.normalize(url)
+            guard let url = components(string)?.url(relativeTo: responseURL)?.absoluteURL else { throw ReaderError.blockedHost }
+            let normalized = try RuleRegistry.normalize(url)
+            guard rule.permits(normalized) else { throw ReaderError.blockedHost }
+            return normalized
         }
         var children: [ContentObject] = []
         // Documents and links use one typed constructor. Missing relationships stay unknown.

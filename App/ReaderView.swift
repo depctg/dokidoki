@@ -12,7 +12,8 @@ struct ReaderView: View {
     @State private var scrollPosition = ScrollPosition(idType: String.self)
     @State private var frames: [String: CGRect] = [:]
     @State private var scrollOffset = 0.0
-    @State private var restoring = false
+    @State private var restoration: UUID?
+    @State private var contentID: UUID?
     @State private var userScrolling = false
     @State private var pendingRestore = false
     @State private var restoreRequest = 0
@@ -30,6 +31,9 @@ struct ReaderView: View {
         chapterTransition?.direction ?? (signedPull == 0 ? nil : (signedPull > 0 ? .next : .previous))
     }
     private var rtl: Bool { model.preferences.direction == .rightToLeft }
+    private var canRecordPosition: Bool {
+        contentID == reader.id && reader.active && !model.openingChapter && !pendingRestore && restoration == nil
+    }
     private var preloadHint: String? {
         guard reader.chapterToPrefetch(.next) != nil else { return nil }
         if reader.previews[.next]?.page != nil { return nil }
@@ -57,6 +61,7 @@ struct ReaderView: View {
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
             .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan(restore: true) }
+            .onChange(of: reader.id) { _, _ in reader.size = geometry.size; reader.replan(restore: true) }
         }
         .background(Color(white: 0.08)).preferredColorScheme(.dark)
         .overlay(alignment: .bottomTrailing) {
@@ -122,24 +127,32 @@ struct ReaderView: View {
             if old.mode == .paged, new.mode != .paged { pagedID = nil; pagerReady = false }
             reader.replan(restore: true)
         }
-        .onChange(of: model.preferences.mode == .paged && reader.index == reader.plans.count - 1 && reader.finalPageReady, initial: true) { _, finished in
-            if finished { reader.finishReading() }
+        .onChange(of: model.preferences.mode == .paged && canRecordPosition && reader.index == reader.plans.count - 1 && reader.finalPageReady ? reader.id : nil, initial: true) { _, chapter in
+            if chapter != nil { reader.finishReading() }
         }
         .onChange(of: reader.index) { _, _ in zoom = 1; zoomStart = 1; reader.save() }
         .onChange(of: scenePhase) { _, phase in if phase != .active { reader.save(); chapterTransition = nil; chapterPull = ScrollPull() } }
         .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; chapterPull = ScrollPull() } }
         .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; chapterPull = ScrollPull() } }
-        .overlay { if model.openingChapter { ProgressView("Opening chapter…").padding().background(.regularMaterial, in: .rect(cornerRadius: 12)) } }
+        .onChange(of: reader.id, initial: true) { _, _ in
+            // The native scroll surfaces and chrome survive chapter replacement.
+            // Keep observed geometry/phase; protect the incoming position until
+            // its explicit restore, including an outgoing rubber-band return.
+            zoom = 1; zoomStart = 1
+            pendingRestore = true; chapterPull = ScrollPull(); chapterTransition = nil
+            contentID = reader.id
+            restoreRequest += 1
+        }
         .onDisappear { chapterTransition = nil; reader.stop() }
-        .task(id: model.loadingRevision) {
+        .task(id: "\(reader.id)|\(model.loadingRevision)") {
             #if os(macOS)
             focused = true
             #endif
             await reader.activate()
         }
-        .task(id: "\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.next) }
-        .task(id: "\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.previous) }
-        .task(id: "\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
+        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.next) }
+        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)") { await reader.preloadChapter(.previous) }
+        .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)-\(pagerReady)") { await restorePosition() }
     }
     private var options: some View {
         @Bindable var app = model
@@ -192,13 +205,13 @@ struct ReaderView: View {
             .scrollBounceBehavior(.always, axes: .horizontal)
             .scrollPosition(id: $pagedID)
             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
-            .scrollDisabled(zoom > 1)
+            .scrollDisabled(zoom > 1 || model.openingChapter)
             .opacity(zoom > 1 ? 0 : 1)
             .onScrollGeometryChange(for: Bool.self) { $0.contentSize.width > 0 && $0.containerSize.width > 0 } action: { _, ready in
                 pagerReady = ready
             }
             .onChange(of: pagedID) { _, id in
-                guard userScrolling, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
+                guard userScrolling, canRecordPosition, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
                 reader.record(index: index, within: 0, preserveSource: false)
             }
             .modifier(chapterOverscroll)
@@ -207,7 +220,7 @@ struct ReaderView: View {
                     DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
                         .frame(width: size.width * zoom, height: size.height * zoom)
                         .contentShape(Rectangle()).onTapGesture { toggleChrome() }
-                }.scrollIndicators(.hidden)
+                }.scrollIndicators(.hidden).scrollDisabled(model.openingChapter)
             }
         }
         .accessibilityIdentifier("reader.viewport")
@@ -235,7 +248,8 @@ struct ReaderView: View {
         ScrollView {
             LazyVStack(spacing: 12) {
                 ForEach(reader.plans) { plan in
-                    let finalReady = reader.finalPageReady && plan.id == reader.plans.last?.id
+                    let finalReady = canRecordPosition
+                        && reader.finalPageReady && plan.id == reader.plans.last?.id
                     DisplayImageView(plan: plan, pages: reader.pages, model: model, onLoad: reader.preparePages)
                         .frame(width: max(1, size.width - 24), height: reader.height(plan, width: max(1, size.width - 24)))
                         // The scroll target occupies the whole viewport; artwork insets
@@ -258,6 +272,7 @@ struct ReaderView: View {
         .accessibilityIdentifier("reader.viewport")
         .coordinateSpace(name: "readerViewport")
         .scrollBounceBehavior(.always)
+        .scrollDisabled(model.openingChapter)
         .scrollPosition($scrollPosition)
         .onPreferenceChange(ReaderFrames.self) { frames = $0; recordScroll() }
         // ScrollPosition's y coordinate starts after the top inset, unlike contentOffset.
@@ -272,14 +287,14 @@ struct ReaderView: View {
                          }, onPhaseChange: scrollPhaseChanged)
     }
     private func scrollPhaseChanged(_ phase: ScrollPhase) {
-        userScrolling = phase != .idle
+        userScrolling = phase == .tracking || phase == .interacting || phase == .decelerating
         reader.setInteracting(userScrolling)
         if phase == .idle {
-            if model.preferences.mode == .paged, let index = reader.plans.firstIndex(where: { $0.id == pagedID }) {
+            if canRecordPosition, model.preferences.mode == .paged, let index = reader.plans.firstIndex(where: { $0.id == pagedID }) {
                 reader.record(index: index, within: 0, preserveSource: false)
             }
             reader.save()
-            if pendingRestore { pendingRestore = false; restoreRequest += 1 }
+            if pendingRestore { restoreRequest += 1 }
         }
     }
     private func advanceChapter(_ direction: ChapterDirection) {
@@ -297,7 +312,7 @@ struct ReaderView: View {
         }
     }
     private func recordScroll() {
-        guard !restoring, userScrolling else { return }
+        guard canRecordPosition, userScrolling else { return }
         let visible = frames.filter { $0.value.maxY > 1 }.min { $0.value.minY < $1.value.minY }
         guard let (id, rect) = visible, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
         reader.record(index: index, within: max(0, -rect.minY) / max(1, rect.height))
@@ -306,12 +321,17 @@ struct ReaderView: View {
         guard let plan = reader.current else { return }
         guard !userScrolling else { pendingRestore = true; return }
         if model.preferences.mode == .paged {
+            // An early target assignment can be consumed before layout; repeating
+            // the same binding value afterward does not issue another scroll.
             guard pagerReady else { return }
             pagedID = plan.id
+            pendingRestore = false
             return
         }
-        restoring = true
-        defer { restoring = false }
+        pendingRestore = false
+        let request = UUID()
+        restoration = request
+        defer { if restoration == request { restoration = nil } }
         let within = reader.withinPage
         scrollPosition.scrollTo(id: plan.id, anchor: .top)
         do { try await Task.sleep(for: .milliseconds(100)); try Task.checkCancellation() } catch { return }

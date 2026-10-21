@@ -246,7 +246,12 @@ import XCTest
         XCTAssertTrue(resume.waitForExistence(timeout: 8))
         resume.tap()
         XCTAssertTrue(counter.waitForExistence(timeout: 8))
-        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+        let resumedPage = wait { self.visiblePage(in: app) == "Comic page 2" }
+        if !resumedPage {
+            let capture = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            capture.name = "Resume restoration failure"; add(capture)
+        }
+        XCTAssertTrue(resumedPage, "Resume: \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
 
         // Check actual content, since a stale counter alone would hide lost restoration.
         select("Scroll", in: "Mode", app: app)
@@ -387,7 +392,12 @@ import XCTest
         let center = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         center.tap()
         pull(in: app, axis: axis, from: -0.4, to: 0.4)
-        XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" })
+        let switched = wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" }
+        if !switched {
+            let capture = XCTAttachment(screenshot: app.windows.firstMatch.screenshot())
+            capture.name = "Chapter replacement failure"; add(capture)
+        }
+        XCTAssertTrue(switched, "Forward landing: \(counter.value ?? "unknown"), \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
         XCTAssertFalse(title.exists, "Chapter switching retains immersion")
         center.tap()
         XCTAssertTrue(wait { app.buttons["Previous chapter"].isEnabled })

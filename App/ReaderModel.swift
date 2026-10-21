@@ -38,7 +38,7 @@ struct ChapterPreview {
     private var pendingReplan = false
     private var pendingRestore = false
     private var learned: [ObjectKey: ImageAnalysis] = [:]
-    private var active = false
+    private(set) var active = false
     private var metadataLoaded = false
     var index: Int { PagePipeline.index(for: source, fraction: fraction, in: plans) }
     var current: DisplayPage? { plans.indices.contains(index) ? plans[index] : nil }
@@ -93,7 +93,13 @@ struct ChapterPreview {
                     try Task.checkCancellation()
                 }
             }
-            replan(restore: true)
+            // Publish an initial complete plan even when preparing an incoming
+            // chapter before it becomes the active reader.
+            let planned = await pipeline.plan(pages.map(\.key), context: ReaderContext(
+                size: size, preferences: app.preferences, analysis: analysis, overrides: overrides))
+            try Task.checkCancellation()
+            plans = planned; revision += 1
+            preparePages()
             loading = false
             await loadMangaMetadata()
         } catch is CancellationError {} catch { self.error = error.localizedDescription }

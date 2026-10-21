@@ -3,6 +3,37 @@ import Testing
 @testable import MangaCore
 
 struct ParsingTests {
+    @Test(arguments: [false, true]) func extractedURLsPreserveEscapesWhenEncodingUnicode(appendQuery: Bool) throws {
+        var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
+        json["allowedHosts"] = (json["allowedHosts"] as! [String]) + ["xn--bcher-kva.example"]
+        var extractors = json["extractors"] as! [String: Any]
+        var images: [String: Any] = ["path": "files.*", "urlTemplate": "{base}{value}"]
+        if appendQuery { images["queryPath"] = "query" }
+        extractors["chapter"] = ["format": "json", "fields": ["title": ["path": "title"], "pageImages": images]]
+        json["extractors"] = extractors
+        let rule = try SiteRule.decode(JSONSerialization.data(withJSONObject: json))
+        let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
+        let files = ["a%20b.jpg", "a%2Fb.jpg", "100%25.jpg", "a[1]%20b.jpg?existing=a%26b"]
+        var input: [String: Any] = ["title": "Example", "base": "../卷/", "files": files, "query": ["token": "a&b=c"]]
+        let objects = try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: input), responseURL: key.identityURL, key: key, kind: .chapter, rule: rule)
+        let urls = objects.compactMap { if case .page(let page) = $0 { page.imageURL } else { nil } }
+        #expect(urls.map { $0.path(percentEncoded: true) } == ["a%20b.jpg", "a%2Fb.jpg", "100%25.jpg", "a%5B1%5D%20b.jpg"].map { "/%E5%8D%B7/" + $0 })
+        for url in urls {
+            let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems
+            #expect(query?.first { $0.name == "token" }?.value == (appendQuery ? "a&b=c" : nil))
+        }
+        #expect(URLComponents(url: urls.last!, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "existing" }?.value == "a&b")
+        input["base"] = "https://bücher.example/卷/"
+        let international = try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: input), responseURL: key.identityURL, key: key, kind: .chapter, rule: rule)
+        guard case .page(let page) = international[1] else { throw ReaderError.invalidResponse }
+        #expect(page.imageURL?.host == "xn--bcher-kva.example")
+        #expect(page.imageURL?.path(percentEncoded: true) == "/%E5%8D%B7/a%20b.jpg")
+        for base in ["https://undeclared.example/卷/", "../卷/%GG/"] {
+            input["base"] = base
+            #expect(throws: ReaderError.self) { try RuleExtractor().extract(data: JSONSerialization.data(withJSONObject: input), responseURL: key.identityURL, key: key, kind: .chapter, rule: rule) }
+        }
+    }
+
     @Test func renderedReadinessAndResourceOptionsRemainDataOnly() throws {
         var json = try JSONSerialization.jsonObject(with: DemoContent.bundledRules().first { $0.id == "demo" }!.exported()) as! [String: Any]
         var extractors = json["extractors"] as! [String: [String: Any]]

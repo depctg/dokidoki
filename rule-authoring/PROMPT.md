@@ -67,3 +67,5 @@ docs/RULES.md and this guide/prompt whenever the language or authoring workflow
 changes; keep these two files outside all Swift targets/resources. Follow the
 repository milestone checklist, including clean-session review and DEV_STATE.
 ```
+
+URL encoding: preserve source-provided percent escapes in URL templates; Unicode path text may remain literal. Core normalizes the resulting URI without double-encoding existing escapes and rejects malformed escapes. Supply unencoded scalar query values to `queryPath`; never decode an entire URL or invent suffixes.

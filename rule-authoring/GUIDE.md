@@ -58,3 +58,5 @@ The bundled `00-mangacopy.json` demonstrates one rendered homepage providing thr
 When changing the language, update `docs/RULES.md`, this guide and the prompt in the same milestone. Record limits and verification honestly, including failed or unavailable checks. Audit production Swift/bridge code for source-specific strings. Verify these authoring files have not entered a target/resource directory, resolve clean-session review findings, then commit JSON/code/documentation together.
 
 Cache boundary: linked metadata creates ordinary keyed objects governed by the owning site rule. Do not invent TTL/expiry/priority fields in JSON. Core alone controls bounded cache retention using priority and recency; known titles/cover URLs avoid redundant detail requests. Explicit Refresh renews source data.
+
+URL encoding: preserve source-provided percent escapes in URL templates; Unicode path text may remain literal. Core normalizes the resulting URI without double-encoding existing escapes and rejects malformed escapes. Supply unencoded scalar query values to `queryPath`; never decode an entire URL or invent suffixes.

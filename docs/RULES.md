@@ -14,7 +14,7 @@ Each extractor has `fields` and an optional `format` (default `renderedHTML`):
 - Optional field `urlTemplate` substitutes `{value}` (the selected/regex-filtered value), `{vars.name}`, and `{dotted.json.path}` scalar values. Missing placeholders fail extraction. There are no functions, operators, loops, or evaluation of code.
 - Optional field `queryPath` names a JSON object whose scalar values are appended as URL query parameters using Foundation's URL encoding.
 
-URLs resolve against the final response URL and must still pass the exact-host policy after substitutions. Templates do not confer network permissions. Extensions remain literal data: the engine never guesses image filename suffixes or CDN paths.
+Extracted URL text may mix Unicode and existing percent escapes; core encodes remaining URI characters without decoding existing escapes, and rejects malformed escapes. Supply plain scalar values to `queryPath`, which applies native query encoding once. URLs resolve against the final response URL and must still pass the exact-host policy after substitutions. Templates do not confer network permissions. Extensions remain literal data: the engine never guesses image filename suffixes or CDN paths.
 
 | Kind | Required fields | Optional fields |
 | --- | --- | --- |

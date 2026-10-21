@@ -10,7 +10,7 @@ struct ReaderPresentation: View {
             NavigationStack {
                 Group {
                     if let reader = model.reader {
-                        ReaderView(reader: reader, model: model).id(reader.id).transition(.opacity)
+                        ReaderView(reader: reader, model: model)
                     } else {
                         ProgressView("Opening chapter…")
                             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Collapse reader") { model.collapseReader() } } }
@@ -27,7 +27,6 @@ struct ReaderPresentation: View {
             #if os(iOS)
             .statusBarHidden(model.readerImmersive)
             #endif
-            .animation(.easeOut(duration: 0.2), value: model.reader?.id)
             .offset(dragOffset)
             .simultaneousGesture(DragGesture(minimumDistance: 20, coordinateSpace: .named("readerPresentation"))
                 .onChanged { value in
