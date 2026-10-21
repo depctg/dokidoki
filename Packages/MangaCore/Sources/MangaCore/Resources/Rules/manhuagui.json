@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "manhuagui",
   "name": "漫画柜 · Manhuagui",
-  "version": 9,
+  "version": 10,
   "allowedHosts": [
     "www.manhuagui.com",
     "cf.mhgui.com",
@@ -41,8 +41,32 @@
           "path": "//title"
         },
         "mangaLinks": {
-          "path": "//a[starts-with(@href,\"/comic/\") or starts-with(@href,\"/book/\")]",
-          "read": "attr:href"
+          "path": "//a[(starts-with(@href,\"/comic/\") or starts-with(@href,\"/book/\")) and .//img]",
+          "read": "attr:href",
+          "fields": {
+            "title": {
+              "path": ".",
+              "read": "attr:title",
+              "fallback": "text"
+            },
+            "coverImage": {
+              "path": ".//img",
+              "read": "attr:data-src",
+              "fallback": "attr:src"
+            },
+            "rating": {
+              "path": "ancestor::li[1]//span[@class=\"updateon\"]/em | ancestor::li[1]//p[@class=\"score-avg\"]/strong"
+            },
+            "status": {
+              "path": "ancestor::li[1]//dd[contains(concat(\" \",normalize-space(@class),\" \"),\" status \")]/span/span[1]"
+            },
+            "author": {
+              "path": "ancestor::li[1]//span[strong[contains(.,\"作者\")]]/a"
+            },
+            "tags": {
+              "path": "ancestor::li[1]//span[strong[contains(.,\"类型\")]]/a"
+            }
+          }
         },
         "next": {
           "path": "//div[@class=\"pager\"]/a[normalize-space(.)=\"下一页\"]",

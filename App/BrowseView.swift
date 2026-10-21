@@ -6,8 +6,7 @@ struct BrowseView: View {
     @State private var openingURL = false
     var body: some View {
         ScrollView {
-            if model.section != .browse { Color.clear }
-            else if let site = model.browseSite {
+            if let site = model.browseSite {
                 LazyVStack(alignment: .leading, spacing: 28) {
                     Text(site.name).font(.title2.bold()).padding(.horizontal, 20)
                         .accessibilityIdentifier("browse.siteTitle")
@@ -112,6 +111,8 @@ struct BrowseLists: View {
     @State private var directories: [DirectoryObject]?
     @State private var error: String?
     @State private var attempt = 0
+    @State private var loadedIdentity: String?
+    private var identity: String { "\(attempt)|\(model.loadingRevision)" }
     var body: some View {
         LazyVStack(alignment: .leading, spacing: 28) {
             if let directories {
@@ -127,12 +128,14 @@ struct BrowseLists: View {
                 }.padding(.horizontal, 20)
             } else { ProgressView("Loading titles…").padding(20) }
         }
-        .task(id: "\(attempt)|\(model.loadingRevision)") {
+        .task(id: identity) {
+            guard loadedIdentity != identity else { return }
+            let requestedIdentity = identity
             directories = nil; error = nil
             do {
                 guard let repository = model.repository else { return }
                 let loaded = try await load(repository, attempt > 0 ? .forceRefresh : .preferCache)
-                try Task.checkCancellation(); directories = loaded
+                try Task.checkCancellation(); directories = loaded; loadedIdentity = requestedIdentity
             } catch is CancellationError {} catch { if !Task.isCancelled { self.error = error.localizedDescription } }
         }
     }
@@ -184,7 +187,7 @@ struct MangaPreview: View {
                 }.frame(width: 148, alignment: .leading)
             } else {
                 HStack(spacing: 14) {
-                    artwork.frame(width: 52)
+                    artwork.frame(width: 52, height: 90)
                     details
                 }.padding(.vertical, 4)
             }

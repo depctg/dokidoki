@@ -2696,22 +2696,6 @@
         }
       }
     },
-    "Tap to load more": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tap to load more"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "轻点加载更多"
-          }
-        }
-      }
-    },
     "Reading": {
       "localizations": {
         "en": {
@@ -2948,6 +2932,22 @@
           "stringUnit": {
             "state": "translated",
             "value": "版本"
+          }
+        }
+      }
+    },
+    "More titles load as you scroll.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More titles load as you scroll."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "向下浏览时会自动加载更多漫画。"
           }
         }
       }

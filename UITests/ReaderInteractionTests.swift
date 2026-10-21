@@ -38,17 +38,10 @@ import XCTest
         XCTAssertTrue(app.navigationBars["Search results"].waitForExistence(timeout: 8))
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8))
         XCTAssertTrue(app.buttons["directory.sort"].exists)
-        // The plain footer is a native button; one tap appends the next range.
-        let footer = app.buttons["directory.loadMore"]
-        XCTAssertTrue(footer.waitForExistence(timeout: 8))
-        if footer.label == "No more titles" {
-            app.buttons["More"].tap()
-            app.buttons["Refresh"].tap()
-            XCTAssertTrue(wait { footer.label == "Tap to load more" })
-        }
-        footer.tap()
+        // Native row appearance loads the next range without a footer tap.
+        let footer = app.staticTexts["directory.footer"]
         XCTAssertTrue(aster.waitForExistence(timeout: 8))
-        XCTAssertTrue(wait { footer.label == "No more titles" && !footer.isEnabled })
+        XCTAssertTrue(wait { footer.label == "No more titles" })
         listedManga.tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Rating: 9.2 / 10"].exists)
@@ -57,6 +50,7 @@ import XCTest
         XCTAssertTrue(app.staticTexts["Tags: Science fiction, Adventure"].exists)
         app.navigationBars.buttons["Search results"].tap()
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8), "Returning from a result retains the submitted search")
+        XCTAssertTrue(aster.exists && footer.label == "No more titles", "Returning retains the loaded directory range")
         XCTAssertFalse(app.staticTexts["Search this site"].exists)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         listedManga.tap()
@@ -132,7 +126,12 @@ import XCTest
         app.buttons["Back to manga"].tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue((app.buttons["2 · Starlight"].value as? String)?.hasPrefix("Current chapter,") == true)
-        XCTAssertTrue(app.buttons["2 · Starlight"].isHittable)
+        XCTAssertTrue(wait { !counter.exists })
+        let currentRow = app.buttons["2 · Starlight"]
+        XCTAssertTrue(app.frame.contains(currentRow.frame), "Back to manga reveals the current chapter")
+        currentRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(counter.waitForExistence(timeout: 8), "The revealed chapter remains interactive")
+        app.buttons["reader.collapse"].tap()
         selectSection("Settings", in: app)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         XCTAssertTrue(resume.isHittable)
@@ -400,7 +399,7 @@ import XCTest
         // Verify backward chapter changes retain immersion just like forward changes.
         center.tap()
         pull(in: app, axis: axis, from: 0.35, to: -0.45)
-        XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") })
+        XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") }, "Backward landing: \(counter.value ?? "unknown"), \(counter.label)")
         XCTAssertFalse(title.exists)
         center.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 5))

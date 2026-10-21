@@ -19,7 +19,7 @@ struct ScrollPull: Equatable {
     }
 }
 
-/// Shared native lifecycle for reader continuation and directory loading. Only a
+/// Native lifecycle for reader chapter continuation. Only a
 /// finger release emits an action; inertia may shrink an existing preview only.
 struct ScrollOverpull: ViewModifier {
     var axis: Axis = .vertical

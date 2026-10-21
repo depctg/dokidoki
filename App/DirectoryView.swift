@@ -11,6 +11,7 @@ struct DirectoryView: View {
     @State private var loadingMore = false
     @State private var loadRequest = 0
     @State private var loadError: String?
+    @State private var loadFailed = false
     private var current: DirectoryObject { accumulated ?? directory }
     private var hasMore: Bool { current.hasMore != false }
     private var references: [ContentReference] {
@@ -44,49 +45,57 @@ struct DirectoryView: View {
         }
     }
     private var list: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
+        List {
+            Section {
                 ForEach(references) { ref in
                     NavigationLink(value: AppRoute.object(ref.key)) {
-                        HStack(spacing: 12) {
-                            MangaPreview(reference: ref, model: model)
-                            Spacer(minLength: 0)
-                            Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.tertiary)
-                        }
-                        .padding(.vertical, 10).contentShape(Rectangle())
+                        MangaPreview(reference: ref, model: model)
                     }
-                    .buttonStyle(.plain)
                     .accessibilityIdentifier("manga.item.\(ref.key.id)")
-                    Divider().accessibilityHidden(true)
+                    .onAppear {
+                        if current.mangaRefs.suffix(5).contains(where: { $0.key == ref.key }) { requestMore() }
+                    }
                 }
-            }.padding(.horizontal, 20)
-            Button(action: requestMore) {
-                Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles") : String(localized: "Tap to load more"))
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity).padding(.vertical, 24).contentShape(Rectangle())
+            } footer: {
+                Group {
+                    if loadFailed {
+                        Button("Retry", action: retry).buttonStyle(.plain)
+                    } else {
+                        Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles") : String(localized: "More titles load as you scroll."))
+                    }
+                }
+                .font(.footnote).foregroundStyle(.secondary).textCase(nil)
+                .frame(maxWidth: .infinity).padding(.vertical, 16)
+                .accessibilityIdentifier("directory.footer")
+                .onAppear { if current.mangaRefs.isEmpty { requestMore() } }
             }
-            .buttonStyle(.plain).disabled(!hasMore || loadingMore)
-            .accessibilityIdentifier("directory.loadMore")
         }
+        .listStyle(.plain)
         .accessibilityIdentifier("directory.list")
-        .task(id: loadRequest) {
-            guard loadingMore, let repository = model.repository else { return }
-            defer { loadingMore = false }
+        .task(id: loadRequest) { [request = loadRequest] in
+            guard !Task.isCancelled, loadingMore, let repository = model.repository else { return }
+            defer { if loadRequest == request { loadingMore = false } }
             do {
                 let loaded = try await current.load(current.mangaRefs.count..<(current.mangaRefs.count + 20), using: repository)
                 try Task.checkCancellation()
                 accumulated = loaded
-            } catch is CancellationError {} catch { if !Task.isCancelled { loadError = error.localizedDescription } }
+            } catch is CancellationError {} catch {
+                if !Task.isCancelled { loadFailed = true; loadError = error.localizedDescription }
+            }
         }
         .alert("Could not load more", isPresented: Binding(get: { loadError != nil }, set: { if !$0 { loadError = nil } })) {
-            Button("Retry") { requestMore() }
+            Button("Retry", action: retry)
             Button("Cancel", role: .cancel) {}
         } message: { Text(loadError ?? "") }
         .overlay { if references.isEmpty && !hasMore { ContentUnavailableView.search(text: query).allowsHitTesting(false) } }
     }
     private func requestMore() {
-        guard hasMore, !loadingMore, model.repository != nil else { return }
+        guard query.isEmpty, hasMore, !loadingMore, !loadFailed, model.repository != nil else { return }
         loadError = nil; loadingMore = true; loadRequest += 1
+    }
+    private func retry() {
+        loadFailed = false
+        requestMore()
     }
     private func sortPicker(_ title: LocalizedStringKey, options: [ContentReference], selected: ObjectKey?) -> some View {
         Picker(title, selection: Binding<ObjectKey?>(get: {

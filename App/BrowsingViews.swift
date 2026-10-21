@@ -113,6 +113,8 @@ struct ObjectScreen: View {
     @State private var loading = false
     @State private var revision = UUID()
     @State private var loadID = UUID()
+    @State private var loadedIdentity: String?
+    private var identity: String { "\(key.id)|\(model.loadingRevision)" }
     var body: some View {
         Group {
             if let object {
@@ -132,7 +134,11 @@ struct ObjectScreen: View {
             else { ContentUnavailableView { Label("Could not open content", systemImage: "exclamationmark.triangle") } description: { Text(error ?? String(localized: "Try a supported URL.")) } actions: { Button("Retry") { Task { await load(.forceRefresh) } } } }
         }
         .id(revision)
-        .task(id: "\(key.id)|\(model.loadingRevision)") { object = nil; await load(.preferCache) }
+        .task(id: identity) {
+            guard loadedIdentity != identity else { return }
+            object = nil
+            await load(.preferCache)
+        }
         .toolbar {
             ToolbarItemGroup(placement: .secondaryAction) {
                 Button("Refresh", systemImage: "arrow.clockwise") { Task { await load(.forceRefresh) } }.disabled(loading)
@@ -146,14 +152,14 @@ struct ObjectScreen: View {
     private func load(_ hint: CacheHint) async {
         guard let repository = model.repository else { return }
         let request = UUID(); loadID = request
-        let target = key
+        let target = key, requestedIdentity = identity
         loading = true; error = nil
         defer { if loadID == request { loading = false } }
         do {
             let result = try await target.load(using: repository, hint: hint)
             try Task.checkCancellation()
-            guard loadID == request, key == target else { return }
-            object = result; revision = UUID()
+            guard loadID == request, identity == requestedIdentity else { return }
+            object = result; loadedIdentity = requestedIdentity; revision = UUID()
             if case .chapter(let chapter) = result { openChapter(chapter) }
         }
         catch is CancellationError {} catch {

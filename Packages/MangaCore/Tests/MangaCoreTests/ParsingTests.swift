@@ -50,6 +50,46 @@ struct ParsingTests {
             #expect(directory.mangaRefs.map(\.title) == ["Readable title"])
         }
     }
+    @Test func directoryRecipeSeedsCoversWithoutDetailRequests() async throws {
+        let rule = try #require(DemoContent.bundledRules().first { $0.id == "manhuagui" })
+        let url = URL(string: "https://www.manhuagui.com/list/")!
+        // Original synthetic catalog/update/search shapes; never downloaded source content.
+        let html = """
+        <title>List</title><ul>
+        <li><a class="bcover" href="/comic/123/" title="First"><img src="//cf.mhgui.com/first.png"></a>
+        <a href="/comic/123/">Duplicate title</a><span class="updateon">Today<em>8.5</em></span></li>
+        <li><a class="cover" href="/comic/124/" title="Second"><img data-src="//cf.mhgui.com/second.png" src="/placeholder"></a>
+        <span class="dt"><em>2026-10-21</em></span></li>
+        <li><div class="book-cover"><a class="bcover" href="/book/125/" title="Third"><img src="//cf.mhgui.com/third.png"></a></div>
+        <div class="book-detail"><dd class="tags status"><span><strong>状态：</strong><span>连载中</span><span>2026</span></span></dd>
+        <span><strong>类型：</strong><a>Adventure</a></span><span><strong>作者：</strong><a>Author</a></span>
+        <a href="/comic/123/456.html">Read</a></div><p class="score-avg"><strong>9.1</strong></p></li></ul>
+        """
+        let fetcher = TestFetcher(response: { requested in
+            #expect(requested == url)
+            return SourceResponse(data: Data(html.utf8), url: requested)
+        })
+        let repository = try ObjectRepository(store: ObjectStore(), rules: [rule], sender: RequestSender(fetcher: fetcher))
+        let key = ObjectKey(ruleID: rule.id, identityURL: url)
+        guard case .directory(let directory) = try await key.load(using: repository) else { throw ReaderError.invalidResponse }
+        #expect(directory.mangaRefs.map(\.title) == ["First", "Second", "Third"])
+        var previews: [MangaObject] = []
+        for reference in directory.mangaRefs {
+            guard case .manga(let manga) = try await reference.preview(using: repository) else { throw ReaderError.invalidResponse }
+            #expect(manga.chapters == nil)
+            let cover = try #require(try await manga.coverPage(using: repository))
+            #expect(cover.imageURL?.host == "cf.mhgui.com")
+            #expect(cover.ownerRef == manga.key && cover.sessionURL == url && cover.refererURL == url)
+            previews.append(manga)
+        }
+        #expect(previews.map(\.rating) == ["8.5", nil, "9.1"])
+        #expect(previews.last?.status == "连载中" && previews.last?.tags == ["Adventure"])
+        #expect(await fetcher.kinds == [.directory])
+        let empty = try RuleExtractor().extract(data: Data("<title>No results</title>".utf8), responseURL: url, key: key, kind: .directory, rule: rule)
+        guard case .directory(let result) = empty.first else { throw ReaderError.invalidResponse }
+        #expect(result.mangaRefs.isEmpty && result.hasMore == false)
+    }
+
     @Test func chapterReadingOrderComesFromJSONRules() throws {
         let rule = try DemoContent.bundledRules().first { $0.id == "manhuagui" }!
         let key = ObjectKey(ruleID: rule.id, identityURL: URL(string: "https://www.manhuagui.com/comic/123/")!)
