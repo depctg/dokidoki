@@ -3,6 +3,19 @@
 Read `docs/MangaViewer_DESIGN.md` and `docs/DEV_STATE.md` before changing behavior.
 Implement milestones sequentially, with a clean-session review subagent after each milestone. Resolve material findings before committing. Keep DEV_STATE and README accurate in each milestone commit.
 
+## Feature milestones and commits
+
+These instructions apply to the primary agent and every implementation or review subagent. The primary agent owns the milestone plan, integration and commits; include the current milestone scope and these instructions in delegated tasks.
+
+1. Before implementation, inspect the working tree and current DEV_STATE, then state an ordered milestone plan. For each milestone, name the concrete outcome, scope, dependencies, acceptance checks and intended commit title. Split substantial features into small, cohesive, independently buildable and reviewable increments; a small fix or documentation change may use one milestone. M1–M4 in the design are the original application roadmap, not a requirement to restart completed work.
+2. Implement only the current milestone. Include its necessary tests, localization and documentation; avoid unrelated cleanup or leaving a broken intermediate commit. If scope grows, revise the remaining plan before continuing.
+3. Run the applicable milestone checklist below. Update README and DEV_STATE with the actual outcome, checks, limitations and next milestone; mark inapplicable checks explicitly rather than claiming they ran.
+4. Request a clean-session review subagent (`fork_turns="none"`) after each milestone. Supply AGENTS.md, the design and DEV_STATE paths, the milestone scope, exact diff or baseline, and verification evidence so the reviewer can inspect independently. Resolve material findings and rerun affected checks before committing.
+5. Commit each completed, reviewed milestone separately before starting the next. Use a descriptive outcome-based commit title and stage only that milestone's changes, including README and DEV_STATE updates. Do not accumulate all milestones into one final commit or include pre-existing unrelated edits; use selective staging when files overlap. Subagents must not commit shared work independently. Honor an explicit user instruction to leave changes uncommitted, and report any blocked check or commit honestly.
+6. Report the milestone commit hash, verification, remaining limitations and next step, then continue through the authorized plan without asking for routine confirmation. Do not push or distribute a preview unless authorized.
+
+## Implementation conventions
+
 - The app display name is literal `dokidoki"`, including the trailing quote. Keep the MangaViewer target, bundle ID, OSLog subsystem and storage paths stable. AppInfo reads native bundle branding/version for UI and reports. `App/AppIcon.icon` is the source for iOS/iPadOS/macOS; its group array is front-to-back. Use opaque artwork and native restrained shadows, no baked glass/refraction. visionOS needs its own three-layer asset; regenerate with `python3 scripts/export-vision-icon.py` after icon edits. See docs/ICON.md.
 - About reads the native marketing version and build number from the bundle, displayed as release (build). Use MARKETING_VERSION for the release (currently 0.1.0) and set CURRENT_PROJECT_VERSION to a fresh UTC `date -u +%Y%m%d%H%M%S` timestamp before each distributed preview revision, identically in Debug/Release. Keep that identifier for rebuilds of the same revision; keep bundle identity and storage paths stable across display-name changes.
 - Build with Xcode 27.1 / iOS 27.1 SDK in Swift 6 language mode; iOS/macOS/visionOS 26 minimum. Verify iPhone Duo with its actual 27.1 simulator in Device Hub. Use available geometry, native safe areas and system bars, never model/fold-state branches. One native SwiftUI application and one UI-independent MangaCore package.

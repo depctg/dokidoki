@@ -298,7 +298,7 @@ V1 is done when:
 ## 13. Instructions to Codex
 
 - Treat this document as the source of truth for V1 scope and boundaries.
-- Implement milestones sequentially. **Start with M1 only**, present the file tree and key interfaces, then write compiling code and small fixture tests.
+- For the initial application, start with M1 and implement M1–M4 sequentially. For subsequent features, use DEV_STATE to identify completed work and define new sequential milestones under [AGENTS.md's feature milestone and commit workflow](../AGENTS.md#feature-milestones-and-commits). Each milestone must compile, receive a clean-session review, and have its own commit before the next begins.
 - Do not build a large generic plugin framework, browser, rule editor, or service architecture beyond the specified extension points.
 - Prefer simple, idiomatic Swift and Apple APIs. Make reasonable local decisions without adding abstractions for hypothetical future needs.
 - At each milestone, report what builds, which targeted checks ran, limitations, and the next smallest task. Do not claim an Apple-platform build succeeded unless it was actually run in Xcode or `xcodebuild`.

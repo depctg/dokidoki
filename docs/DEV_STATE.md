@@ -4,6 +4,8 @@ Updated 2026-10-21. This is a current handoff, not a chronological changelog. Ea
 
 ## Status and next work
 
+Development workflow: every agent follows [the feature milestone and commit workflow](../AGENTS.md#feature-milestones-and-commits). Plan bounded outcomes before implementation, validate and independently review each milestone, then commit it separately with README and DEV_STATE updates before starting the next. The original M1–M4 roadmap is complete; subsequent features define their own milestones. This clarification changes documentation only; application checks are inapplicable. Existing uncommitted application work below still needs its own scoped commits.
+
 The application milestones and the code/design cleanup are complete. The cleanup preserves the existing reader, library, browsing, rules and local persistence features. No deployment or new preview revision was requested for this patch.
 
 - **Queued user request:** investigate the odd manga-list background on iPhone Duo. Check whether the native gray background should extend across the whole screen, including safe areas and both open/closed layouts. Inspect before changing layout; prefer native container behavior.

@@ -91,7 +91,7 @@ The SwiftUI app uses native task lifetimes and an asynchronous MangaCore engine 
 - [Development state, verification, and known limitations](docs/DEV_STATE.md)
 - [Image processing](docs/IMAGE_PROCESSING.md) · [Localization](docs/LOCALIZATION.md) · [Error reports](docs/DIAGNOSTICS.md)
 - [Icon Composer source and workflow](docs/ICON.md) · [Screenshot provenance](docs/images/README.md)
-- [Development conventions](AGENTS.md)
+- [Development conventions and feature milestone commits](AGENTS.md#feature-milestones-and-commits)
 
 ## License
 
