@@ -8,7 +8,6 @@ struct ReaderView: View {
     private var chapter: ChapterObject { reader.chapter }
     @State private var zoom: CGFloat = 1
     @State private var zoomStart: CGFloat = 1
-    @State private var pagerReady = false
     @State private var restoration: FractionalRestore?
     @State private var contentID: UUID?
     @State private var userScrolling = false
@@ -48,6 +47,12 @@ struct ReaderView: View {
                 } else if model.preferences.mode == .paged { paged(size: geometry.size) }
                 else { continuous(size: geometry.size) }
             }
+            .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan(restore: true) }
+            // Fade the outgoing artwork in the same transaction that enlarges the preview.
+            .opacity(advancing ? 0 : 1)
+            // Native offset, gesture and bounce state belong to one chapter.
+            // Only the scrolling content changes identity; presentation/chrome persist.
+            .id(reader.id)
             .overlay {
                 // Keep both boundaries mounted; overscroll reveals their already-laid-out content.
                 ForEach(ChapterDirection.allCases, id: \.self) { direction in
@@ -58,8 +63,6 @@ struct ReaderView: View {
                     .clipped()
             }
             .frame(width: geometry.size.width, height: geometry.size.height)
-            .onChange(of: geometry.size, initial: true) { _, size in reader.size = size; reader.replan(restore: true) }
-            .onChange(of: reader.id) { _, _ in reader.size = geometry.size; reader.replan(restore: true) }
         }
         .background(Color(white: 0.08)).preferredColorScheme(.dark)
         .overlay(alignment: .bottomTrailing) {
@@ -96,10 +99,8 @@ struct ReaderView: View {
         .onKeyPress(.rightArrow) { turn(rtl ? -1 : 1); return .handled }
         .onKeyPress(.space) { toggleChrome(); return .handled }
         .onKeyPress(.escape) { model.collapseReader(); return .handled }
-        .onChange(of: model.preferences) { old, new in
+        .onChange(of: model.preferences) { _, _ in
             reader.save(); zoom = 1; zoomStart = 1; chapterTransition = nil; chapterPull = ScrollPull()
-            // A remounted pager needs a fresh scroll request, even for the same source page.
-            if old.mode == .paged, new.mode != .paged { pagerReady = false }
             reader.replan(restore: true)
         }
         .onChange(of: model.preferences.mode == .paged && canRecordPosition && reader.index == reader.plans.count - 1 && reader.finalPageReady ? reader.id : nil, initial: true) { _, chapter in
@@ -110,14 +111,12 @@ struct ReaderView: View {
         .onChange(of: model.readerExpanded) { _, expanded in if !expanded { chapterTransition = nil; chapterPull = ScrollPull() } }
         .onChange(of: model.openingChapter) { _, opening in if !opening, model.reader?.id == reader.id { chapterTransition = nil; chapterPull = ScrollPull() } }
         .onChange(of: reader.id, initial: true) { _, _ in
-            // The native scroll surfaces and chrome survive chapter replacement.
-            // Preserve native geometry; a new chapter cannot inherit an outgoing
-            // gesture or rubber-band return as a new user-driven scroll.
+            // Reset chapter-local bookkeeping with the native scrolling content.
+            // The surrounding reader presentation and immersive state persist.
             zoom = 1; zoomStart = 1
             pendingRestore = true; restoration = nil; chapterPull = ScrollPull(); chapterTransition = nil
             userScrolling = false; scrollOwner = nil
             contentID = reader.id
-            restoreRequest += 1
         }
         .onDisappear { chapterTransition = nil; reader.stop() }
         .task(id: "\(reader.id)|\(model.loadingRevision)") {
@@ -128,7 +127,7 @@ struct ReaderView: View {
         }
         .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.next) }
         .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.previous) }
-        .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)-\(pagerReady)") { restorePosition() }
+        .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)") { restorePosition() }
     }
     private func toggleChrome() {
         withAnimation(.easeInOut(duration: 0.2)) { model.readerImmersive.toggle() }
@@ -162,9 +161,6 @@ struct ReaderView: View {
             .environment(\.layoutDirection, rtl ? .rightToLeft : .leftToRight)
             .scrollDisabled(zoom > 1 || model.openingChapter)
             .opacity(zoom > 1 ? 0 : 1)
-            .onScrollGeometryChange(for: Bool.self) { $0.contentSize.width > 0 && $0.containerSize.width > 0 } action: { _, ready in
-                pagerReady = ready
-            }
             .onChange(of: reader.scrollPosition.viewID(type: String.self)) { _, id in
                 guard userScrolling, canRecordPosition, let index = reader.plans.firstIndex(where: { $0.id == id }) else { return }
                 reader.record(index: index, within: 0, preserveSource: false)
@@ -265,7 +261,7 @@ struct ReaderView: View {
         }
     }
     private func advanceChapter(_ direction: ChapterDirection) {
-        guard !advancing, !model.openingChapter, let reference = reader.adjacentChapter(direction) else { return }
+        guard !advancing, !model.openingChapter, reader.adjacentChapter(direction) != nil else { return }
         let transition = ChapterTransition(direction: direction, fraction: max(Self.chapterSwitchThreshold, pullReveal))
         // Complete the native enlargement after release, before replacing the reader.
         withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.24)) {
@@ -275,7 +271,7 @@ struct ReaderView: View {
             guard model.reader?.id == reader.id, model.readerExpanded, !model.openingChapter else {
                 chapterTransition = nil; chapterPull = ScrollPull(); return
             }
-            reader.openAdjacent(reference, fromEnd: direction == .previous)
+            reader.openAdjacent(direction)
         }
     }
     private func updateScroll(plan: DisplayPage, geometry: ReaderPageGeometry) {
@@ -297,7 +293,6 @@ struct ReaderView: View {
         scrollOwner = nil
         restoration = nil
         if model.preferences.mode == .paged {
-            guard pagerReady else { return }
             reader.scrollPosition.scrollTo(id: plan.id)
             pendingRestore = false
             return

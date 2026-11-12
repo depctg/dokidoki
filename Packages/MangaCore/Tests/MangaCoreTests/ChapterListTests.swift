@@ -112,19 +112,27 @@ struct ChapterListTests {
         let rule = try demo(), store = try ObjectStore(path: path)
         let repository = try ObjectRepository(store: store, rules: [rule], sender: RequestSender(fetcher: DefaultSourceFetcher()))
         guard case .manga(let original) = try await mangaKey.load(using: repository) else { throw ReaderError.invalidResponse }
-        func position(_ index: Int) -> ReadingPosition {
+        func position(_ index: Int, page: Int = 0, fraction: Double = 0) -> ReadingPosition {
             let ref = original.chapterRefs[index]
-            return ReadingPosition(mangaKey: mangaKey, chapterKey: ref.key, sourcePageKey: .page(owner: ref.key, index: 0), title: ref.title)
+            return ReadingPosition(mangaKey: mangaKey, chapterKey: ref.key, sourcePageKey: .page(owner: ref.key, index: page), fractionalOffset: fraction, title: ref.title)
         }
         try await position(0).save(using: repository, completed: true)
         try await position(0).save(using: repository) // Rereading must not erase completion.
-        try await position(2).save(using: repository)
+        try await position(2, page: 1, fraction: 0.4).save(using: repository)
         guard case .chapter(let chapter) = try await original.chapterRefs[2].load(using: repository),
               case .chapter(let other) = try await original.chapterRefs[0].load(using: repository) else { throw ReaderError.invalidResponse }
         let overrides: [ObjectKey: SpreadOverride] = [chapter.pageRefs[0]: .keep]
         try await chapter.saveOverrides(overrides, using: repository)
         let restored = try await chapter.readingState(using: repository)
         #expect(restored.position?.chapterKey == chapter.key && restored.overrides == overrides)
+        // Use matching persisted history directly: UI navigation normally replaces
+        // a manga's single saved position with the outgoing chapter before loading.
+        for (entry, source, fraction) in [(ChapterEntry.resume, chapter.pageRefs[1], 0.4),
+                                          (.start, chapter.pageRefs[0], 0),
+                                          (.end, chapter.pageRefs.last!, 0.999_999)] {
+            let target = chapter.entryPosition(entry, saved: restored.position)
+            #expect(target.source == source && target.fraction == fraction)
+        }
         #expect(try await other.readingState(using: repository).position == nil)
         let local = try await original.readingState(using: repository)
         #expect(local.readingStatus(for: original.chapterRefs[0].key) == .read)

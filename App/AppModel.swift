@@ -134,9 +134,9 @@ enum AppSection: String, CaseIterable, Identifiable {
             browseSiteID = nil; paths[.browse] = []
         } catch { report(error, operation: .storage) }
     }
-    func openChapter(_ key: ObjectKey, hint: CacheHint = .preferCache, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
+    func openChapter(_ key: ObjectKey, hint: CacheHint = .preferCache, expand: Bool = true, preserveImmersion: Bool = false, entry: ChapterEntry = .resume, listID: String? = nil) {
         chapterRequest?.cancel()
-        if reader?.chapter.key == key, hint != .forceRefresh, listID == nil || reader?.chapterListID == listID {
+        if reader?.chapter.key == key, entry == .resume, hint != .forceRefresh, listID == nil || reader?.chapterListID == listID {
             openingChapter = false
             if expand { resumeReader() }
             return
@@ -157,21 +157,21 @@ enum AppSection: String, CaseIterable, Identifiable {
                 } while loaded == nil
                 guard case .chapter(let chapter) = loaded else { throw ReaderError.extraction(String(localized: "This link does not contain a chapter.")) }
                 try Task.checkCancellation()
-                await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
+                await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, entry: entry, listID: listID)
             } catch is CancellationError {} catch {
                 if !Task.isCancelled { self.error = error.localizedDescription }
             }
         }
     }
-    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, fromEnd: Bool = false, listID: String? = nil) {
+    func presentChapter(_ chapter: ChapterObject, expand: Bool = true, preserveImmersion: Bool = false, entry: ChapterEntry = .resume, listID: String? = nil) {
         chapterRequest?.cancel(); openingChapter = true
         chapterRequest = Task {
             defer { if !Task.isCancelled { openingChapter = false } }
-            await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, fromEnd: fromEnd, listID: listID)
+            await replaceChapter(chapter, expand: expand, preserveImmersion: preserveImmersion, entry: entry, listID: listID)
         }
     }
-    private func replaceChapter(_ chapter: ChapterObject, expand: Bool, preserveImmersion: Bool, fromEnd: Bool, listID: String?) async {
-        let next = ReaderModel(chapter: chapter, app: self, startAtEnd: fromEnd, listID: listID)
+    private func replaceChapter(_ chapter: ChapterObject, expand: Bool, preserveImmersion: Bool, entry: ChapterEntry, listID: String?) async {
+        let next = ReaderModel(chapter: chapter, app: self, entry: entry, listID: listID)
         // Keep the current surface visible while core prepares the incoming content.
         if readerExpanded, let reader {
             reader.save()

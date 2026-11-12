@@ -156,12 +156,24 @@ public struct MangaObject: Codable, Sendable, Equatable {
         return candidates.first { $0.id == preferredID } ?? candidates.first
     }
 }
+public enum ChapterEntry: Sendable { case resume, start, end }
+
 public struct ChapterObject: Codable, Sendable {
     public let key: ObjectKey
     public let sourceURL: URL
     public let title: String
     public let mangaRef: ObjectKey?
     public let pageRefs: [ObjectKey]
+
+    /// Choose the source before display planning; explicit navigation ignores history.
+    public func entryPosition(_ entry: ChapterEntry, saved position: ReadingPosition?) -> (source: ObjectKey?, fraction: Double) {
+        switch entry {
+        case .resume:
+            (pageRefs.first(where: { $0 == position?.sourcePageKey }) ?? pageRefs.first, position?.fractionalOffset ?? 0)
+        case .start: (pageRefs.first, 0)
+        case .end: (pageRefs.last, 0.999_999)
+        }
+    }
 }
 public struct PageObject: Codable, Sendable, Identifiable {
     public enum Role: String, Codable, Sendable { case cover, content }

@@ -19,9 +19,9 @@ struct ReaderToolbar: ToolbarContent {
         ToolbarItemGroup(placement: .primaryAction) {
             Button("Back to manga", systemImage: "book.closed") { model.showReaderManga() }
                 .disabled(chapter.mangaRef == nil)
-            Button("Previous chapter", systemImage: "backward.end") { reader.openAdjacent(reader.previousChapter) }
+            Button("Previous chapter", systemImage: "backward.end") { reader.openAdjacent(.previous) }
                 .disabled(reader.previousChapter == nil || model.openingChapter)
-            Button("Next chapter", systemImage: "forward.end") { reader.openAdjacent(reader.nextChapter) }
+            Button("Next chapter", systemImage: "forward.end") { reader.openAdjacent(.next) }
                 .disabled(reader.nextChapter == nil || model.openingChapter)
             options
                 .disabled(model.openingChapter)

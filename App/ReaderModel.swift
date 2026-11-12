@@ -31,7 +31,7 @@ struct ChapterPreview {
         ?? app.readingPositions.first { $0.mangaKey == chapter.mangaRef }?.mangaTitle }
     var mangaCover: ObjectKey? { manga?.coverPageRef }
     var previews: [ChapterDirection: ChapterPreview] = [:]
-    private let startAtEnd: Bool
+    private let entry: ChapterEntry
     var error: String?
     var loading = true
     var revision = 0
@@ -55,8 +55,8 @@ struct ChapterPreview {
     private var prefetch: [ObjectKey: Task<Void, Never>] = [:]
     private var rule: SiteRule?
 
-    init(chapter: ChapterObject, app: AppModel, startAtEnd: Bool = false, listID: String? = nil) {
-        self.chapter = chapter; self.app = app; self.startAtEnd = startAtEnd
+    init(chapter: ChapterObject, app: AppModel, entry: ChapterEntry = .resume, listID: String? = nil) {
+        self.chapter = chapter; self.app = app; self.entry = entry
         chapterListID = listID ?? app.readingPositions.first { $0.chapterKey == chapter.key }?.chapterListID
     }
     func activate() async {
@@ -81,8 +81,10 @@ struct ChapterPreview {
                 try Task.checkCancellation()
                 overrides = state.overrides; position = state.position
             } catch { ErrorDiagnostics.record(error, operation: .storage); throw error }
-            source = startAtEnd ? pages.last?.key : (pages.first(where: { $0.key == position?.sourcePageKey })?.key ?? pages.first?.key)
-            fraction = startAtEnd ? 0.999_999 : (position?.fractionalOffset ?? 0)
+            // Navigation chooses its boundary before preparing any incoming artwork
+            // or native scroll target. Only an ordinary resume consults history.
+            let target = chapter.entryPosition(entry, saved: position)
+            source = target.source; fraction = target.fraction
             // Establish the target's real dimensions before its first layout, including
             // cold fractional resumes, manual pairs and backward chapter entry.
             let pipeline = try PagePipeline(ids: processorIDs)
@@ -104,7 +106,7 @@ struct ChapterPreview {
             if let current {
                 // Content, native target and its composed artwork are prepared together
                 // before AppModel publishes an incoming chapter to the persistent view.
-                scrollPosition = ScrollPosition(id: current.id, anchor: app.preferences.mode == .paged ? .center : (startAtEnd ? .bottom : .top))
+                scrollPosition = ScrollPosition(id: current.id, anchor: app.preferences.mode == .paged ? .center : (entry == .end ? .bottom : .top))
                 landingArtwork = try? await PageArtwork.load(plan: current, pages: pages,
                     using: repository, revision: app.loadingRevision)
                 try Task.checkCancellation()
@@ -140,9 +142,9 @@ struct ChapterPreview {
             previews[direction] = ChapterPreview(page: page)
         } catch is CancellationError {} catch { if !Task.isCancelled { previews[direction] = ChapterPreview(error: String(localized: "Preview unavailable")) } }
     }
-    func openAdjacent(_ reference: ContentReference?, fromEnd: Bool = false) {
-        guard app.reader?.id == id, let reference else { return }
-        app.openChapter(reference.key, preserveImmersion: true, fromEnd: fromEnd, listID: chapterListID)
+    func openAdjacent(_ direction: ChapterDirection) {
+        guard app.reader?.id == id, let reference = adjacentChapter(direction) else { return }
+        app.openChapter(reference.key, preserveImmersion: true, entry: direction == .next ? .start : .end, listID: chapterListID)
     }
     func replan(restore: Bool = false) {
         guard active else { return }

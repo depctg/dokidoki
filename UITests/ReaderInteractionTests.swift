@@ -286,6 +286,22 @@ import XCTest
         XCTAssertEqual(counter.label, advanced)
         XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
 
+        // Directional chapter navigation chooses a boundary even after a prior visit;
+        // ordinary resume above still restores the saved source and fraction.
+        app.buttons["Next chapter"].tap()
+        XCTAssertTrue(wait { title.label == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" })
+        start.press(forDuration: 0.05, thenDragTo: end)
+        XCTAssertTrue(wait { self.visiblePage(in: app) == "Comic page 2" })
+        app.buttons["Previous chapter"].tap()
+        XCTAssertTrue(wait { title.label == "1 · Arrival" && self.visiblePage(in: app) == "Comic page 4" })
+        app.buttons["Next chapter"].tap()
+        XCTAssertTrue(wait { title.label == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" })
+        app.buttons["Previous chapter"].tap()
+        XCTAssertTrue(wait { title.label == "1 · Arrival" && self.visiblePage(in: app) == "Comic page 4" })
+
+        // Exercise the default processing too: display counts can change as neighbors
+        // are analyzed, but chapter entry must keep the first/last source artwork.
+        setAdjustment("Detect spreads", enabled: true, app: app)
         // One boundary contract covers both horizontal directions and vertical scrolling.
         for (mode, direction, axis) in [("Paged", "Right to left", CGVector(dx: 1, dy: 0)),
                                         ("Paged", "Left to right", CGVector(dx: -1, dy: 0)),
@@ -295,15 +311,16 @@ import XCTest
                 select(direction, in: "Direction", app: app)
                 let last = pageImage(4, in: app)
                 for _ in 0..<8 {
-                    if mode == "Paged" ? counter.label.hasPrefix("Page 4 ") : last.exists && last.frame.maxY <= app.windows.firstMatch.frame.maxY + 2 { break }
+                    if mode == "Paged" ? atLastPage(counter) : last.exists && last.frame.maxY <= app.windows.firstMatch.frame.maxY + 2 { break }
                     pull(in: app, axis: axis, from: -0.3, to: 0.3)
                     XCTAssertEqual(title.label, "1 · Arrival", "Reaching the end must not open the next chapter")
                 }
-                XCTAssertTrue(wait { counter.label.hasPrefix("Page 4 ") })
+                XCTAssertTrue(wait { self.atLastPage(counter) })
                 if mode == "Scroll" { XCTAssertTrue(last.exists && last.frame.maxY <= app.windows.firstMatch.frame.maxY + 2) }
                 checkChapterBoundary(in: app, axis: axis)
             }
         }
+        setAdjustment("Detect spreads", enabled: false, app: app)
         // Missing adjacent chapters stay on the boundary even after a long pull.
         app.buttons["Next chapter"].tap()
         XCTAssertTrue(wait { title.label == "2 · Starlight" })
@@ -385,6 +402,10 @@ import XCTest
             .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5 + axis.dx * to, dy: 0.5 + axis.dy * to)),
                    withVelocity: fast ? .fast : .slow, thenHoldForDuration: fast ? 0 : 0.3)
     }
+    private func atLastPage(_ counter: XCUIElement) -> Bool {
+        let words = counter.label.split(separator: " ")
+        return words.count == 4 && words[1] == words[3]
+    }
     private func checkChapterBoundary(in app: XCUIApplication, axis: CGVector) {
         let title = app.descendants(matching: .any)["reader.chapterTitle"].firstMatch, counter = app.staticTexts["reader.pageCounter"]
         pull(in: app, axis: axis, from: -0.25, to: -0.15, fast: true)
@@ -393,7 +414,7 @@ import XCTest
         center.tap()
         XCTAssertTrue(wait { !app.buttons["Reader options"].isHittable })
         pull(in: app, axis: axis, from: -0.25, to: 0.45)
-        XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" && self.visiblePage(in: app) == "Comic page 1" }, "Forward landing: \(counter.value ?? "unknown"), \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
+        XCTAssertTrue(wait { counter.value as? String == "2 · Starlight" && counter.label.hasPrefix("Page 1 ") && self.visiblePage(in: app) == "Comic page 1" }, "Forward landing: \(counter.value ?? "unknown"), \(counter.label); images: \(app.images.matching(identifier: "reader.pageImage").allElementsBoundByIndex.map { "\($0.label): \($0.frame)" })")
         XCTAssertFalse(title.exists, "Chapter switching retains immersion")
         center.tap()
         XCTAssertTrue(wait { app.buttons["Previous chapter"].isEnabled })
@@ -410,7 +431,7 @@ import XCTest
         center.tap()
         XCTAssertTrue(wait { !app.buttons["Reader options"].isHittable })
         pull(in: app, axis: axis, from: 0.25, to: -0.45)
-        XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && counter.label.hasPrefix("Page 4 ") }, "Backward landing: \(counter.value ?? "unknown"), \(counter.label)")
+        XCTAssertTrue(wait { counter.value as? String == "1 · Arrival" && self.atLastPage(counter) }, "Backward landing: \(counter.value ?? "unknown"), \(counter.label)")
         XCTAssertFalse(title.exists)
         center.tap()
         XCTAssertTrue(title.waitForExistence(timeout: 5))
