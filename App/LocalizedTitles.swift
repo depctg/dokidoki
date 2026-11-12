@@ -28,3 +28,20 @@ extension SpreadOverride {
         }
     }
 }
+
+// Loading choices retain language-independent values in core preferences.
+extension RequestConcurrency {
+    var title: String {
+        switch self {
+        case .low: String(localized: "Low")
+        case .medium: String(localized: "Medium")
+        case .high: String(localized: "High")
+        case .unlimited: String(localized: "Unlimited")
+        }
+    }
+}
+extension PrefetchDistance {
+    var title: String {
+        self == .off ? String(localized: "No prefetch") : String(localized: "\(rawValue) pages ahead")
+    }
+}

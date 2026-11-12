@@ -19,7 +19,7 @@ A native manga reader for iPhone, iPad, Mac, and Apple Vision Pro. Browse your f
 - **Keep your place.** Save and star manga, revisit recent reading, and resume from the same page—even after closing the app. Mark chapters or whole groups read, unread, or ignored. Chapter lists default to numeric Smart order, with website and reverse website order also available.
 - **Read your way.** Choose paged or continuous scrolling, either reading direction, facing pages in wide windows, margin trimming, and automatic split-page joining.
 - **Stay immersed.** Tap the artwork to hide controls while keeping a small chapter/page badge. Pull beyond either chapter boundary by 20% of the viewport and release to switch chapters. Next starts at the first page; Previous starts at the last. The outgoing page fades as the chapter preview expands, keeping your immersive mode. Collapse the reader into a small Resume bar when browsing.
-- **Explore websites.** Browse shelves, search, use source-provided sorting, and automatically load more as you approach the end of a list. MangaCopy, Manhuagui, and an offline example reading room are included.
+- **Explore websites.** Browse shelves, search, switch directories between a list and cover grid, use source-provided sorting, and automatically load more as you approach the end. MangaCopy, Manhuagui, and an offline example reading room are included.
 - **Use your devices naturally.** Native floating controls on iPhone/iPad, adaptive iPhone Duo layouts, a Mac sidebar, and a resizable reader window on Vision Pro. English and Simplified Chinese interfaces are included.
 
 Your library and reading history stay on your device. This preview does not include iCloud synchronization or full-library offline downloads. Website availability depends on the source and its installed rule.
@@ -33,7 +33,7 @@ Your library and reading history stay on your device. This preview does not incl
 | Mac | macOS 26 |
 | Apple Vision Pro | visionOS 26 |
 
-The current release is **0.1.0**. Settings → About shows the release and a unique build number. Build from source with **Xcode 27.1**, the relevant platform SDKs, and Swift 6 language mode. Install the corresponding simulator runtime to run a simulator; iPhone Duo uses the iOS 27.1 runtime in Device Hub.
+The current release is **0.1.0**. Settings → About shows the release and a unique build number. Build from source with **Xcode 27.2**, the relevant platform SDKs, and Swift 6 language mode. Install the corresponding simulator runtime to run a simulator; iPhone Duo uses the iOS 27.1 runtime in Device Hub.
 
 ## Get started
 
@@ -42,7 +42,7 @@ The current release is **0.1.0**. Settings → About shows the release and a uni
 3. Tap the artwork to toggle immersive mode. Use **Reader options** to change reading mode and direction. To collapse the reader, pull down from the top in paged mode, or swipe inward from the left edge in scroll mode.
 4. Return through the **Resume** bar, or use the play button beside a book in Library or Recent. Tap the book itself to see its details.
 
-Settings also provides site-rule import/export, reader defaults, cache controls, and an error report you can review and share yourself.
+Settings also provides site-rule import/export, reader defaults, cache controls, and an error report you can review and share yourself. Choose **Low / Medium / High / Unlimited** concurrent requests and **No prefetch / 2 / 4 / 8 pages ahead**. Defaults remain Low and 2 pages. Unlimited removes the download concurrency cap; website sessions still run one at a time and request start rates remain controlled.
 
 ## Build and run
 

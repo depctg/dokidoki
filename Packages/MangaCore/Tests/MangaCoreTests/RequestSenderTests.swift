@@ -59,6 +59,33 @@ import os
         #expect(stats.active == 0)
     }
 
+    @Test func concurrencyChoicesApplyToQueuedRequestsAndPersist() async throws {
+        let fetcher = TestFetcher(delay: .seconds(60), response: { SourceResponse(data: Data(), url: $0) })
+        let sender = RequestSender(fetcher: fetcher, burst: 128, hostBurst: 128)
+        let rule = try rule(), store = try ObjectStore()
+        let repository = try ObjectRepository(store: store, rules: [rule], sender: sender)
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            defer { group.cancelAll() }
+            for host in rule.allowedHosts.prefix(2) {
+                for index in 0..<20 {
+                    let request = source("pending/\(index)", rule: rule, host: host)
+                    group.addTask { _ = try? await sender.send(request) }
+                }
+            }
+            // No transport finishes: raising the setting must immediately admit
+            // queued work, while leaving already-running requests alone.
+            for (level, count) in zip(RequestConcurrency.allCases, [4, 8, 16, 40]) {
+                try await repository.setRequestConcurrency(level)
+                for _ in 0..<200 where await fetcher.count < count { try await Task.sleep(for: .milliseconds(5)) }
+                #expect(await fetcher.count == count)
+                #expect(await fetcher.cancellations == 0)
+                #expect(try await repository.preference("requestConcurrency", as: RequestConcurrency.self) == level)
+            }
+            try await repository.setRequestConcurrency(.low)
+            #expect(await fetcher.cancellations == 0, "Lowering admission does not interrupt active work")
+        }
+    }
+
     @Test func sharedConsumersReceiveResultAndCancelIndependently() async throws {
         SenderFixture.reset()
         let sender = sender(), rule = try rule()

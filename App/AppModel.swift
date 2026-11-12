@@ -64,6 +64,28 @@ enum AppSection: String, CaseIterable, Identifiable {
             persist { try await repository.setPreference("reader", value: preferences) }
         }
     }
+    var directoryCoverView = false {
+        didSet {
+            guard let repository else { return }
+            let enabled = directoryCoverView
+            persist { try await repository.setPreference("directoryCoverView", value: enabled) }
+        }
+    }
+    var requestConcurrency: RequestConcurrency = .low {
+        didSet {
+            guard let repository else { return }
+            let level = requestConcurrency
+            persist { try await repository.setRequestConcurrency(level) }
+        }
+    }
+    var prefetchDistance: PrefetchDistance = .near {
+        didSet {
+            guard let repository else { return }
+            let distance = prefetchDistance
+            persist { try await repository.setPreference("prefetchDistance", value: distance) }
+            reader?.preparePages()
+        }
+    }
     var jumpToLastChapter = true {
         didSet {
             guard let repository else { return }
@@ -92,6 +114,9 @@ enum AppSection: String, CaseIterable, Identifiable {
             backgroundLoading = try await repository.preference("backgroundLoading", as: Bool.self) ?? true
             jumpToLastChapter = try await repository.preference("jumpToLastChapter", as: Bool.self) ?? true
             preferences = try await repository.preference("reader", as: ReaderPreferences.self) ?? ReaderPreferences()
+            directoryCoverView = try await repository.preference("directoryCoverView", as: Bool.self) ?? false
+            requestConcurrency = try await repository.preference("requestConcurrency", as: RequestConcurrency.self) ?? .low
+            prefetchDistance = try await repository.preference("prefetchDistance", as: PrefetchDistance.self) ?? .near
             self.repository = repository
             applyLibrary(try await repository.personalLibrary())
             libraryObservation = Task { [weak self] in

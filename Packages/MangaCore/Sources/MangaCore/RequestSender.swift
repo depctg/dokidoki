@@ -57,8 +57,8 @@ public actor RequestSender {
     }
     private let fetcher: any SourceFetcher
     private let client: HTTPClient
-    private let maxConcurrent: Int
-    private let perHost: Int
+    private var maxConcurrent: Int
+    private var perHost: Int
     private let burst: Int
     private let hostBurst: Int
     private let burstWindow: Duration
@@ -76,6 +76,12 @@ public actor RequestSender {
         self.maxConcurrent = max(1, maxConcurrent); self.perHost = max(1, perHost)
         self.burst = max(1, burst); self.hostBurst = max(1, hostBurst)
         self.burstWindow = max(.milliseconds(1), burstWindow)
+    }
+    /// Apply admission changes to queued work without interrupting active consumers.
+    /// Browser mutations remain serialized and the start-rate budget is unchanged.
+    public func setConcurrency(_ level: RequestConcurrency) {
+        maxConcurrent = level.total; perHost = level.perHost
+        startReadyRequests()
     }
     public func send(_ request: ContentRequest) async throws -> SourceResponse {
         try Task.checkCancellation()

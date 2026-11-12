@@ -160,7 +160,7 @@ private struct BrowseShelf: View {
                     LazyHStack(alignment: .top, spacing: 16) {
                         ForEach(Array(directory.mangaRefs.prefix(8))) { reference in
                             NavigationLink(value: AppRoute.object(reference.key)) {
-                                MangaPreview(reference: reference, model: model, shelf: true)
+                                MangaPreview(reference: reference, model: model, layout: .shelf)
                             }.buttonStyle(.plain).accessibilityIdentifier("manga.item.\(reference.key.id)")
                         }
                     }.scrollTargetLayout()
@@ -172,15 +172,16 @@ private struct BrowseShelf: View {
     }
 }
 
-/// One lazy object load supplies the cover and metadata in shelves and directory rows.
+/// One lazy object load supplies artwork and metadata in every browse presentation.
 struct MangaPreview: View {
     let reference: ContentReference
     let model: AppModel
-    var shelf = false
+    enum Layout { case row, shelf, cover }
+    var layout: Layout = .row
     @State private var manga: MangaObject?
     var body: some View {
         Group {
-            if shelf {
+            if layout != .row {
                 VStack(alignment: .leading, spacing: 8) {
                     artwork.frame(width: 148, height: 210, alignment: .bottomLeading)
                     details
@@ -203,11 +204,12 @@ struct MangaPreview: View {
     }
     private var details: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(manga?.title ?? reference.title).font(shelf ? .subheadline : .headline).lineLimit(2)
-            if let manga { MangaMetadataView(manga: manga, compact: true) }
+            Text(manga?.title ?? reference.title).font(layout == .row ? .headline : .subheadline)
+                .lineLimit(2, reservesSpace: layout == .cover)
+            if layout != .cover, let manga { MangaMetadataView(manga: manga, compact: true) }
         }
     }
     private var artwork: some View {
-        CoverImageView(key: manga?.coverPageRef, model: model, bounds: shelf ? CGSize(width: 148, height: 210) : CGSize(width: 52, height: 90))
+        CoverImageView(key: manga?.coverPageRef, model: model, bounds: layout == .row ? CGSize(width: 52, height: 90) : CGSize(width: 148, height: 210))
     }
 }

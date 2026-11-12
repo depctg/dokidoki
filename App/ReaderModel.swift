@@ -47,8 +47,9 @@ struct ChapterPreview {
     func adjacentChapter(_ direction: ChapterDirection) -> ContentReference? {
         direction == .next ? nextChapter : previousChapter
     }
-    func chapterToPrefetch(_ direction: ChapterDirection) -> ObjectKey? {
-        guard !plans.isEmpty, direction == .next ? index >= plans.count - 2 : index <= 1 else { return nil }
+    func chapterToPrefetch(_ direction: ChapterDirection, revealed: Bool = false) -> ObjectKey? {
+        let distance = app.prefetchDistance.rawValue
+        guard !plans.isEmpty, revealed || (distance > 0 && (direction == .next ? index >= plans.count - distance : index < distance)) else { return nil }
         return adjacentChapter(direction)?.key
     }
     private var planning: Task<Void, Never>?
@@ -129,8 +130,8 @@ struct ChapterPreview {
         } catch { /* Pages remain usable; activation retries metadata after cancellation/failure. */ }
     }
     /// Only adjacent metadata and the boundary image; the view owns cancellation.
-    func preloadChapter(_ direction: ChapterDirection) async {
-        guard let key = chapterToPrefetch(direction), previews[direction]?.page == nil, let repository = app.repository else { return }
+    func preloadChapter(_ direction: ChapterDirection, revealed: Bool = false) async {
+        guard let key = chapterToPrefetch(direction, revealed: revealed), previews[direction]?.page == nil, let repository = app.repository else { return }
         previews[direction] = ChapterPreview()
         do {
             guard case .chapter(let chapter) = try await key.load(using: repository),
@@ -236,14 +237,8 @@ struct ChapterPreview {
     }
     func preparePages() {
         guard active, let repository = app.repository, !plans.isEmpty else { return }
-        let neighborIndices = [index, index + 1, index + 2, index - 1].filter { plans.indices.contains($0) }
-        var keys: [ObjectKey] = []
-        for i in neighborIndices {
-            for key in plans[i].sourcePageKeys where !keys.contains(key) { keys.append(key) }
-        }
-        // Keep overlapping work, including the page becoming visible. Its normal
-        // image request independently consumes the same core cache/in-flight request.
-        let neighbors = keys.prefix(6).compactMap { key in pages.first { $0.key == key } }
+        // Visible preparation and speculative work consume the same core cache.
+        let neighbors = app.prefetchDistance.sources(in: plans, at: index).compactMap { key in pages.first { $0.key == key } }
         let wanted = Set(neighbors.map(\.key))
         for key in prefetch.keys where !wanted.contains(key) { prefetch.removeValue(forKey: key)?.cancel() }
         for page in neighbors where prefetch[page.key] == nil {

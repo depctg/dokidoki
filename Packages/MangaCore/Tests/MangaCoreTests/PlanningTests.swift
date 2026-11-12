@@ -7,6 +7,20 @@ struct PlanningTests {
     private let owner = ObjectKey(ruleID: "demo", identityURL: URL(string: "https://demo.mangaviewer.local/chapter/arrival")!)
     private var keys: [ObjectKey] { (0..<4).map { .page(owner: owner, index: $0) } }
 
+    @Test(arguments: PrefetchDistance.allCases)
+    func prefetchWindowKeepsCurrentSourcesAndBoundsSpeculation(distance: PrefetchDistance) throws {
+        let sources = (0..<24).map { ObjectKey.page(owner: owner, index: $0) }
+        let singles = sources.map { DisplayPage(regions: [PageRegion(sourcePage: $0)]) }
+        let expected = distance == .off ? [sources[3]] : Array(sources[3...(3 + distance.rawValue)]) + [sources[2]]
+        #expect(distance.sources(in: singles, at: 3) == expected)
+        #expect(distance.sources(in: singles, at: 23).first == sources[23])
+        let pairs = stride(from: 0, to: 24, by: 2).map { i in
+            DisplayPage(regions: [PageRegion(sourcePage: sources[i]), PageRegion(sourcePage: sources[i + 1])])
+        }
+        #expect(distance.sources(in: pairs, at: 1) == Array(sources[2..<(2 + (distance.rawValue + 1) * 2)]))
+        #expect(try JSONDecoder().decode(PrefetchDistance.self, from: JSONEncoder().encode(distance)) == distance)
+    }
+
     @Test(arguments: [0.5, 0.7, 3.0])
     func initialFitMatchesFinalLayoutAndMinimums(ratio: Double) async throws {
         let pipeline = try PagePipeline(), sources = Array(keys.prefix(2))

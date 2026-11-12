@@ -30,15 +30,13 @@ private struct LibraryRow: View {
     let key: ObjectKey
     let model: AppModel
     let section: AppSection
-    @State private var manga: MangaObject?
-    @State private var cachedChapter: ChapterObject?
+    private var manga: MangaObject? { model.personalManga[key] }
     @ScaledMetric(relativeTo: .body) private var resumeButtonSize = 44.0
-    private var saved: SavedManga? { model.saved.first { $0.key == key } }
-    private var position: ReadingPosition? { model.readingPositions.first { $0.mangaKey == key } }
-    private var title: String { manga?.title ?? saved?.title ?? position?.mangaTitle ?? position?.title ?? String(localized: "Untitled manga") }
-    private var starred: Bool { saved?.isStarred == true }
+    private var position: ReadingPosition? { manga?.personalState?.position }
+    private var title: String { manga?.title ?? position?.mangaTitle ?? position?.title ?? String(localized: "Untitled manga") }
+    private var starred: Bool { manga?.personalState?.isStarred == true }
     private var chapterTitle: String { position?.title ?? manga?.chapterRefs.first?.title ?? String(localized: "Not started") }
-    private var readingProgress: MangaProgress? { model.personalManga[key]?.personalState?.progress ?? manga?.personalState?.progress }
+    private var readingProgress: MangaProgress? { manga?.personalState?.progress }
     private var progress: String {
         let progress = readingProgress
         guard let progress, let fraction = progress.fraction else { return String(localized: "Reading") }
@@ -59,8 +57,8 @@ private struct LibraryRow: View {
     var body: some View {
         NavigationLink(value: AppRoute.object(key)) {
                 HStack(alignment: .center, spacing: 8) {
-                    CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? cachedChapter?.pageRefs.first : nil), model: model, bounds: CGSize(width: 64, height: 128), hint: manga == nil ? .offlineOnly : .preferCache)
-                        .frame(width: 64)
+                    CoverImageView(key: manga?.coverPageRef ?? (key == position?.chapterKey ? .page(owner: key, index: 0) : nil), model: model, bounds: CGSize(width: 64, height: 128), hint: key == position?.chapterKey ? .offlineOnly : .preferCache)
+                        .frame(width: 64, height: 128)
                     VStack(alignment: .leading, spacing: 4) {
                         Text(title).font(.headline).fixedSize(horizontal: false, vertical: true)
                         Text(chapterTitle).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -99,7 +97,6 @@ private struct LibraryRow: View {
         }
         .accessibilityAction(named: "Remove") { model.removeLibraryItem(key, from: section) }
         .accessibilityAction(named: "Manga details") { model.paths[section, default: []].append(.object(key)) }
-        .task(id: "\(key.id)|\(model.loadingRevision)|\(key == position?.chapterKey)") { await loadDetails() }
     }
     @ViewBuilder private var actions: some View {
         Button("Remove", systemImage: "trash", role: .destructive) { model.removeLibraryItem(key, from: section) }
@@ -108,23 +105,7 @@ private struct LibraryRow: View {
                 .tint(.orange)
         }
     }
-    private func loadDetails() async {
-        manga = nil; cachedChapter = nil
-        guard let repository else { return }
-        do {
-            // No chapter extraction just to draw history: standalone chapters use a cached page.
-            if key == position?.chapterKey {
-                let loaded = try await key.load(using: repository, hint: .offlineOnly)
-                try Task.checkCancellation()
-                if case .chapter(let chapter) = loaded { cachedChapter = chapter }
-                return
-            }
-            let reference = ContentReference(key: key, title: title)
-            guard case .manga(let loaded) = try await reference.preview(using: repository) else { return }
-            try Task.checkCancellation(); manga = loaded
-        } catch { /* Keep the durable title/progress and a cover placeholder when unavailable. */ }
-    }
-    private var repository: ObjectRepository? { model.repository }
+
 }
 
 /// Only the relative age ticks; the list, its sorting and image tasks stay stable.

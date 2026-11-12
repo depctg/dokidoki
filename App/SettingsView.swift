@@ -33,6 +33,10 @@ struct SettingsView: View {
                 Toggle("Trim blank margins", isOn: $model.preferences.trimMargins)
                 Toggle("Detect spreads", isOn: $model.preferences.detectSpreads)
                 Toggle("Facing pages in wide windows", isOn: $model.preferences.facingPages)
+                Picker("Prefetch distance", selection: $model.prefetchDistance) {
+                    ForEach(PrefetchDistance.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .accessibilityIdentifier("settings.prefetch")
             }
             .disabled(model.repository == nil)
             Section("Manga details") {
@@ -66,8 +70,13 @@ struct SettingsView: View {
                 Toggle("Background resource loading", isOn: Binding(get: { model.backgroundLoading }, set: { enabled in
                     Task { await model.setBackgroundLoading(enabled) }
                 }))
+                Picker("Concurrent requests", selection: $model.requestConcurrency) {
+                    ForEach(RequestConcurrency.allCases, id: \.self) { Text($0.title).tag($0) }
+                }
+                .accessibilityIdentifier("settings.concurrency")
             } header: { Text("Website loading") } footer: {
                 Text("Allow website images and media, including ads, to load in the background. Ads are never displayed.")
+                Text("Unlimited removes the download concurrency cap. Website sessions run one at a time, and requests still start at a controlled rate.")
             }
             .disabled(model.repository == nil)
             Section {

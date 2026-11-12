@@ -125,8 +125,8 @@ struct ReaderView: View {
             #endif
             await reader.activate()
         }
-        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.next)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.next) }
-        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.previous)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.previous) }
+        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.next, revealed: previewDirection == .next)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.next, revealed: previewDirection == .next) }
+        .task(id: "\(reader.id)|\(reader.chapterToPrefetch(.previous, revealed: previewDirection == .previous)?.id ?? "")|\(model.loadingRevision)", priority: .utility) { await reader.preloadChapter(.previous, revealed: previewDirection == .previous) }
         .task(id: "\(reader.id)-\(reader.revision)-\(restoreRequest)") { restorePosition() }
     }
     private func toggleChrome() {

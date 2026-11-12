@@ -17,7 +17,9 @@ public actor ObjectRepository {
     private var generation = 0
     private var backgroundLoading: Bool
 
-    public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender = RequestSender(fetcher: RenderedSourceFetcher())) throws {
+    public init(store: ObjectStore, rules: [SiteRule], sender: RequestSender? = nil) throws {
+        let concurrency = try store.preference("requestConcurrency", as: RequestConcurrency.self) ?? .low
+        let sender = sender ?? RequestSender(fetcher: RenderedSourceFetcher(), maxConcurrent: concurrency.total, perHost: concurrency.perHost)
         self.store = store; registry = try RuleRegistry(rules: rules); self.sender = sender
         images = ImageLoader(sender: sender)
         backgroundLoading = try store.preference("backgroundLoading", as: Bool.self) ?? true
@@ -37,6 +39,10 @@ public actor ObjectRepository {
         try store.setPreference("backgroundLoading", value: enabled)
         guard backgroundLoading != enabled else { return }
         backgroundLoading = enabled; await invalidate()
+    }
+    public func setRequestConcurrency(_ level: RequestConcurrency) async throws {
+        try store.setPreference("requestConcurrency", value: level)
+        await sender.setConcurrency(level)
     }
     public func installedRules() -> [SiteRule] { registry.rules }
     public func personalLibrary() throws -> [MangaObject] { try store.libraryObjects() }

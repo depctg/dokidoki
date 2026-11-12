@@ -17,6 +17,8 @@ import XCTest
         XCTAssertTrue(shelf.waitForExistence(timeout: 8))
         shelf.tap()
         XCTAssertTrue(app.navigationBars["Reading room"].waitForExistence(timeout: 8))
+        let layout = app.buttons["directory.layout"]
+        if layout.label == "Show list" { layout.tap() }
         let listedManga = app.buttons["manga.item.demo|https://demo.mangaviewer.local/series/observatory"]
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8))
         XCTAssertTrue(wait { listedManga.label.contains("9.2 / 10") && listedManga.label.contains("Finished") && listedManga.label.contains("Science fiction") })
@@ -42,6 +44,10 @@ import XCTest
         let footer = app.staticTexts["directory.footer"]
         XCTAssertTrue(aster.waitForExistence(timeout: 8))
         XCTAssertTrue(wait { footer.label == "No more titles" })
+        layout.tap()
+        XCTAssertTrue(app.scrollViews["directory.covers"].waitForExistence(timeout: 5))
+        XCTAssertTrue(wait { abs(aster.frame.minY - listedManga.frame.minY) < 2 && aster.frame.minX > listedManga.frame.minX })
+        XCTAssertFalse(listedManga.label.contains("9.2 / 10"), "Cover mode shows only artwork and title")
         listedManga.tap()
         XCTAssertTrue(app.navigationBars["The Observatory"].waitForExistence(timeout: 8))
         XCTAssertTrue(app.staticTexts["Rating: 9.2 / 10"].exists)
@@ -51,6 +57,8 @@ import XCTest
         goBack(in: app)
         XCTAssertTrue(listedManga.waitForExistence(timeout: 8), "Returning from a result retains the submitted search")
         XCTAssertTrue(aster.exists && footer.label == "No more titles", "Returning retains the loaded directory range")
+        XCTAssertTrue(app.scrollViews["directory.covers"].exists, "Navigation retains the selected layout")
+        layout.tap()
         XCTAssertFalse(app.staticTexts["Search this site"].exists)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
         listedManga.tap()
@@ -166,11 +174,20 @@ import XCTest
         // Reordering site rules belongs to shell coverage; persistence is checked in core tests.
         selectSection("Settings", in: app)
         XCTAssertTrue(app.collectionViews.firstMatch.waitForExistence(timeout: 8))
+        let prefetch = app.buttons["settings.prefetch"]
+        XCTAssertTrue(prefetch.isHittable)
+        prefetch.tap(); app.buttons["No prefetch"].tap()
+        XCTAssertTrue(wait { prefetch.label.contains("No prefetch") || (prefetch.value as? String) == "No prefetch" })
+        prefetch.tap(); app.buttons["2 pages ahead"].tap()
         let demo = app.staticTexts["Bundled reading room"]
         let other = app.staticTexts["拷貝漫畫 · MangaCopy"]
-        app.buttons["Edit"].tap()
-        for _ in 0..<5 where !demo.isHittable { app.collectionViews.firstMatch.swipeUp() }
+        let scrollStart = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7))
+        let scrollEnd = app.windows.firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        for _ in 0..<5 where !demo.isHittable || !other.isHittable {
+            scrollStart.press(forDuration: 0.05, thenDragTo: scrollEnd)
+        }
         XCTAssertTrue(demo.isHittable && other.isHittable)
+        app.buttons["Edit"].tap()
         let lower = demo.frame.minY > other.frame.minY ? demo : other
         let upper = demo.frame.minY > other.frame.minY ? other : demo
         let cell = app.cells.containing(.staticText, identifier: lower.label).firstMatch
@@ -194,6 +211,11 @@ import XCTest
         let background = app.switches["Background resource loading"]
         for _ in 0..<5 where !background.isHittable { app.windows.firstMatch.swipeUp() }
         XCTAssertTrue(background.isHittable)
+        let concurrency = app.buttons["settings.concurrency"]
+        for _ in 0..<3 where !concurrency.isHittable { app.windows.firstMatch.swipeUp() }
+        concurrency.tap(); app.buttons["Unlimited"].tap()
+        XCTAssertTrue(wait { concurrency.label.contains("Unlimited") || (concurrency.value as? String) == "Unlimited" })
+        concurrency.tap(); app.buttons["Low"].tap()
         let original = background.value as? String
         background.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
         XCTAssertTrue(wait { background.value as? String != original })

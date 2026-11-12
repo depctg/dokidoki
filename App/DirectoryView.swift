@@ -3,7 +3,7 @@ import MangaCore
 
 struct DirectoryView: View {
     let directory: DirectoryObject
-    let model: AppModel
+    @Bindable var model: AppModel
     var isSearchResult = false
     let changeSort: (ObjectKey) -> Void
     @State private var query = ""
@@ -23,12 +23,21 @@ struct DirectoryView: View {
     }
     var body: some View {
         Group {
-            if isSearchResult { list }
-            else { list.searchable(text: $query, prompt: "Filter titles") }
+            if isSearchResult { content }
+            else { content.searchable(text: $query, prompt: "Filter titles") }
         }
         .navigationTitle(title)
         .toolbarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    model.directoryCoverView.toggle()
+                } label: {
+                    Label(model.directoryCoverView ? String(localized: "Show list") : String(localized: "Show covers"),
+                          systemImage: model.directoryCoverView ? "list.bullet" : "square.grid.2x2")
+                }
+                .accessibilityIdentifier("directory.layout")
+            }
             if !(directory.sortBy ?? []).isEmpty || !(directory.sortOrder ?? []).isEmpty {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -44,34 +53,23 @@ struct DirectoryView: View {
             }
         }
     }
-    private var list: some View {
-        List {
-            Section {
-                ForEach(references) { ref in
-                    NavigationLink(value: AppRoute.object(ref.key)) {
-                        MangaPreview(reference: ref, model: model)
+    private var content: some View {
+        ZStack {
+            if model.directoryCoverView {
+                ScrollView {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 148), spacing: 20)], spacing: 24) {
+                        items
                     }
-                    .accessibilityIdentifier("manga.item.\(ref.key.id)")
-                    .onAppear {
-                        if current.mangaRefs.suffix(5).contains(where: { $0.key == ref.key }) { requestMore() }
-                    }
+                    .padding()
+                    footer
                 }
-            } footer: {
-                Group {
-                    if loadFailed {
-                        Button("Retry", action: retry).buttonStyle(.plain)
-                    } else {
-                        Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles") : String(localized: "More titles load as you scroll."))
-                    }
-                }
-                .font(.footnote).foregroundStyle(.secondary).textCase(nil)
-                .frame(maxWidth: .infinity).padding(.vertical, 16)
-                .accessibilityIdentifier("directory.footer")
-                .onAppear { if current.mangaRefs.isEmpty { requestMore() } }
+                .accessibilityIdentifier("directory.covers")
+            } else {
+                List { Section { items } footer: { footer } }
+                    .listStyle(.plain)
+                    .accessibilityIdentifier("directory.list")
             }
         }
-        .listStyle(.plain)
-        .accessibilityIdentifier("directory.list")
         .task(id: loadRequest) { [request = loadRequest] in
             guard !Task.isCancelled, loadingMore, let repository = model.repository else { return }
             defer { if loadRequest == request { loadingMore = false } }
@@ -88,6 +86,31 @@ struct DirectoryView: View {
             Button("Cancel", role: .cancel) {}
         } message: { Text(loadError ?? "") }
         .overlay { if references.isEmpty && !hasMore { ContentUnavailableView.search(text: query).allowsHitTesting(false) } }
+    }
+    private var items: some View {
+        ForEach(references) { ref in
+            NavigationLink(value: AppRoute.object(ref.key)) {
+                MangaPreview(reference: ref, model: model, layout: model.directoryCoverView ? .cover : .row)
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("manga.item.\(ref.key.id)")
+            .onAppear {
+                if current.mangaRefs.suffix(5).contains(where: { $0.key == ref.key }) { requestMore() }
+            }
+        }
+    }
+    private var footer: some View {
+        Group {
+            if loadFailed {
+                Button("Retry", action: retry).buttonStyle(.plain)
+            } else {
+                Text(loadingMore ? String(localized: "Loading more…") : !hasMore ? String(localized: "No more titles") : String(localized: "More titles load as you scroll."))
+            }
+        }
+        .font(.footnote).foregroundStyle(.secondary).textCase(nil)
+        .frame(maxWidth: .infinity).padding(.vertical, 16)
+        .accessibilityIdentifier("directory.footer")
+        .onAppear { if current.mangaRefs.isEmpty { requestMore() } }
     }
     private func requestMore() {
         guard query.isEmpty, hasMore, !loadingMore, !loadFailed, model.repository != nil else { return }
